@@ -630,84 +630,64 @@ awk '1;/^\/\/ ---------- icon handling/{print "\
 && mv /home/pi/virtual_keyboard/background.js.tmp /home/pi/virtual_keyboard/background.js
 
 
-###############################################################################
-# Crowsnest – non-interactive install via tools/.config
-###############################################################################
+# --- Minimal Crowsnest unattended install (no .config) ---
 
-# 0) Deps (add build deps so ustreamer/camera-streamer can compile cleanly)
+set -xe
+export DEBIAN_FRONTEND=noninteractive
+BASE_USER="pi"
+REPO="https://github.com/mainsail-crew/crowsnest.git"
+
 apt-get update
-apt-get install -y --no-install-recommends \
-  git make ffmpeg v4l-utils libjpeg62-turbo \
-  build-essential libevent-dev libjpeg62-turbo-dev libbsd-dev libssl-dev pkg-config
+apt-get install -y --no-install-recommends git ca-certificates
 
-# 1) Clone/update as ${BASE_USER}
-sudo -u "${BASE_USER}" bash -lc '
-  set -e
-  cd ~
-  if [ ! -d "$HOME/crowsnest/.git" ]; then
-    # Try main community repo first, mainsail mirror as fallback
-    git clone https://github.com/Klipper-Community/crowsnest.git "$HOME/crowsnest" || \
-    git clone https://github.com/mainsail-crew/crowsnest.git "$HOME/crowsnest"
-  else
-    cd "$HOME/crowsnest"
+# Clone/update
+install -d -o "$BASE_USER" -g "$BASE_USER" "/home/$BASE_USER"
+if [ ! -d "/home/$BASE_USER/crowsnest/.git" ]; then
+  runuser -u "$BASE_USER" -- git clone "$REPO" "/home/$BASE_USER/crowsnest"
+else
+  runuser -u "$BASE_USER" -- bash -lc '
+    cd ~/crowsnest
     git fetch --all -p || true
-    # Prefer origin/master; fall back to origin/main if needed
     (git rev-parse --verify origin/master >/dev/null 2>&1 && git reset --hard origin/master) || \
     (git rev-parse --verify origin/main   >/dev/null 2>&1 && git reset --hard origin/main)  || true
-  fi
-'
-
-# 2) Pre-create runtime dirs and set ownership
-install -d -m 0755 "/home/${BASE_USER}/printer_data/config" \
-                   "/home/${BASE_USER}/printer_data/logs" \
-                   "/home/${BASE_USER}/printer_data/systemd"
-chown -R "${BASE_USER}:${BASE_USER}" "/home/${BASE_USER}/printer_data"
-
-# 3) Drop non-interactive tools/.config EXACTLY as requested
-sudo -u "${BASE_USER}" bash -lc '
-  set -e
-  mkdir -p "$HOME/crowsnest/tools"
-  cat > "$HOME/crowsnest/tools/.config" << "EOF"
-BASE_USER="pi"
-CROWSNEST_USTREAMER_REPO_SHIP="https://github.com/pikvm/ustreamer.git"
-CROWSNEST_USTREAMER_REPO_BRANCH="v6.36"
-CROWSNEST_CAMERA_STREAMER_REPO_SHIP="https://github.com/mryel00/camera-streamer.git"
-CROWSNEST_CAMERA_STREAMER_REPO_BRANCH="main"
-CROWSNEST_CONFIG_PATH="/home/pi/printer_data/config"
-CROWSNEST_LOG_PATH="/home/pi/printer_data/logs"
-CROWSNEST_ENV_PATH="/home/pi/printer_data/systemd"
-CROWSNEST_ADD_CROWSNEST_MOONRAKER="0"
-EOF
-'
-
-# 4) Run the official installer (reads tools/.config; no prompts)
-sudo -u "${BASE_USER}" bash -lc '
-  set -e
-  export DEBIAN_FRONTEND=noninteractive
-  cd "$HOME/crowsnest"
-  make install
-'
-
-# 5) Enable service for first boot (ignore if unit not present yet)
-systemctl daemon-reload || true
-systemctl enable crowsnest || true
-
-# 6) If no config exists at all, drop a tiny default (won’t overwrite yours)
-if [ ! -f "/home/${BASE_USER}/printer_data/config/crowsnest.conf" ]; then
-  sudo -u "${BASE_USER}" bash -lc 'cat > "$HOME/printer_data/config/crowsnest.conf" << "EOF"
-[global]
-log_path: ~/printer_data/logs/crowsnest.log
-
-# Example camera block (disabled by default)
-#[streamer usb0]
-#enable: false
-#device: /dev/video0
-#resolution: 1280x720@15
-#rotate: 0
-#decoder: v4l2
-#format: MJPG
-EOF'
+  '
 fi
+
+# Pick pkg list (RPi vs generic) and install deps Crowsnest expects
+if grep -qiE "raspbian|raspberry pi os" /etc/os-release 2>/dev/null; then
+  INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-rpi.sh"
+else
+  INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-generic.sh"
+fi
+PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"")
+read -ra PKGARRAY <<< "$PKGLIST"
+apt-get install -y "${PKGARRAY[@]}"
+
+# Make sure runtime dirs exist
+install -d -o "$BASE_USER" -g "$BASE_USER" \
+  "/home/$BASE_USER/printer_data/config" \
+  "/home/$BASE_USER/printer_data/logs" \
+  "/home/$BASE_USER/printer_data/systemd"
+
+# Unattended install with your overrides (no .config file)
+export CROWSNEST_UNATTENDED=1
+export CROWSNEST_ADD_CROWSNEST_MOONRAKER=0
+export BASE_USER="pi"
+export CROWSNEST_USTREAMER_REPO_SHIP="https://github.com/pikvm/ustreamer.git"
+export CROWSNEST_USTREAMER_REPO_BRANCH="v6.36"
+export CROWSNEST_CAMERA_STREAMER_REPO_SHIP="https://github.com/mryel00/camera-streamer.git"
+export CROWSNEST_CAMERA_STREAMER_REPO_BRANCH="main"
+export CROWSNEST_CONFIG_PATH="/home/pi/printer_data/config"
+export CROWSNEST_LOG_PATH="/home/pi/printer_data/logs"
+export CROWSNEST_ENV_PATH="/home/pi/printer_data/systemd"
+
+runuser -u "$BASE_USER" -- bash -lc 'cd ~/crowsnest && make install'
+
+# Optional: enable on first boot (safe even in chroot)
+if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true; fi
+mkdir -p /etc/systemd/system/multi-user.target.wants
+[ -e /lib/systemd/system/crowsnest.service ] && ln -sf /lib/systemd/system/crowsnest.service /etc/systemd/system/multi-user.target.wants/crowsnest.service || true
+
 
 
 ###############################################################################
