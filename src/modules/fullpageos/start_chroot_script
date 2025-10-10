@@ -631,67 +631,70 @@ awk '1;/^\/\/ ---------- icon handling/{print "\
 
 
 ###############################################################################
-# Crowsnest – non-interactive install (driven by expect)
+# Crowsnest – non-interactive install via tools/.config
 ###############################################################################
 
-# 0) Deps (you already install 'expect' earlier, but keep it here just in case)
+# 0) Deps (add build deps so ustreamer/camera-streamer can compile cleanly)
 apt-get update
-apt-get install -y --no-install-recommends git make ffmpeg v4l-utils libjpeg62-turbo expect
+apt-get install -y --no-install-recommends \
+  git make ffmpeg v4l-utils libjpeg62-turbo \
+  build-essential libevent-dev libjpeg62-turbo-dev libbsd-dev libssl-dev pkg-config
 
 # 1) Clone/update as ${BASE_USER}
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
   if [ ! -d "$HOME/crowsnest/.git" ]; then
-    # Try main community repo first, then mainsail mirror as fallback
-    git clone https://github.com/Klipper-Community/crowsnest.git ~/crowsnest || \
-    git clone https://github.com/mainsail-crew/crowsnest.git ~/crowsnest
+    # Try main community repo first, mainsail mirror as fallback
+    git clone https://github.com/Klipper-Community/crowsnest.git "$HOME/crowsnest" || \
+    git clone https://github.com/mainsail-crew/crowsnest.git "$HOME/crowsnest"
   else
-    cd ~/crowsnest && git fetch --all -p && git reset --hard origin/master || true
+    cd "$HOME/crowsnest"
+    git fetch --all -p || true
+    # Prefer origin/master; fall back to origin/main if needed
+    (git rev-parse --verify origin/master >/dev/null 2>&1 && git reset --hard origin/master) || \
+    (git rev-parse --verify origin/main   >/dev/null 2>&1 && git reset --hard origin/main)  || true
   fi
 '
 
-# 2) If you already provide a config, remember it so we answer "No" on overwrite
-CN_HAS_CFG=0
-if [ -f "/home/${BASE_USER}/printer_data/config/crowsnest.conf" ]; then
-  CN_HAS_CFG=1
-fi
+# 2) Pre-create runtime dirs and set ownership
+install -d -m 0755 "/home/${BASE_USER}/printer_data/config" \
+                   "/home/${BASE_USER}/printer_data/logs" \
+                   "/home/${BASE_USER}/printer_data/systemd"
+chown -R "${BASE_USER}:${BASE_USER}" "/home/${BASE_USER}/printer_data"
 
-# 3) Run the official installer, auto-answering prompts
+# 3) Drop non-interactive tools/.config EXACTLY as requested
 sudo -u "${BASE_USER}" bash -lc '
   set -e
-  cd ~/crowsnest
-  # We are root in chroot, but the installer uses sudo internally; it should not prompt for a password.
-  export DEBIAN_FRONTEND=noninteractive
-  expect << "EOF"
-set timeout 180
-spawn make install
-# Loop over any number of prompts; default to "Y", except refuse overwriting existing config
-expect {
-  -re {(?i)overwrite.*crowsnest\.conf.*\(Y/n\)} {
-    send -- "'$([ $CN_HAS_CFG -eq 1 ] && echo n || echo y)'\r"
-    exp_continue
-  }
-  -re {(?i)create.*crowsnest\.conf.*\(Y/n\)} {
-    send -- "'$([ $CN_HAS_CFG -eq 1 ] && echo n || echo y)'\r"
-    exp_continue
-  }
-  -re {(?i)\(Y/n\)} {
-    send -- "Y\r"
-    exp_continue
-  }
-  eof
-}
+  mkdir -p "$HOME/crowsnest/tools"
+  cat > "$HOME/crowsnest/tools/.config" << "EOF"
+BASE_USER="pi"
+CROWSNEST_USTREAMER_REPO_SHIP="https://github.com/pikvm/ustreamer.git"
+CROWSNEST_USTREAMER_REPO_BRANCH="v6.36"
+CROWSNEST_CAMERA_STREAMER_REPO_SHIP="https://github.com/mryel00/camera-streamer.git"
+CROWSNEST_CAMERA_STREAMER_REPO_BRANCH="main"
+CROWSNEST_CONFIG_PATH="/home/pi/printer_data/config"
+CROWSNEST_LOG_PATH="/home/pi/printer_data/logs"
+CROWSNEST_ENV_PATH="/home/pi/printer_data/systemd"
+CROWSNEST_ADD_CROWSNEST_MOONRAKER="0"
 EOF
 '
 
-# 4) Make sure the service is enabled for first boot
+# 4) Run the official installer (reads tools/.config; no prompts)
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  export DEBIAN_FRONTEND=noninteractive
+  cd "$HOME/crowsnest"
+  make install
+'
+
+# 5) Enable service for first boot (ignore if unit not present yet)
 systemctl daemon-reload || true
 systemctl enable crowsnest || true
 
-# 5) If no config exists at all, drop a tiny default (won’t overwrite yours)
+# 6) If no config exists at all, drop a tiny default (won’t overwrite yours)
 if [ ! -f "/home/${BASE_USER}/printer_data/config/crowsnest.conf" ]; then
-  sudo -u "${BASE_USER}" bash -lc 'cat > ~/printer_data/config/crowsnest.conf <<EOF
+  sudo -u "${BASE_USER}" bash -lc 'cat > "$HOME/printer_data/config/crowsnest.conf" << "EOF"
 [global]
 log_path: ~/printer_data/logs/crowsnest.log
 
@@ -705,6 +708,7 @@ log_path: ~/printer_data/logs/crowsnest.log
 #format: MJPG
 EOF'
 fi
+
 
 ###############################################################################
 # Beacon3D – beacon_klipper (run after Klipper + klippy-env are created)
