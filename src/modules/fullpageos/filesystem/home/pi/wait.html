@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Flashing Klipper…</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body{height:100%;margin:0;background:#0b1220;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial}
+    .wrap{height:100%;display:grid;place-items:center;padding:24px}
+    .card{max-width:680px;text-align:center;padding:36px 28px;border:1px solid #1e2a3f;border-radius:16px;background:#0e1726cc;backdrop-filter:blur(3px)}
+    .spin{width:56px;height:56px;border:6px solid #32465f;border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 18px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    p{opacity:.9;line-height:1.5}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="spin"></div>
+      <h1 style="margin:10px 0 6px">Flashing Klipper…</h1>
+      <p>Please wait. The device will reboot automatically when finished.</p>
+    </div>
+  </div>
+</body>
+</html>

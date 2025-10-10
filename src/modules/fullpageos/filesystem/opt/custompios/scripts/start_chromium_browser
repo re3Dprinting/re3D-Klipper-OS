@@ -1,37 +1,89 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# FullPageOS: start_chromium_browser with one-time splash flow
+# Runs as user 'pi' inside the LightDM session. Cleanup/reboot are handled by systemd (root).
+
+set -u  # don't use -e; we want to keep the session alive even if something small fails
+
+FIRSTBOOT_FLAG="/etc/firstboot-splash"
+UI_STARTED="/tmp/firstboot-ui-started"
+WAIT_HTML="/home/pi/wait.html"
+FLASH_UNIT="flash_once.service"       # <— your service name here
+LOG="/tmp/firstboot-kiosk.log"
+WATCH_TIMEOUT_SEC=900                 # 15 minutes
 
 flags=(
-   --kiosk
-   --touch-events=enabled
-   --disable-pinch
-   --noerrdialogs
-   --no-memcheck
-   --disable-session-crashed-bubble
-   --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT'
-   --disable-component-update
-   --overscroll-history-navigation=0
-   --disable-features=TranslateUI
-   --autoplay-policy=no-user-gesture-required
-   --disk-cache-size=500000000
-   --load-extension=/home/pi/virtual_keyboard
+  --kiosk
+  --touch-events=enabled
+  --disable-pinch
+  --noerrdialogs
+  --no-memcheck
+  --disable-session-crashed-bubble
+  --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT'
+  --disable-component-update
+  --overscroll-history-navigation=0
+  --disable-features=TranslateUI
+  --autoplay-policy=no-user-gesture-required
+  --disk-cache-size=500000000
+  --load-extension=/home/pi/virtual_keyboard
 )
 
-# Standard behavior - runs chromium
-chromium-browser "${flags[@]}" --app=$(/opt/custompios/scripts/get_url)
-exit;
+# ---------- One-time splash branch ----------
+if [[ -f "$FIRSTBOOT_FLAG" ]]; then
+  {
+    echo "[$(date)] firstboot: flag present"
 
-# Remove the two lines above to enable signage mode - refresh the browser whenever errors are seen in log
+    # Let the systemd unit know the UI path has started
+    touch "$UI_STARTED"
 
+    CHROME_BIN="$(command -v chromium-browser || command -v chromium || true)"
+    if [[ -z "${CHROME_BIN:-}" ]]; then
+      echo "[$(date)] firstboot: chromium not found; skipping splash"
+      exit 0
+    fi
+    if [[ ! -f "$WAIT_HTML" ]]; then
+      echo "[$(date)] firstboot: $WAIT_HTML missing; skipping splash"
+      exit 0
+    fi
+
+    PROFILE="/home/pi/.config/chromium-firstboot"
+    mkdir -p "$PROFILE"; chown -R pi:pi "$PROFILE" || true
+
+    # NOTE: file:/// (three slashes) is required
+    nohup "$CHROME_BIN" \
+      --user-data-dir="$PROFILE" \
+      --app="file:///home/pi/wait.html" \
+      "${flags[@]}" \
+      >/tmp/firstboot-chrome.log 2>&1 &
+
+    echo "[$(date)] firstboot: started splash; starting $FLASH_UNIT"
+    systemctl start "$FLASH_UNIT" || true
+
+    # Keep session alive while the unit runs (or until timeout)
+    end=$((SECONDS + WATCH_TIMEOUT_SEC))
+    while systemctl is-active --quiet "$FLASH_UNIT"; do
+      (( SECONDS >= end )) && { echo "[$(date)] firstboot: timeout reached"; break; }
+      sleep 2
+    done
+
+    echo "[$(date)] firstboot: leaving cleanup/reboot to systemd"
+  } >>"$LOG" 2>&1
+  exit 0
+fi
+# ---------- End first-boot branch ----------
+
+# ---------- Normal kiosk behavior ----------
+CHROME_BIN="$(command -v chromium-browser || command -v chromium || true)"
+if [[ -n "${CHROME_BIN:-}" ]]; then
+  "$CHROME_BIN" "${flags[@]}" --app=$(/opt/custompios/scripts/get_url)
+  exit 0
+fi
+
+# Fallback signage mode (unchanged)
 chromium-browser --enable-logging --log-level=2 --v=0 "${flags[@]}" --app=$(/opt/custompios/scripts/get_url) &
 
 export logfile="/home/$(id -nu 1000)/.config/chromium/chrome_debug.log"
-
-
-# Refreshes after a crash by watching logs
-tail -n 0 -F "$logfile" | while read LOGLINE &> /dev/null; do
-
-   echo "Refreshing after crash"
-   echo "Restarting at `date` after a reported crash. Logline: ${LOGLINE}" >> /tmp/crashlog
-   [[ ("${LOGLINE}" == *"ERROR"*) || ("${LOGLINE}" == *"FATAL"*) ]] && /home/$(id -nu 1000)/scripts/refresh
-
+tail -n 0 -F "$logfile" | while read -r LOGLINE; do
+  echo "Refreshing after crash"
+  echo "Restarting at $(date) after a reported crash. Logline: ${LOGLINE}" >> /tmp/crashlog
+  [[ "$LOGLINE" == *"ERROR"* || "$LOGLINE" == *"FATAL"* ]] && /home/$(id -nu 1000)/scripts/refresh
 done

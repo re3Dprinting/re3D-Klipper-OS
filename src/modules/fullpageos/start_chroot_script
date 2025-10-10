@@ -50,7 +50,8 @@ then
     apt-get install -y --force-yes chromium-browser
     sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' /opt/custompios/scripts/run_onepageos
 fi
-
+chmod +x /opt/custompios/scripts/first_start_chromium_browser
+chmod +x /opt/custompios/scripts/real_run_one
 # Install web stack (optional lighttpd)
 if [ "$FULLPAGEOS_INCLUDE_LIGHTTPD" == "yes" ]
 then
@@ -756,7 +757,6 @@ else
   echo "NOTE: $SRC not found; skipping shell command install."
 fi
 
-
 ###############################################################################
 # G-Code Shell Command (non-interactive install; no config edits)
 ###############################################################################
@@ -795,10 +795,15 @@ systemctl daemon-reload || true
 sudo chmod +x /home/${BASE_USER}/printer_data/config/src/get_serial.sh || true
 # 5) Ensure nginx starts on first boot
 systemctl enable nginx
-systemctl enable splash_video.service
+#systemctl enable splash_video.service
 systemctl enable klipper_config.service
-systemctl enable flash_firmware.service
+systemctl enable flash_once.service
 systemctl enable klipper-autostart.service
+
+chmod +x /usr/local/bin/flash_once.sh
+chown pi:pi /home/pi/wait.html
+
+touch /etc/firstboot-splash
 
 # NTP servers
 echo "server time.nist.gov" >> /etc/ntp.conf

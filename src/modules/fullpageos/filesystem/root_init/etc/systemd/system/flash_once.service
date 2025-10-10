@@ -1,0 +1,18 @@
+[Unit]
+Description=One-time flash task shown behind splash
+ConditionPathExists=/etc/firstboot-splash
+ConditionPathExists=/tmp/firstboot-ui-started
+After=graphical.target
+# (If needed) Wants=network-online.target
+# (If needed) After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/bin/flash_once.sh
+RuntimeMaxSec=900
+ExecStartPost=-/usr/bin/rm -f /etc/firstboot-splash
+ExecStartPost=-/usr/bin/rm -f /tmp/firstboot-ui-started
+ExecStartPost=/usr/bin/systemctl --no-wall --no-block reboot
+
+[Install]
+WantedBy=multi-user.target

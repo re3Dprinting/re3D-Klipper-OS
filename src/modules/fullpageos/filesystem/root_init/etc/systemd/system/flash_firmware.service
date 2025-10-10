@@ -1,8 +1,0 @@
-[Unit]
-Description=Flashes firmware on startup
-
-[Service]
-ExecStart=/bin/bash /usr/local/bin/flash_firmware.sh
-
-[Install]
-WantedBy=multi-user.target
