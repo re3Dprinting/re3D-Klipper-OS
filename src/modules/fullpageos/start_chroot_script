@@ -50,8 +50,7 @@ then
     apt-get install -y --force-yes chromium-browser
     sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' /opt/custompios/scripts/run_onepageos
 fi
-chmod +x /opt/custompios/scripts/first_start_chromium_browser
-chmod +x /opt/custompios/scripts/real_run_one
+
 # Install web stack (optional lighttpd)
 if [ "$FULLPAGEOS_INCLUDE_LIGHTTPD" == "yes" ]
 then
