@@ -52,6 +52,7 @@ if [[ -f "$FIRSTBOOT_FLAG" ]]; then
     nohup "$CHROME_BIN" \
       --user-data-dir="$PROFILE" \
       --app="file:///home/pi/wait.html" \
+      --allow-file-access-from-files \
       --hide-scrollbars \
       "${flags[@]}" \
       >/tmp/firstboot-chrome.log 2>&1 &
