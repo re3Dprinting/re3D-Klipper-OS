@@ -743,36 +743,40 @@ else
 fi
 
 ###############################################################################
-# G-Code Shell Command (non-interactive install; no config edits)
+# G-Code Shell Command (fetch from KIAUH v6 path)
 ###############################################################################
 
-# 1) Install the Klipper extra
-install -d -o "${BASE_USER}" -g "${BASE_USER}" "/home/${BASE_USER}/klipper/klippy/extras"
+set -e
 
-# Prefer a local copy if you have one; otherwise fetch from KIAUH upstream
-LOCAL_EXTRA_SRC="/home/${BASE_USER}/gcode_shell_command.py"
-EXTRA_DST="/home/${BASE_USER}/klipper/klippy/extras/gcode_shell_command.py"
+KLIPPER_DIR="/home/${BASE_USER}/klipper"
+[ -d "/opt/klipper/klippy" ] && KLIPPER_DIR="/opt/klipper"
+install -d -o "${BASE_USER}" -g "${BASE_USER}" "${KLIPPER_DIR}/klippy/extras"
 
-if [ -f "${LOCAL_EXTRA_SRC}" ]; then
-  install -m 0644 -o "${BASE_USER}" -g "${BASE_USER}" "${LOCAL_EXTRA_SRC}" "${EXTRA_DST}"
+EXTRA_DST="${KLIPPER_DIR}/klippy/extras/gcode_shell_command.py"
+
+URLS=(
+  "https://raw.githubusercontent.com/dw-0/kiauh/refs/heads/master/kiauh/extensions/gcode_shell_cmd/assets/gcode_shell_command.py"
+  "https://raw.githubusercontent.com/dw-0/kiauh/master/resources/gcode_shell_command.py"
+)
+
+ok=0
+for U in "${URLS[@]}"; do
+  if curl -fsSL -o "${EXTRA_DST}.tmp" "${U}"; then
+    if grep -q "load_config_prefix" "${EXTRA_DST}.tmp"; then
+      ok=1
+      break
+    fi
+  fi
+done
+
+if [ "${ok}" -eq 1 ]; then
+  install -m 0644 -o "${BASE_USER}" -g "${BASE_USER}" "${EXTRA_DST}.tmp" "${EXTRA_DST}"
+  rm -f "${EXTRA_DST}.tmp"
 else
-  # Fetch the known upstream file (idempotent). If this fails, just warn and continue.
-  curl -fsSL -o "${EXTRA_DST}" \
-    "https://raw.githubusercontent.com/dw-0/kiauh/master/resources/gcode_shell_command.py" \
-    || echo "WARN: could not fetch gcode_shell_command.py; skipping copy."
-  chown "${BASE_USER}:${BASE_USER}" "${EXTRA_DST}" 2>/dev/null || true
-  chmod 0644 "${EXTRA_DST}" 2>/dev/null || true
+  echo "WARN: could not fetch gcode_shell_command.py from known URLs; skipping copy."
+  rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
 
-# 2) Place your shell_command.cfg (no overwrite)
-#    - If you already ship it in the image, this block does nothing.
-#    - If you staged it somewhere else, set SHELLCFG_SRC to that path.
-SHELLCFG_DST="/home/${BASE_USER}/printer_data/config/shell_command.cfg"
-SHELLCFG_SRC="/home/${BASE_USER}/printer_data/config/src/system_config/shell_commands/shell_command.cfg"   # <-- change if your file lives elsewhere
-
-if [ ! -f "${SHELLCFG_DST}" ] && [ -f "${SHELLCFG_SRC}" ]; then
-  install -D -m 0644 -o "${BASE_USER}" -g "${BASE_USER}" "${SHELLCFG_SRC}" "${SHELLCFG_DST}"
-fi
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
 systemctl daemon-reload || true
