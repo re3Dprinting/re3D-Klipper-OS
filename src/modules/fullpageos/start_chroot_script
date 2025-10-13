@@ -663,13 +663,14 @@ PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"")
 read -ra PKGARRAY <<< "$PKGLIST"
 apt-get install -y "${PKGARRAY[@]}"
 
-# Make sure runtime dirs exist
+# Runtime dirs
 install -d -o "$BASE_USER" -g "$BASE_USER" \
   "/home/$BASE_USER/printer_data/config" \
   "/home/$BASE_USER/printer_data/logs" \
   "/home/$BASE_USER/printer_data/systemd"
 
-# Unattended install with your overrides (no .config file)
+# Unattended install with your overrides (run as ROOT so apt works;
+# set HOME to the user's home so files land under /home/pi)
 export CROWSNEST_UNATTENDED=1
 export CROWSNEST_ADD_CROWSNEST_MOONRAKER=0
 export BASE_USER="pi"
@@ -681,13 +682,14 @@ export CROWSNEST_CONFIG_PATH="/home/pi/printer_data/config"
 export CROWSNEST_LOG_PATH="/home/pi/printer_data/logs"
 export CROWSNEST_ENV_PATH="/home/pi/printer_data/systemd"
 
-runuser -u "$BASE_USER" -- bash -lc 'cd ~/crowsnest && make install'
+pushd "/home/$BASE_USER/crowsnest" >/dev/null
+HOME="/home/$BASE_USER" make install
+popd >/dev/null
 
-# Optional: enable on first boot (safe even in chroot)
+# Enable on first boot (safe in chroot)
 if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true; fi
 mkdir -p /etc/systemd/system/multi-user.target.wants
 [ -e /lib/systemd/system/crowsnest.service ] && ln -sf /lib/systemd/system/crowsnest.service /etc/systemd/system/multi-user.target.wants/crowsnest.service || true
-
 
 
 ###############################################################################
