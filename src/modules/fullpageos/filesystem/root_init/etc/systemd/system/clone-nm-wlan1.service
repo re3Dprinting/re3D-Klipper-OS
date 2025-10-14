@@ -1,0 +1,13 @@
+[Unit]
+Description=Clone Raspberry Pi Imager Wi-Fi config for wlan1
+After=NetworkManager.service
+ConditionPathExists=/boot/firmware/network-config
+ConditionPathExists=!/var/lib/clone_nm_wlan1.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/clone_nm_wlan1.sh
+ExecStartPost=/usr/bin/touch /var/lib/clone_nm_wlan1.done
+
+[Install]
+WantedBy=multi-user.target
