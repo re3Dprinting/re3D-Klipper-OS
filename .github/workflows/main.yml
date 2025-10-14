@@ -25,6 +25,28 @@ jobs:
       run: cd repository/src/image && wget -q -c --trust-server-names 'https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz'
     - name: Update CustomPiOS Paths
       run: cd repository/src && ../../CustomPiOS/src/update-custompios-paths
+    - name: Cache Klipper repo, venv, and firmware
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/klipper
+          ~/klippy-env
+          ~/klipper/out
+        key: ${{ runner.os }}-klipper-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+    - name: Cache Moonraker repo and venv
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/moonraker
+          ~/moonraker-env
+        key: ${{ runner.os }}-moonraker-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+    - name: Cache Crowsnest repo and build output
+      uses: actions/cache@v4
+      with:
+        path: |
+          /home/pi/crowsnest
+          /home/pi/crowsnest/build
+        key: ${{ runner.os }}-crowsnest-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
     - name: Build Image
       run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
     - name: Copy Output
