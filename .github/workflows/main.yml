@@ -73,13 +73,43 @@ jobs:
         with:
           name: build.img.gz
           path: build.img.gz
+      - name: List image files after build
+        run: |
+          echo "Listing built image files in workspace:"
+          ls -lh repository/src/workspace || true
+          echo "Attempting to mount image and list contents..."
+          mkdir -p extracted
+          sudo modprobe loop || true
+          sudo mount -o loop $(ls repository/src/workspace/*.img | head -n1) extracted || true
+          echo "Listing /home/pi in mounted image:"
+          ls -lh extracted/home/pi || true
+          echo "Listing klipper, moonraker, crowsnest, venvs in mounted image:"
+          ls -lh extracted/home/pi/klipper || true
+          ls -lh extracted/home/pi/klippy-env || true
+          ls -lh extracted/home/pi/moonraker || true
+          ls -lh extracted/home/pi/moonraker-env || true
+          ls -lh extracted/home/pi/crowsnest || true
+          ls -lh extracted/home/pi/klipper/out || true
+          sudo umount extracted || true
+      - name: Copy build outputs from image for caching
+        run: |
+          mkdir -p extracted
+          sudo modprobe loop || true
+          sudo mount -o loop $(ls repository/src/workspace/*.img | head -n1) extracted
+          cp -r extracted/home/pi/klipper $HOME/klipper || true
+          cp -r extracted/home/pi/klippy-env $HOME/klippy-env || true
+          cp -r extracted/home/pi/moonraker $HOME/moonraker || true
+          cp -r extracted/home/pi/moonraker-env $HOME/moonraker-env || true
+          cp -r extracted/home/pi/crowsnest $HOME/crowsnest || true
+          cp -r extracted/home/pi/klipper/out $HOME/klipper_out || true
+          sudo umount extracted
       - name: Save Klipper cache
         uses: actions/cache/save@v4
         with:
           path: |
             $HOME/klipper
             $HOME/klippy-env
-            $HOME/klipper/out
+            $HOME/klipper_out
           key: ${{ runner.os }}-klipper-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
 
       - name: Save Moonraker cache
@@ -94,6 +124,5 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: |
-            /home/pi/crowsnest
-            /home/pi/crowsnest/build
+            $HOME/crowsnest
           key: ${{ runner.os }}-crowsnest-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
