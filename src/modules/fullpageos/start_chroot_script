@@ -7,12 +7,20 @@
 set -x
 set -e
 
+# --- Build Timing Setup ---
+BUILD_TIMING_LOG="/tmp/build_timing.log"
+echo "" > "$BUILD_TIMING_LOG"
+step_start() { STEP_NAME="$1"; STEP_TIME=$(date +%s); }
+step_end() { local end_time=$(date +%s); local elapsed=$((end_time-STEP_TIME)); echo "$STEP_NAME: ${elapsed}s" >> "$BUILD_TIMING_LOG"; }
+
 source /common.sh
 
+step_start "Unpack Filesystem"
 unpack /filesystem/home/pi /home/"${BASE_USER}" "${BASE_USER}"
 unpack /filesystem/opt /opt
 unpack /filesystem/boot /"${BASE_BOOT_MOUNT_PATH}"
 unpack /filesystem/root_init /
+step_end
 
 apt-get update
 
@@ -42,18 +50,23 @@ remove_extra=$(remove_if_installed scratch squeak-plugins-scratch squeak-vm pyth
 apt-get remove -y --purge  $remove_extra
 apt-get autoremove -y
 
+step_start "Base Package Install"
 # apt-get tools
 apt-get -y --force-yes install git screen checkinstall avahi-daemon libavahi-compat-libdnssd1 xterm xdotool vim expect feh pulseaudio
+step_end
 
 if [ "$FULLPAGEOS_INCLUDE_CHROMIUM" == "yes" ]
 then
+    step_start "Chromium Install"
     apt-get install -y --force-yes chromium-browser
     sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' /opt/custompios/scripts/run_onepageos
+    step_end
 fi
 
 # Install web stack (optional lighttpd)
 if [ "$FULLPAGEOS_INCLUDE_LIGHTTPD" == "yes" ]
 then
+    step_start "Lighttpd/Web Stack Setup"
     apt-get install -y lighttpd php-common php-cgi php
     lighty-enable-mod fastcgi-php
     chown -R www-data:www-data /var/www/html
@@ -78,6 +91,7 @@ then
         fi
     popd
     echo "enabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
+    step_end
 else
     echo "disabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
 fi
@@ -163,8 +177,6 @@ apt-get install -y --no-install-recommends \
   avrdude gcc-avr binutils-avr avr-libc stm32flash dfu-util \
   libnewlib-arm-none-eabi gcc-arm-none-eabi binutils-arm-none-eabi \
   libusb-1.0-0-dev libusb-1.0-0 ca-certificates unzip curl vlc
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 ###############################################################################
 ### Mainsail Manual Setup (Klipper + Moonraker + NGINX + Mainsail static) #####
@@ -175,17 +187,17 @@ rm -rf /var/lib/apt/lists/*
 apt-get install -y git unzip
 
 # Moonraker additional deps (Bookworm set)
+apt-get update
 apt-get install -y \
   libopenjp2-7 python3-libgpiod curl libcurl4-openssl-dev libssl-dev \
   liblmdb-dev libsodium-dev zlib1g-dev libjpeg-dev packagekit wireless-tools \
   python3-git
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 # 1) Create the directory structure (NO config/)
 sudo -u "${BASE_USER}" bash -lc 'mkdir -p ~/printer_data/{logs,gcodes,systemd,comms}'
 
 # 2) Clone Klipper and create its venv
+step_start "Klipper Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
@@ -200,6 +212,7 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
   ./klippy-env/bin/pip install -r ./klipper/scripts/klippy-requirements.txt
 '
+step_end
 # 2.5) Drop a fixed Klipper .config for firmware builds
 sudo -u "${BASE_USER}" bash -lc '
   set -e
@@ -223,6 +236,7 @@ EOF
   chmod 0644 "$CONFIG_PATH"
 '
 # 2.6) Non-interactive Kconfig defaults, then (optionally) build firmware
+step_start "Klipper Firmware Build"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~/klipper
@@ -239,6 +253,7 @@ sudo -u "${BASE_USER}" bash -lc '
   #   ./out/klipper.bin  (or .hex/.elf depending on target)
   ls -l out || true
 '
+step_end
 
 # 3) Klipper systemd unit and env
 cat >/etc/systemd/system/klipper.service <<EOF
@@ -269,6 +284,7 @@ systemctl enable klipper.service
 
 
 # 4) Moonraker - manual install (no installer script)
+step_start "Moonraker Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
@@ -288,6 +304,7 @@ sudo -u "${BASE_USER}" bash -lc '
   ~/moonraker-env/bin/pip install --upgrade pip wheel
   ~/moonraker-env/bin/pip install -r ~/moonraker/scripts/moonraker-requirements.txt
 '
+step_end
 
 # --- Make manual install equivalent to the official installer ---
 
@@ -330,11 +347,13 @@ EOF
 # --- Moonraker PolicyKit wiring (non-interactive, chroot-safe) ---
 
 # 1) Ensure polkit and dbus are installed (the agent will run on first boot)
+step_start "PolicyKit/DBus Install"
 apt-get install -y --no-install-recommends policykit-1 dbus
 
 # 2) Create the policy group and add your user
 getent group moonraker-admin >/dev/null 2>&1 || groupadd --system moonraker-admin
 usermod -aG moonraker-admin "${BASE_USER}"
+step_end
 
 # 3) Install the Moonraker polkit rule (from the repo if present; otherwise write a minimal rule)
 RULE_DST="/etc/polkit-1/rules.d/50-moonraker.rules"
@@ -386,6 +405,7 @@ systemctl daemon-reload || true
 ###############################################################################
 
 # Install USB FS helpers and the automounter package
+step_start "USB Automount Setup"
 apt-get install -y --no-install-recommends exfatprogs ntfs-3g ca-certificates wget
 update-ca-certificates || true
 
@@ -411,6 +431,7 @@ EOF
 sed -i "s|REPLACE_USER|${BASE_USER}|g" /etc/tmpfiles.d/usb-drive.conf
 # (systemd-tmpfiles may or may not be active in chroot, but it's safe to call)
 systemd-tmpfiles --create /etc/tmpfiles.d/usb-drive.conf || true
+step_end
 
 
 ###############################################################################
@@ -418,6 +439,7 @@ systemd-tmpfiles --create /etc/tmpfiles.d/usb-drive.conf || true
 ###############################################################################
 
 # 0) Ensure ffmpeg for rendering (required by timelapse)
+step_start "Timelapse Plugin Setup"
 apt-get install -y --no-install-recommends ffmpeg
 
 # 1) Clone the plugin repo into the user's home
@@ -455,6 +477,7 @@ sudo -u "${BASE_USER}" bash -lc 'install -D -m 0644 \
 systemctl daemon-reload || true
 systemctl enable moonraker || true
 systemctl enable nginx || true
+step_end
 
 
 # 5) Run initial printer setup (guarded; optional)
@@ -465,6 +488,7 @@ sudo -u "${BASE_USER}" bash -lc '
 '
 
 # 8) NGINX as reverse proxy + static hosting for Mainsail
+step_start "NGINX Install & Config"
 apt-get install -y nginx
 # upstreams
 cat >/etc/nginx/conf.d/upstreams.conf <<'EOF'
@@ -568,6 +592,7 @@ sudo -u "${BASE_USER}" bash -lc '
     python3 ~/printer_data/config/src/reload.py || true
   fi
 '
+step_end
 
 ###############################################################################
 ### End Mainsail Manual Setup                                                ###
@@ -604,6 +629,7 @@ if [ -x "/home/${BASE_USER}/moonraker-env/bin/pip" ]; then
 fi
 
 # --- Clone virtual_keyboard into /home/pi/virtual_keyboard ---
+step_start "Virtual Keyboard Clone"
 sudo -u pi bash -lc '
   set -e
   if [ ! -d "$HOME/virtual_keyboard/.git" ]; then
@@ -622,10 +648,12 @@ awk '1;/^\/\/ ---------- icon handling/{print "\
 })();\n"}' \
 /home/pi/virtual_keyboard/background.js > /home/pi/virtual_keyboard/background.js.tmp \
 && mv /home/pi/virtual_keyboard/background.js.tmp /home/pi/virtual_keyboard/background.js
+step_end
 
 
 # --- Minimal Crowsnest unattended install (no .config) ---
 
+step_start "Crowsnest Clone & Install"
 set -xe
 export DEBIAN_FRONTEND=noninteractive
 BASE_USER="pi"
@@ -683,11 +711,13 @@ popd >/dev/null
 if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true; fi
 mkdir -p /etc/systemd/system/multi-user.target.wants
 [ -e /lib/systemd/system/crowsnest.service ] && ln -sf /lib/systemd/system/crowsnest.service /etc/systemd/system/multi-user.target.wants/crowsnest.service || true
+step_end
 
 
 ###############################################################################
 # Beacon3D – beacon_klipper (run after Klipper + klippy-env are created)
 ###############################################################################
+step_start "Beacon3D Clone & Install"
 # Clone/update as pi
 sudo -u "${BASE_USER}" bash -lc '
   set -e
@@ -711,12 +741,14 @@ sudo -u "${BASE_USER}" bash -lc '
     echo "Beacon installer skipped: ~/klipper or ~/klippy-env not found for ${USER}."
   fi
 '
+step_end
 
 
 
 ###############################################################################
 # Copy custom shell commands into /usr/local/bin (if any)
 ###############################################################################
+step_start "Custom Shell Commands Copy"
 SRC="/home/${BASE_USER}/printer_data/config/src/system_config/shell_commands"
 DST="/usr/local/bin"
 
@@ -734,11 +766,13 @@ if [ -d "$SRC" ]; then
 else
   echo "NOTE: $SRC not found; skipping shell command install."
 fi
+step_end
 
 ###############################################################################
 # G-Code Shell Command (fetch from KIAUH v6 path)
 ###############################################################################
 
+step_start "G-Code Shell Command Fetch"
 set -e
 
 KLIPPER_DIR="/home/${BASE_USER}/klipper"
@@ -769,6 +803,7 @@ else
   echo "WARN: could not fetch gcode_shell_command.py from known URLs; skipping copy."
   rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
+step_end
 
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
@@ -794,3 +829,17 @@ echo "server ntp.ubuntu.com" >> /etc/ntp.conf
 # cleanup
 apt-get clean
 apt-get autoremove -y
+# Remove package lists to reduce image size
+rm -rf /var/lib/apt/lists/*
+
+# --- Build Profiling: Print Timing Logs ---
+echo ""
+echo "==== Build Step Timing Profile ===="
+if [ -f "$BUILD_TIMING_LOG" ]; then
+  cat "$BUILD_TIMING_LOG"
+  total_time=$(awk '{sum += $NF} END {print sum}' "$BUILD_TIMING_LOG" 2>/dev/null || echo "0")
+  echo "Total Build Time: ${total_time}s"
+else
+  echo "(No timing logs collected.)"
+fi
+echo "===================================="
