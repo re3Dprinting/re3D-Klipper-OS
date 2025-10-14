@@ -201,8 +201,8 @@ step_start "Klipper Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
-  if [ ! -d "$HOME/klipper/.git" ]; then
-    git clone https://github.com/Klipper3d/klipper
+    if [ ! -d "$HOME/klipper/.git" ]; then
+      git clone --depth 1 https://github.com/Klipper3d/klipper
   else
     cd klipper && git fetch --all -p && git reset --hard origin/master
   fi
@@ -288,8 +288,8 @@ step_start "Moonraker Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
-  if [ ! -d "$HOME/moonraker/.git" ]; then
-    git clone https://github.com/Arksine/moonraker.git
+    if [ ! -d "$HOME/moonraker/.git" ]; then
+      git clone --depth 1 https://github.com/Arksine/moonraker.git
   else
     cd moonraker && git fetch --all -p && git reset --hard origin/master
   fi
@@ -446,8 +446,8 @@ apt-get install -y --no-install-recommends ffmpeg
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
-  if [ ! -d "$HOME/moonraker-timelapse/.git" ]; then
-    git clone https://github.com/mainsail-crew/moonraker-timelapse.git
+    if [ ! -d "$HOME/moonraker-timelapse/.git" ]; then
+      git clone --depth 1 https://github.com/mainsail-crew/moonraker-timelapse.git
   else
     cd moonraker-timelapse && git fetch --all -p && git reset --hard origin/main
   fi
@@ -633,7 +633,7 @@ step_start "Virtual Keyboard Clone"
 sudo -u pi bash -lc '
   set -e
   if [ ! -d "$HOME/virtual_keyboard/.git" ]; then
-    git clone https://github.com/re3Dprinting/virtual_keyboard.git ~/virtual_keyboard
+     git clone --depth 1 https://github.com/re3Dprinting/virtual_keyboard.git ~/virtual_keyboard
   else
     cd ~/virtual_keyboard && git fetch --all -p && git reset --hard origin/HEAD
   fi
@@ -664,7 +664,7 @@ apt-get install -y --no-install-recommends git ca-certificates
 # Clone/update
 install -d -o "$BASE_USER" -g "$BASE_USER" "/home/$BASE_USER"
 if [ ! -d "/home/$BASE_USER/crowsnest/.git" ]; then
-  runuser -u "$BASE_USER" -- git clone "$REPO" "/home/$BASE_USER/crowsnest"
+  runuser -u "$BASE_USER" -- git clone --depth 1 "$REPO" "/home/$BASE_USER/crowsnest"
 else
   runuser -u "$BASE_USER" -- bash -lc '
     cd ~/crowsnest
@@ -723,7 +723,7 @@ sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
   if [ ! -d "$HOME/beacon_klipper/.git" ]; then
-    git clone https://github.com/beacon3d/beacon_klipper.git
+     git clone --depth 1 https://github.com/beacon3d/beacon_klipper.git
   else
     cd beacon_klipper && git fetch --all -p && \
       (git rev-parse --verify origin/main >/dev/null 2>&1 && git reset --hard origin/main || git reset --hard origin/master)
