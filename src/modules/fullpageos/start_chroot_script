@@ -172,7 +172,6 @@ rm -rf /var/lib/apt/lists/*
 ###############################################################################
 
 # 0) Base packages required by the guide (git, unzip already present above)
-apt-get update
 apt-get install -y git unzip
 
 # Moonraker additional deps (Bookworm set)
@@ -331,7 +330,6 @@ EOF
 # --- Moonraker PolicyKit wiring (non-interactive, chroot-safe) ---
 
 # 1) Ensure polkit and dbus are installed (the agent will run on first boot)
-apt-get update
 apt-get install -y --no-install-recommends policykit-1 dbus
 
 # 2) Create the policy group and add your user
@@ -388,7 +386,6 @@ systemctl daemon-reload || true
 ###############################################################################
 
 # Install USB FS helpers and the automounter package
-apt-get update
 apt-get install -y --no-install-recommends exfatprogs ntfs-3g ca-certificates wget
 update-ca-certificates || true
 
@@ -421,7 +418,6 @@ systemd-tmpfiles --create /etc/tmpfiles.d/usb-drive.conf || true
 ###############################################################################
 
 # 0) Ensure ffmpeg for rendering (required by timelapse)
-apt-get update
 apt-get install -y --no-install-recommends ffmpeg
 
 # 1) Clone the plugin repo into the user's home
@@ -469,7 +465,6 @@ sudo -u "${BASE_USER}" bash -lc '
 '
 
 # 8) NGINX as reverse proxy + static hosting for Mainsail
-apt-get update
 apt-get install -y nginx
 # upstreams
 cat >/etc/nginx/conf.d/upstreams.conf <<'EOF'
@@ -609,7 +604,6 @@ if [ -x "/home/${BASE_USER}/moonraker-env/bin/pip" ]; then
 fi
 
 # --- Clone virtual_keyboard into /home/pi/virtual_keyboard ---
-apt-get update
 sudo -u pi bash -lc '
   set -e
   if [ ! -d "$HOME/virtual_keyboard/.git" ]; then
@@ -637,7 +631,6 @@ export DEBIAN_FRONTEND=noninteractive
 BASE_USER="pi"
 REPO="https://github.com/mainsail-crew/crowsnest.git"
 
-apt-get update
 apt-get install -y --no-install-recommends git ca-certificates
 
 # Clone/update
