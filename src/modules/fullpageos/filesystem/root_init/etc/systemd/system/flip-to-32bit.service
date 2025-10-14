@@ -1,0 +1,12 @@
+[Unit]
+Description=Ensure 32-bit kernel (arm_64bit=0) before first-boot tasks
+After=local-fs.target
+Before=firstboot-splash.service install-wifi-8822bu.service
+ConditionPathExists=!/var/lib/flip_to_32bit.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/flip_to_32bit.sh
+
+[Install]
+WantedBy=multi-user.target
