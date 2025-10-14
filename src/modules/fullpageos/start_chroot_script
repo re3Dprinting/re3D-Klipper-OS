@@ -781,24 +781,25 @@ fi
 CFG="/${BASE_BOOT_MOUNT_PATH}/config.txt"; [ -f /boot/firmware/config.txt ] && CFG="/boot/firmware/config.txt"
 sed -i '/^arm_64bit=/d' "$CFG"; echo 'arm_64bit=0' >> "$CFG"
 
-# Ship DKMS 88x2bu source (recommended)
 apt-get update
-apt-get install -y git dkms raspberrypi-kernel-headers build-essential bc
-install -d /usr/src/rtl88x2bu-5.13.1
-git clone --depth=1 https://github.com/morrownr/88x2bu.git /usr/src/rtl88x2bu-5.13.1
-cat >/etc/modprobe.d/rtl88x2bu-blacklist.conf <<'EOF'
+apt-get install -y --no-install-recommends git build-essential bc raspberrypi-kernel-headers ca-certificates
+
+# Ship the rtw88 source for first-boot build
+install -d /opt/rtw88-src
+if [ ! -d /opt/rtw88-src/.git ]; then
+  git clone --depth=1 https://github.com/lwfinger/rtw88.git /opt/rtw88-src
+else
+  bash -lc 'cd /opt/rtw88-src && git fetch --all -p && git reset --hard origin/master'
+fi
+
+# Strongly recommended firmware package (covers rtw8822b_fw.bin)
+apt-get install -y --no-install-recommends firmware-realtek || true
+
+# Prevent the legacy generic driver from binding first
+cat >/etc/modprobe.d/rtl8xxxu-blacklist.conf <<'EOF'
 blacklist rtl8xxxu
-blacklist rtw88_8822bu
 EOF
 
-# (Optional) also ship lwfinger backport
-# install -d /opt/rtw88-src
-# git clone --depth=1 https://github.com/lwfinger/rtw88.git /opt/rtw88-src
-
-# Install the units and scripts from sections 1–3:
-install -m0755 /usr/local/sbin/flip_to_32bit.sh /usr/local/sbin/flip_to_32bit.sh
-install -m0755 /usr/local/sbin/firstboot_splash.sh /usr/local/sbin/firstboot_splash.sh
-install -m0755 /usr/local/sbin/install_wifi_8822bu.sh /usr/local/sbin/install_wifi_8822bu.sh
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
 systemctl daemon-reload || true
