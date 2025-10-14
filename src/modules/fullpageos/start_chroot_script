@@ -813,7 +813,6 @@ systemctl enable flash_once.service
 systemctl enable klipper-autostart.service
 systemctl enable flip-to-32bit.service
 systemctl enable install-wifi-8822bu.service
-systemctl enable clone-nm-wlan1.service
 
 chmod +x /usr/local/bin/flash_once.sh
 chown pi:pi /home/pi/wait.html
