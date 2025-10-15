@@ -1,0 +1,275 @@
+[gcode_shell_command install_updates]
+command: sudo bash /usr/local/bin/integrate.sh
+timeout: 1000.
+verbose: True
+[gcode_macro INSTALL_UPDATES_SHELL]
+description: Installs system updates and pulls latest klipper config changes
+gcode:
+    RUN_SHELL_COMMAND CMD=install_updates
+    RESPOND TYPE=command MSG="action:prompt_end"
+
+[gcode_shell_command restore_backup]
+command: sudo sh /usr/local/bin/restore_backup.sh
+timeout: 30.
+verbose: True
+[gcode_macro RESTORE_BACKUP_SHELL]
+description: Restores the klipper configuration from a backup
+gcode:
+    RUN_SHELL_COMMAND CMD=restore_backup
+    RESPOND TYPE=command MSG="action:prompt_end"
+
+[gcode_shell_command debug]
+command: sudo sh /usr/local/bin/debug.sh
+timeout: 30.
+verbose: True
+[gcode_macro DEBUG]
+description: Pulls current klipper log and parses for shutdown information and produces a load graph. Output is saved to /printer_data/config/debugging/
+gcode:
+    RUN_SHELL_COMMAND CMD=debug
+
+[gcode_shell_command check_for_updates]
+command: sudo sh /usr/local/bin/check_updates.sh
+timeout: 30.
+verbose: True
+[gcode_macro CHECK_FOR_UPDATES]
+description: Checks the Github repository for new commits
+gcode:
+    RUN_SHELL_COMMAND CMD=check_for_updates
+
+
+[gcode_shell_command change_hostname]
+command: sudo sh /usr/local/bin/change_hostname.sh
+timeout: 30.
+verbose: True
+[gcode_macro CHANGE_HOSTNAME]
+description: Changes the hostname of the Raspberry Pi
+gcode:
+    {% set set_hostname = params.NEW_HOSTNAME|string %}
+    RUN_SHELL_COMMAND CMD=change_hostname PARAMS={set_hostname}
+
+[gcode_shell_command flash_firmware]
+command: sudo sh /usr/local/bin/flash_firmware.sh
+timeout: 60.
+verbose: True
+[gcode_macro FLASH_FIRMWARE]
+description: Enables the firmware flash process on next reboot assuming the main board is factory reset
+gcode:
+    RUN_SHELL_COMMAND CMD=flash_firmware
+
+[gcode_shell_command mac_network]
+command: sudo sh /usr/local/bin/mac_network.sh
+timeout: 5.
+verbose: True
+[gcode_macro MAC_NETWORK_ADDRESS]
+description: Prints mac address and IP address information to the console
+gcode:
+    RUN_SHELL_COMMAND CMD=mac_network
+
+
+
+[delayed_gcode master_wait]
+gcode:
+    M117 Waiting...
+
+[delayed_gcode master_done]
+gcode:
+    M117 Finished...
+    
+[gcode_shell_command reboot]
+command: sudo sh /usr/local/bin/reboot.sh
+timeout: 30.
+verbose: True
+[gcode_macro REBOOT]
+description: Reboots the Raspberry Pi
+gcode:
+    RUN_SHELL_COMMAND CMD=reboot
+
+
+[gcode_shell_command gigabot4]
+command: sudo sh /usr/local/bin/change_configuration.sh 1
+timeout: 30.
+verbose: True
+[gcode_macro GIGABOT4]
+description: Changes the configuration to Gigabot4
+gcode:
+    RUN_SHELL_COMMAND CMD=gigabot4
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command xlt]
+command: sudo sh /usr/local/bin/change_configuration.sh 2
+timeout: 30.
+verbose: True
+[gcode_macro XLT]
+description: Changes the configuration to XLT
+gcode:
+    RUN_SHELL_COMMAND CMD=xlt
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command terabot]
+command: sudo sh /usr/local/bin/change_configuration.sh 3
+timeout: 30.
+verbose: True
+[gcode_macro TERABOT]
+description: Changes the configuration to Terabot
+gcode:
+    RUN_SHELL_COMMAND CMD=terabot
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command gigabotx]
+command: sudo sh /usr/local/bin/change_configuration.sh 4
+timeout: 30.
+verbose: True
+[gcode_macro GIGABOTX]
+description: Changes the configuration to GigabotX
+gcode:
+    RUN_SHELL_COMMAND CMD=gigabotx
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command xlt_pellet]
+command: sudo sh /usr/local/bin/change_configuration.sh 5
+timeout: 30.
+verbose: True
+[gcode_macro XLT_PELLET]
+description: Changes the configuration to XLT with Pellet
+gcode:
+    RUN_SHELL_COMMAND CMD=xlt_pellet
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command terabotx]
+command: sudo sh /usr/local/bin/change_configuration.sh 6
+timeout: 30.
+verbose: True
+[gcode_macro TERABOTX]
+description: Changes the configuration to TerabotX
+gcode:
+    RUN_SHELL_COMMAND CMD=terabotx
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command gigabotx_crammer]
+command: sudo sh /usr/local/bin/change_configuration.sh 7
+timeout: 30.
+verbose: True
+[gcode_macro GIGABOTX_CRAMMER]
+description: Changes the configuration to GigabotX with Crammer
+gcode:
+    RUN_SHELL_COMMAND CMD=gigabotx_crammer
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command xlt_pellet_crammer]
+command: sudo sh /usr/local/bin/change_configuration.sh 8
+timeout: 30.
+verbose: True
+[gcode_macro XLT_PELLET_CRAMMER]
+description: Changes the configuration to XLT with Crammer
+gcode:
+    RUN_SHELL_COMMAND CMD=xlt_pellet_crammer
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command terabotx_crammer]
+command: sudo sh /usr/local/bin/change_configuration.sh 9
+timeout: 30.
+verbose: True
+[gcode_macro TERABOTX_CRAMMER]
+description: Changes the configuration to TerabotX with Crammer
+gcode:
+    RUN_SHELL_COMMAND CMD=terabotx_crammer
+    RESPOND TYPE=command MSG="action:prompt_end"
+    REBOOT_PROMPT
+
+[gcode_shell_command mount_usb]
+command: sudo bash /usr/local/bin/mount_usb.sh
+timeout: 30.
+verbose: True
+[gcode_macro MOUNT_USB]
+description: Manually mounts the USB drive.
+gcode:
+    RUN_SHELL_COMMAND CMD=mount_usb
+
+[gcode_shell_command unmount_usb]
+command: sudo bash /usr/local/bin/unmount_usb.sh
+timeout: 30.
+verbose: True
+[gcode_macro SAFELY_UNMOUNT_USB]
+description: Unmounts the USB drive in a safe manner
+gcode:
+    RUN_SHELL_COMMAND CMD=unmount_usb
+    RESPOND TYPE=command MSG="action:prompt_begin Safely Remove Hardware"
+    RESPOND TYPE=command MSG="action:prompt_text The USB drive is now safe to remove."
+    RESPOND TYPE=command MSG="action:prompt_footer_button CONFIRM|RESPOND TYPE=command MSG=action:prompt_end"
+    RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_shell_command log_farmer.sh]
+command: sudo bash /usr/local/bin/log_farmer.sh
+timeout: 30.
+verbose: True
+[gcode_macro SEND_LOG_FILES_TO_USB]
+description: Sends log files to the USB drive
+gcode:
+    RUN_SHELL_COMMAND CMD=log_farmer.sh
+    RESPOND TYPE=command MSG="action:prompt_begin Log Files"
+    RESPOND TYPE=command MSG="action:prompt_text Log files have been saved to the USB drive. Please run 'SAFELY UNMOUNT USB' before removing the USB drive."
+    RESPOND TYPE=command MSG="action:prompt_footer_button CONFIRM|RESPOND TYPE=command MSG=action:prompt_end"
+    RESPOND TYPE=command MSG="action:prompt_show"
+    
+    
+#prompt macros
+[gcode_macro CHANGE_CONFIGURATION]
+description: Prompts user to change machine type
+gcode:
+    RESPOND TYPE=command MSG="action:prompt_begin Change Configuration"
+    RESPOND TYPE=command MSG="action:prompt_text FILAMENT"
+    RESPOND TYPE=command MSG="action:prompt_button_group_start"
+    RESPOND TYPE=command MSG="action:prompt_button GIGABOT4|GIGABOT4|primary"
+    RESPOND TYPE=command MSG="action:prompt_button XLT|XLT|primary"
+    RESPOND TYPE=command MSG="action:prompt_button TERABOT|TERABOT|primary"
+    RESPOND TYPE=command MSG="action:prompt_button_group_end"
+    RESPOND TYPE=command MSG="action:prompt_text PELLET"
+    RESPOND TYPE=command MSG="action:prompt_button_group_start"
+    RESPOND TYPE=command MSG="action:prompt_button GIGABOTX2|GIGABOTX|info"
+    RESPOND TYPE=command MSG="action:prompt_button XLT|XLT_PELLET|info"
+    RESPOND TYPE=command MSG="action:prompt_button TERABOTX|TERABOTX|info"
+    RESPOND TYPE=command MSG="action:prompt_button_group_end"
+    RESPOND TYPE=command MSG="action:prompt_text PELLET WITH CRAMMER"
+    RESPOND TYPE=command MSG="action:prompt_button_group_start"
+    RESPOND TYPE=command MSG="action:prompt_button GIGABOTX2|GIGABOTX_CRAMMER|warning"
+    RESPOND TYPE=command MSG="action:prompt_button XLT|XLT_PELLET_CRAMMER|warning"
+    RESPOND TYPE=command MSG="action:prompt_button TERABOTX|TERABOTX_CRAMMER|warning"
+    RESPOND TYPE=command MSG="action:prompt_button_group_end"
+    RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro REBOOT_PROMPT]
+description: Prompts user for reboot of the Raspberry Pi
+gcode:
+    RESPOND TYPE=command MSG="action:prompt_begin Configuration Changes"
+    RESPOND TYPE=command MSG="action:prompt_text Would you like to reboot now? (Needed for configuration changes to take effect.)"
+    RESPOND TYPE=command MSG="action:prompt_footer_button CANCEL|RESPOND TYPE=command MSG=action:prompt_end"
+    RESPOND TYPE=command MSG="action:prompt_footer_button REBOOT|REBOOT|primary"
+    RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro INSTALL_UPDATES]
+description: Prompts user to install updates
+gcode:
+    RESPOND TYPE=command MSG="action:prompt_begin Install Updates"
+    RESPOND TYPE=command MSG="action:prompt_text Are you sure you would like to UPDATE and REBOOT? (Internet connection required. Please do not turn off the printer.)"
+    RESPOND TYPE=command MSG="action:prompt_footer_button CANCEL|RESPOND TYPE=command MSG=action:prompt_end"
+    RESPOND TYPE=command MSG="action:prompt_footer_button INSTALL|INSTALL_UPDATES_SHELL|primary"
+    RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro RESTORE_BACKUP]
+description: Prompts user to restore the klipper configuration from a backup
+gcode:
+    RESPOND TYPE=command MSG="action:prompt_begin Restore Backup"
+    RESPOND TYPE=command MSG="action:prompt_text Are you sure you would like to restore your system? (Please do not turn off the printer.)"
+    RESPOND TYPE=command MSG="action:prompt_footer_button CANCEL|RESPOND TYPE=command MSG=action:prompt_end"
+    RESPOND TYPE=command MSG="action:prompt_footer_button RESTORE|RESTORE_BACKUP_SHELL|primary"
+    RESPOND TYPE=command MSG="action:prompt_show"
+
+
