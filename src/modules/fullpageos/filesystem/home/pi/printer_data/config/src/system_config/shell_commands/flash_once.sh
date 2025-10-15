@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# One-time flasher with device gating + live status for the splash page.
+# Flash → prompt user to power-cycle indefinitely (no reboot, no post-checks).
 
+set -u
 LOG=/var/log/flash_once.log
 STATUS=/tmp/flash_status.json
 DEVLIST=/tmp/flash_devices.json
-EXPECTED_PATH="/dev/serial/by-id/usb-03eb_6124-if00"   # erased Atmel (03eb:6124)
-MAX_WAIT_SEC=3600                                      # wait up to 60 min
-SLEEP_SEC=2
+
+ERASED_PATH="/dev/serial/by-id/usb-03eb_6124-if00"  # erased Atmel ID
+
+PRE_FLASH_MAX_WAIT=3600  # 60 min to find erased device
+POLL=2
 
 exec >>"$LOG" 2>&1
 
@@ -16,6 +19,7 @@ jstatus(){ # jstatus <state> <progress> <message> [device]
   printf '{"state":"%s","progress":%s,"message":"%s","device":"%s"}\n' \
          "$state" "$p" "$msg" "$dev" > "$STATUS"
 }
+
 list_devices_json(){
   local out="["; local first=1
   shopt -s nullglob
@@ -35,34 +39,24 @@ echo "$(ts) flash_once: starting"
 jstatus "starting" 0 "starting"
 list_devices_json
 
-# --- Wait for expected device ---
-echo "$(ts) waiting for expected device: $EXPECTED_PATH"
+# --- Wait for ERASED device before flashing ---
+echo "$(ts) waiting for erased device: $ERASED_PATH"
 jstatus "waiting_device" 5 "No connection detected. Check printer power and USB cable."
-
-end=$((SECONDS+MAX_WAIT_SEC))
+end=$((SECONDS + PRE_FLASH_MAX_WAIT))
 while :; do
   list_devices_json
-
-  if [[ -e "$EXPECTED_PATH" ]]; then
-    echo "$(ts) found expected device: $EXPECTED_PATH"
-    jstatus "running" 20 "Detected erased board" "$EXPECTED_PATH"
+  if [[ -e "$ERASED_PATH" ]]; then
+    echo "$(ts) found erased device"
+    jstatus "running" 20 "Detected erased board" "$ERASED_PATH"
     break
   fi
-
-  # Friendly messages while waiting
   if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
     jstatus "waiting_device" 5 "No connection detected. Check printer power and USB cable."
   else
     jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
   fi
-
-  (( SECONDS >= end )) && {
-    echo "$(ts) timeout waiting for device"
-    jstatus "error" 5 "Timed out waiting for erased board (usb-03eb_6124-if00)."
-    exit 0   # NO reboot; user stays on the page
-  }
-
-  sleep "$SLEEP_SEC"
+  (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
+  sleep "$POLL"
 done
 
 udevadm settle || true
@@ -72,7 +66,7 @@ sleep 0.5
 if ! cd /home/pi/klipper/ 2>/dev/null; then
   echo "$(ts) ERROR: /home/pi/klipper missing"
   jstatus "error" 5 "/home/pi/klipper not found"
-  exit 0   # NO reboot
+  exit 0
 fi
 
 echo "$(ts) make clean"
@@ -85,16 +79,21 @@ systemctl stop klipper || true
 
 echo "$(ts) flashing"
 jstatus "running" 70 "Flashing firmware"
-make flash FLASH_DEVICE="$EXPECTED_PATH" || true
+make flash FLASH_DEVICE="$ERASED_PATH" || true
 
 echo "$(ts) starting klipper"
 jstatus "running" 85 "Starting Klipper"
 systemctl start klipper || true
 
-echo "$(ts) done"
-jstatus "done" 100 "Complete"
+# --- FINAL: Prompt user to power-cycle. Remove flags. Sit here forever. ---
+echo "$(ts) prompting for power-cycle (indefinite)"
+jstatus "power_cycle" 100 "Flashing complete. Please switch the machine OFF, then ON to power-cycle both the Pi and mainboard."
 
-# --- SUCCESS ONLY: cleanup flags and reboot ---
+# Clear first-boot flags so next boot is normal (when user actually power-cycles)
 rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
-systemctl --no-wall --no-block reboot
+
+# Park here forever so the splash stays visible
+while :; do sleep 3600; done
+
+# (never reached)
 exit 0
