@@ -1,22 +1,3 @@
-[gcode_shell_command install_updates]
-command: sudo bash /usr/local/bin/integrate.sh
-timeout: 1000.
-verbose: True
-[gcode_macro INSTALL_UPDATES_SHELL]
-description: Installs system updates and pulls latest klipper config changes
-gcode:
-    RUN_SHELL_COMMAND CMD=install_updates
-    RESPOND TYPE=command MSG="action:prompt_end"
-
-[gcode_shell_command restore_backup]
-command: sudo sh /usr/local/bin/restore_backup.sh
-timeout: 30.
-verbose: True
-[gcode_macro RESTORE_BACKUP_SHELL]
-description: Restores the klipper configuration from a backup
-gcode:
-    RUN_SHELL_COMMAND CMD=restore_backup
-    RESPOND TYPE=command MSG="action:prompt_end"
 
 [gcode_shell_command debug]
 command: sudo sh /usr/local/bin/debug.sh
@@ -26,15 +7,6 @@ verbose: True
 description: Pulls current klipper log and parses for shutdown information and produces a load graph. Output is saved to /printer_data/config/debugging/
 gcode:
     RUN_SHELL_COMMAND CMD=debug
-
-[gcode_shell_command check_for_updates]
-command: sudo sh /usr/local/bin/check_updates.sh
-timeout: 30.
-verbose: True
-[gcode_macro CHECK_FOR_UPDATES]
-description: Checks the Github repository for new commits
-gcode:
-    RUN_SHELL_COMMAND CMD=check_for_updates
 
 
 [gcode_shell_command change_hostname]
@@ -254,22 +226,8 @@ gcode:
     RESPOND TYPE=command MSG="action:prompt_footer_button REBOOT|REBOOT|primary"
     RESPOND TYPE=command MSG="action:prompt_show"
 
-[gcode_macro INSTALL_UPDATES]
-description: Prompts user to install updates
-gcode:
-    RESPOND TYPE=command MSG="action:prompt_begin Install Updates"
-    RESPOND TYPE=command MSG="action:prompt_text Are you sure you would like to UPDATE and REBOOT? (Internet connection required. Please do not turn off the printer.)"
-    RESPOND TYPE=command MSG="action:prompt_footer_button CANCEL|RESPOND TYPE=command MSG=action:prompt_end"
-    RESPOND TYPE=command MSG="action:prompt_footer_button INSTALL|INSTALL_UPDATES_SHELL|primary"
-    RESPOND TYPE=command MSG="action:prompt_show"
 
-[gcode_macro RESTORE_BACKUP]
-description: Prompts user to restore the klipper configuration from a backup
-gcode:
-    RESPOND TYPE=command MSG="action:prompt_begin Restore Backup"
-    RESPOND TYPE=command MSG="action:prompt_text Are you sure you would like to restore your system? (Please do not turn off the printer.)"
-    RESPOND TYPE=command MSG="action:prompt_footer_button CANCEL|RESPOND TYPE=command MSG=action:prompt_end"
-    RESPOND TYPE=command MSG="action:prompt_footer_button RESTORE|RESTORE_BACKUP_SHELL|primary"
-    RESPOND TYPE=command MSG="action:prompt_show"
+
+
 
 
