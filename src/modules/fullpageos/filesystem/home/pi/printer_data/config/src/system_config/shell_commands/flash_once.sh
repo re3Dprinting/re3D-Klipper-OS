@@ -16,7 +16,6 @@ jstatus(){ # jstatus <state> <progress> <message> [device]
   printf '{"state":"%s","progress":%s,"message":"%s","device":"%s"}\n' \
          "$state" "$p" "$msg" "$dev" > "$STATUS"
 }
-
 list_devices_json(){
   local out="["; local first=1
   shopt -s nullglob
@@ -38,7 +37,7 @@ list_devices_json
 
 # --- Wait for expected device ---
 echo "$(ts) waiting for expected device: $EXPECTED_PATH"
-jstatus "waiting_device" 5 "Waiting for erased board (03eb:6124). If needed, erase manually; this page will update."
+jstatus "waiting_device" 5 "No connection detected. Check printer power and USB cable."
 
 end=$((SECONDS+MAX_WAIT_SEC))
 while :; do
@@ -50,16 +49,17 @@ while :; do
     break
   fi
 
+  # Friendly messages while waiting
   if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
-    jstatus "waiting_device" 5 "No USB serial devices detected. Check cable/power and try another USB port."
+    jstatus "waiting_device" 5 "No connection detected. Check printer power and USB cable."
   else
-    jstatus "waiting_device" 5 "Different serial device(s) detected. Erase the board so it appears as 03eb:6124."
+    jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
   fi
 
   (( SECONDS >= end )) && {
     echo "$(ts) timeout waiting for device"
     jstatus "error" 5 "Timed out waiting for erased board (usb-03eb_6124-if00)."
-    exit 0
+    exit 0   # NO reboot; user stays on the page
   }
 
   sleep "$SLEEP_SEC"
@@ -72,7 +72,7 @@ sleep 0.5
 if ! cd /home/pi/klipper/ 2>/dev/null; then
   echo "$(ts) ERROR: /home/pi/klipper missing"
   jstatus "error" 5 "/home/pi/klipper not found"
-  exit 0
+  exit 0   # NO reboot
 fi
 
 echo "$(ts) make clean"
@@ -93,4 +93,8 @@ systemctl start klipper || true
 
 echo "$(ts) done"
 jstatus "done" 100 "Complete"
+
+# --- SUCCESS ONLY: cleanup flags and reboot ---
+rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
+systemctl --no-wall --no-block reboot
 exit 0
