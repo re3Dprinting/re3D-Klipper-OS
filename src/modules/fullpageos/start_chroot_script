@@ -707,17 +707,29 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 '
 
-# Run installer as pi (so it sees ~/klipper and ~/klippy-env). Guard if missing.
+# Pin NumPy to 2.3.3 only
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  REQ="$HOME/beacon_klipper/requirements.txt"
+  [ -f "$REQ" ] || exit 0
+  if grep -qE "^numpy" "$REQ"; then
+    sed -i -E "s/^numpy([[:space:]]*).*/numpy==2.3.3/" "$REQ"
+  else
+    echo "numpy==2.3.3" >> "$REQ"
+  fi
+'
+
+# Run installer as pi
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   if [ -d "$HOME/klipper" ] && [ -x "$HOME/klippy-env/bin/python" ]; then
     cd ~/beacon_klipper
-    # Use -y if supported; otherwise it just ignores it and runs normally.
     ./install.sh -y || ./install.sh
   else
     echo "Beacon installer skipped: ~/klipper or ~/klippy-env not found for ${USER}."
   fi
 '
+
 
 
 
