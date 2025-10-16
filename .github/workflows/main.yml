@@ -73,36 +73,55 @@ jobs:
         with:
           name: build.img.gz
           path: build.img.gz
-      - name: List image files after build
+      - name: Extract build outputs from image for caching
         run: |
-          echo "Listing built image files in workspace:"
-          ls -lh repository/src/workspace || true
-          echo "Attempting to mount image and list contents..."
+          # Clean up any previous mounts
+          sudo umount extracted 2>/dev/null || true
+          sudo losetup -D 2>/dev/null || true
+
+          # Prepare mount point
           mkdir -p extracted
-          sudo modprobe loop || true
-          sudo mount -o loop $(ls repository/src/workspace/*.img | head -n1) extracted || true
+
+          # Mount image
+          echo "Mounting image..."
+          sudo modprobe loop
+          IMAGE_FILE=$(ls repository/src/workspace/*.img | head -n1)
+          echo "Image file: $IMAGE_FILE"
+          sudo mount -o loop,ro "$IMAGE_FILE" extracted
+
+          # List contents for debugging
           echo "Listing /home/pi in mounted image:"
           ls -lh extracted/home/pi || true
-          echo "Listing klipper, moonraker, crowsnest, venvs in mounted image:"
+          echo "Listing klipper, moonraker, crowsnest, venvs:"
           ls -lh extracted/home/pi/klipper || true
           ls -lh extracted/home/pi/klippy-env || true
           ls -lh extracted/home/pi/moonraker || true
           ls -lh extracted/home/pi/moonraker-env || true
           ls -lh extracted/home/pi/crowsnest || true
           ls -lh extracted/home/pi/klipper/out || true
-          sudo umount extracted || true
-      - name: Copy build outputs from image for caching
-        run: |
-          mkdir -p extracted
-          sudo modprobe loop || true
-          sudo mount -o loop $(ls repository/src/workspace/*.img | head -n1) extracted
-          cp -r extracted/home/pi/klipper $HOME/klipper || true
-          cp -r extracted/home/pi/klippy-env $HOME/klippy-env || true
-          cp -r extracted/home/pi/moonraker $HOME/moonraker || true
-          cp -r extracted/home/pi/moonraker-env $HOME/moonraker-env || true
-          cp -r extracted/home/pi/crowsnest $HOME/crowsnest || true
-          cp -r extracted/home/pi/klipper/out $HOME/klipper_out || true
+
+          # Copy build outputs
+          echo "Copying build outputs..."
+          sudo cp -r extracted/home/pi/klipper $HOME/klipper || true
+          sudo cp -r extracted/home/pi/klippy-env $HOME/klippy-env || true
+          sudo cp -r extracted/home/pi/moonraker $HOME/moonraker || true
+          sudo cp -r extracted/home/pi/moonraker-env $HOME/moonraker-env || true
+          sudo cp -r extracted/home/pi/crowsnest $HOME/crowsnest || true
+          sudo cp -r extracted/home/pi/klipper/out $HOME/klipper_out || true
+
+          # Fix permissions
+          echo "Fixing permissions..."
+          sudo chown -R runner:docker $HOME/klipper || true
+          sudo chown -R runner:docker $HOME/klippy-env || true
+          sudo chown -R runner:docker $HOME/moonraker || true
+          sudo chown -R runner:docker $HOME/moonraker-env || true
+          sudo chown -R runner:docker $HOME/crowsnest || true
+          sudo chown -R runner:docker $HOME/klipper_out || true
+
+          # Unmount
+          echo "Unmounting..."
           sudo umount extracted
+          sudo losetup -D
       - name: Save Klipper cache
         uses: actions/cache/save@v4
         with:
