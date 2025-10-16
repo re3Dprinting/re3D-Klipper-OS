@@ -79,7 +79,6 @@ systemctl stop klipper || true
 
 echo "$(ts) flashing"
 jstatus "running" 70 "Flashing firmware"
-find . -type f -exec touch -m {} +   # normalize mtimes to current (even if wrong)
 make flash FLASH_DEVICE="$ERASED_PATH" || true
 
 echo "$(ts) starting klipper"
