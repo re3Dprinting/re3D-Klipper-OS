@@ -730,6 +730,17 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 '
 
+# change NumPy requirements.txt back to prevent dirty message
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  REQ="$HOME/beacon_klipper/requirements.txt"
+  [ -f "$REQ" ] || exit 0
+  if grep -qE "^numpy" "$REQ"; then
+    sed -i -E "s/^numpy([[:space:]]*).*/numpy>=2.3.3/" "$REQ"
+  else
+    echo "numpy>=2.3.3" >> "$REQ"
+  fi
+'
 
 
 
