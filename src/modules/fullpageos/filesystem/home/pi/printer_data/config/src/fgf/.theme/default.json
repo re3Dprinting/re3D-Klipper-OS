@@ -662,6 +662,14 @@
                 "showInStandby": true,
                 "showInPrinting": true,
                 "showInPause": true
+              },
+              {
+                "pos": 5,
+                "name": "WIFI_SETUP",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
               }
             ]
           }

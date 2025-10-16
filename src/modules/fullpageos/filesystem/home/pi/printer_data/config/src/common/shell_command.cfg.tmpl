@@ -1,3 +1,15 @@
+[gcode_shell_command wifi_setup]
+command: sudo bash /usr/local/bin/wifi.sh
+timeout: 30.
+verbose: True
+[gcode_macro WIFI_SETUP]
+description: Connect both on board wifi chip and wifi antenna to network.
+gcode:
+    {% set ssid = params.SSID|string %}
+    {% set password = params.PASSWORD|string %}
+    RUN_SHELL_COMMAND CMD=wifi_setup PARAMS="{ssid} {password}"
+
+
 
 [gcode_shell_command debug]
 command: sudo sh /usr/local/bin/debug.sh
