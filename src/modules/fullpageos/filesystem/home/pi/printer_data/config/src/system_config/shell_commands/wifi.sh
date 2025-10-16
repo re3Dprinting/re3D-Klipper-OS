@@ -1,75 +1,25 @@
 #!/usr/bin/env bash
-# wifi-both.sh — connect 1+ interfaces to an SSID using args (no prompts)
-# Example:
-#   sudo ./wifi-both.sh --ssid "re3D" --psk "SuperSecret"
-#   sudo ./wifi-both.sh --ssid "MyOpenNet" --open
-#   sudo ./wifi-both.sh --ssid "CorpWiFi" --psk "pw" --iface wlan0 --iface wlan1
+# wifi-both.sh — connect wlan0 & wlan1 to SSID using: sudo ./wifi-both.sh SSID PSK
+# Use "-" as PSK for open networks.
 
 set -eo pipefail
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1"; exit 1; }; }
 need nmcli
 
-SSID=""
-PSK=""
-OPEN=0
-IFACES=("wlan0" "wlan1")
-
-print_usage() {
-  cat <<EOF
-Usage: sudo $0 --ssid SSID [--psk PSK | --open] [--iface IFACE ...]
-  --ssid   SSID name to connect
-  --psk    WPA2/WPA3 pre-shared key (omit if using --open)
-  --open   Use open network (no password)
-  --iface  Interface(s) to configure; repeat or comma-separated (default: wlan0,wlan1)
-  -h|--help  Show this help
-
-Examples:
-  sudo $0 --ssid "re3D" --psk "SuperSecret"
-  sudo $0 --ssid "Guest" --open --iface wlan1
-  sudo $0 --ssid "ShopNet" --psk "pw" --iface wlan0 --iface wlan2
-EOF
-}
-
-# --- parse args ---
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --ssid) SSID="$2"; shift 2 ;;
-    --psk)  PSK="$2"; shift 2 ;;
-    --open) OPEN=1; shift ;;
-    --iface)
-      # support --iface a,b,c or repeated flags
-      if [[ "$2" == *","* ]]; then
-        IFS=',' read -r -a IFACES <<<"$2"
-      else
-        IFACES+=("$2")
-      fi
-      # remove default if user specified any
-      IFACES=($(printf "%s\n" "${IFACES[@]}" | awk 'NF' | awk '!seen[$0]++'))
-      shift 2
-      ;;
-    -h|--help) print_usage; exit 0 ;;
-    *) echo "Unknown arg: $1"; print_usage; exit 2 ;;
-  esac
-done
-
-# if user provided at least one --iface, ensure we don’t keep the original defaults duplicated
-if [[ "${#IFACES[@]}" -gt 2 ]]; then
-  # remove the initial default pair if user added new ones explicitly
-  # (already deduped above; nothing else needed)
-  :
-fi
-
-# validations
-if [[ -z "$SSID" ]]; then echo "Error: --ssid is required."; print_usage; exit 2; fi
-if [[ $OPEN -eq 1 && -n "$PSK" ]]; then echo "Note: --open provided; ignoring --psk."; PSK=""; fi
-if [[ $OPEN -ne 1 && -z "$PSK" ]]; then
-  echo "Error: provide --psk for secured networks, or use --open for no password."
+if [[ $# -lt 2 ]]; then
+  echo "Usage: sudo $0 SSID PSK"
+  echo "       (Use '-' for PSK on open networks)"
   exit 2
 fi
 
+SSID="$1"
+PSK="$2"
+[[ "$PSK" == "-" ]] && PSK=""
+
 dev_exists() { nmcli -t -f DEVICE device | grep -Fxq "$1"; }
 
+# Delete any Wi-Fi profiles pinned to this interface (prevents autoconnect to stale SSIDs)
 delete_iface_wifi_profiles() {
   local IFACE="$1"
   nmcli -t -f NAME connection show | while IFS= read -r CNAME; do
@@ -115,6 +65,7 @@ make_and_up() {
     return 0
   fi
 
+  # If PSK provided and WPA2 failed, try WPA3/SAE
   if [[ -n "$PSK" ]]; then
     echo ".... $IFACE: WPA2-PSK failed; retrying WPA3/SAE"
     nmcli connection modify "$NAME" wifi-sec.key-mgmt sae wifi-sec.psk "$PSK"
@@ -129,9 +80,7 @@ make_and_up() {
 }
 
 rc=0
-# de-duplicate IFACES array in case defaults + args collided
-mapfile -t IFACES < <(printf "%s\n" "${IFACES[@]}" | awk 'NF' | awk '!seen[$0]++')
-for iface in "${IFACES[@]}"; do
+for iface in wlan0 wlan1; do
   if dev_exists "$iface"; then
     make_and_up "$iface" || rc=1
   else
