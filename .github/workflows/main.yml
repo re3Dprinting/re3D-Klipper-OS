@@ -49,6 +49,19 @@ jobs:
         run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
       - name: Copy Output
         run: cp ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
+      - name: Debug image file before mounting
+        run: |
+          IMAGE_FILE=$(ls repository/src/workspace/*.img | head -n1)
+          echo "Image file: $IMAGE_FILE"
+          echo "=== file output ==="
+          file "$IMAGE_FILE"
+          echo "=== fdisk output ==="
+          sudo fdisk -l "$IMAGE_FILE" || true
+          echo "=== losetup output ==="
+          sudo losetup -f --show "$IMAGE_FILE" || true
+          echo "=== parted output ==="
+          sudo parted "$IMAGE_FILE" print || true
+
       - name: Extract build outputs from image for caching
         run: |
           # Clean up any previous mounts
