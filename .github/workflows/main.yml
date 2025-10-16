@@ -9,7 +9,7 @@ jobs:
       - name: Update apt
         run: sudo apt-get update
       - name: Install Dependencies
-        run: sudo apt install coreutils p7zip-full qemu-user-static python3-git
+        run: sudo apt-get install -y coreutils p7zip-full qemu-user-static python3-git rsync
       - name: Checkout CustomPiOS
         uses: actions/checkout@v2
         with:
@@ -45,6 +45,21 @@ jobs:
           path: |
             ~/crowsnest
           key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+      - name: Stage caches into image for start_chroot_script
+        run: |
+          set -euxo pipefail
+          DEST="repository/src/modules/fullpageos/files/host_cache"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+
+          # Only copy what exists
+          for d in klipper klippy-env moonraker moonraker-env crowsnest; do
+            if [ -d "$HOME/$d" ]; then
+              mkdir -p "$DEST/$d"
+              rsync -a --delete "$HOME/$d/" "$DEST/$d/"
+            fi
+          done
+
       - name: Build Image
         run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
       - name: Copy Output

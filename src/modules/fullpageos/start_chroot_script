@@ -15,6 +15,56 @@ step_end() { local end_time=$(date +%s); local elapsed=$((end_time-STEP_TIME)); 
 
 source /common.sh
 
+apt-get install -y rsync
+set -e
+CACHE_ROOT="/host_cache"
+USER_HOME="/home/${BASE_USER}"
+
+seed_dir () {
+  local src="$1"     # e.g. /host_cache/klipper
+  local dst="$2"     # e.g. /home/pi/klipper
+  local owner="${BASE_USER}:${BASE_USER}"
+
+  if [ -d "$src" ]; then
+    echo "Seeding cache: $src -> $dst"
+    mkdir -p "$dst"
+    rsync -a --delete "$src/" "$dst/"
+    chown -R "$owner" "$dst"
+  else
+    echo "No cache found for $dst"
+  fi
+}
+
+# Seed Klipper / Moonraker / Crowsnest and their venvs if present
+seed_dir "${CACHE_ROOT}/klipper"        "${USER_HOME}/klipper"
+seed_dir "${CACHE_ROOT}/klippy-env"     "${USER_HOME}/klippy-env"
+seed_dir "${CACHE_ROOT}/moonraker"      "${USER_HOME}/moonraker"
+seed_dir "${CACHE_ROOT}/moonraker-env"  "${USER_HOME}/moonraker-env"
+seed_dir "${CACHE_ROOT}/crowsnest"      "${USER_HOME}/crowsnest"
+
+# If we seeded venvs, make sure wheels are up-to-date with requirements
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  if [ -d "$HOME/klippy-env" ] && [ -d "$HOME/klipper" ]; then
+    source "$HOME/klippy-env/bin/activate"
+    pip install -U pip setuptools wheel
+    if [ -f "$HOME/klipper/scripts/klippy-requirements.txt" ]; then
+      pip install -r "$HOME/klipper/scripts/klippy-requirements.txt"
+    fi
+  fi
+
+  if [ -d "$HOME/moonraker-env" ] && [ -d "$HOME/moonraker" ]; then
+    source "$HOME/moonraker-env/bin/activate"
+    pip install -U pip setuptools wheel
+    if [ -f "$HOME/moonraker/scripts/moonraker-requirements.txt" ]; then
+      pip install -r "$HOME/moonraker/scripts/moonraker-requirements.txt"
+    fi
+  fi
+'
+
+# Optional: drop the staging area so it doesn’t end up in the final image
+rm -rf "${CACHE_ROOT}" || true
+
 step_start "Unpack Filesystem"
 unpack /filesystem/home/pi /home/"${BASE_USER}" "${BASE_USER}"
 unpack /filesystem/opt /opt
