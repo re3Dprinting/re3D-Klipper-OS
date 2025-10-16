@@ -233,8 +233,8 @@ sudo -u "${BASE_USER}" bash -lc '
 
   # OPTIONAL: build firmware now (comment out if you only want the .config staged)
   # Cleaning first helps avoid any stale artifacts when building inside images
-  make clean
-  make -j"$(nproc)"
+  #make clean
+  #make -j"$(nproc)"
 
   # If you build, the output for SAM3X8E will be here:
   #   ./out/klipper.bin  (or .hex/.elf depending on target)
