@@ -31,38 +31,20 @@ jobs:
           path: |
             ~/klipper
             ~/klippy-env
-            ~/klipper/out
-          key: ${{ runner.os }}-klipper-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
       - name: Cache Moonraker repo and venv
         uses: actions/cache@v4
         with:
           path: |
             ~/moonraker
             ~/moonraker-env
-          key: ${{ runner.os }}-moonraker-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
       - name: Cache Crowsnest repo and build output
         uses: actions/cache@v4
         with:
           path: |
-            /home/pi/crowsnest
-            /home/pi/crowsnest/build
-          key: ${{ runner.os }}-crowsnest-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
-      - name: Log Klipper, Moonraker, Crowsnest paths
-        run: |
-          echo "KLIPPER DIR: $HOME/klipper"
-          echo "KLIPPY VENV: $HOME/klippy-env"
-          echo "KLIPPER OUT: $HOME/klipper/out"
-          echo "MOONRAKER DIR: $HOME/moonraker"
-          echo "MOONRAKER VENV: $HOME/moonraker-env"
-          echo "CROWSNEST DIR: /home/pi/crowsnest"
-          echo "CROWSNEST BUILD: /home/pi/crowsnest/build"
-          ls -l $HOME/klipper || true
-          ls -l $HOME/klippy-env || true
-          ls -l $HOME/klipper/out || true
-          ls -l $HOME/moonraker || true
-          ls -l $HOME/moonraker-env || true
-          ls -l /home/pi/crowsnest || true
-          ls -l /home/pi/crowsnest/build || true
+            ~/crowsnest
+          key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
       - name: Build Image
         run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
       - name: Copy Output
@@ -89,59 +71,79 @@ jobs:
           echo "Image file: $IMAGE_FILE"
           sudo mount -o loop,ro "$IMAGE_FILE" extracted
 
-          # List contents for debugging
-          echo "Listing /home/pi in mounted image:"
+          # List contents for debugging - discover what Crowsnest actually creates
+          echo "=== Listing /home/pi in mounted image ==="
           ls -lh extracted/home/pi || true
-          echo "Listing klipper, moonraker, crowsnest, venvs:"
+
+          echo "=== Klipper directory ==="
           ls -lh extracted/home/pi/klipper || true
-          ls -lh extracted/home/pi/klippy-env || true
-          ls -lh extracted/home/pi/moonraker || true
-          ls -lh extracted/home/pi/moonraker-env || true
-          ls -lh extracted/home/pi/crowsnest || true
+
+          echo "=== Klipper out/ directory (firmware) ==="
           ls -lh extracted/home/pi/klipper/out || true
 
+          echo "=== Klippy-env ==="
+          du -sh extracted/home/pi/klippy-env || true
+
+          echo "=== Moonraker directory ==="
+          ls -lh extracted/home/pi/moonraker || true
+
+          echo "=== Moonraker-env ==="
+          du -sh extracted/home/pi/moonraker-env || true
+
+          echo "=== Crowsnest directory ==="
+          ls -lh extracted/home/pi/crowsnest || true
+
+          echo "=== Crowsnest bin/ directory ==="
+          ls -lh extracted/home/pi/crowsnest/bin || true
+
+          echo "=== Crowsnest build/ directory ==="
+          ls -lh extracted/home/pi/crowsnest/build || true
+
           # Copy build outputs
-          echo "Copying build outputs..."
+          echo "=== Copying build outputs to runner ==="
           sudo cp -r extracted/home/pi/klipper $HOME/klipper || true
           sudo cp -r extracted/home/pi/klippy-env $HOME/klippy-env || true
           sudo cp -r extracted/home/pi/moonraker $HOME/moonraker || true
           sudo cp -r extracted/home/pi/moonraker-env $HOME/moonraker-env || true
           sudo cp -r extracted/home/pi/crowsnest $HOME/crowsnest || true
-          sudo cp -r extracted/home/pi/klipper/out $HOME/klipper_out || true
 
           # Fix permissions
-          echo "Fixing permissions..."
+          echo "=== Fixing permissions ==="
           sudo chown -R runner:docker $HOME/klipper || true
           sudo chown -R runner:docker $HOME/klippy-env || true
           sudo chown -R runner:docker $HOME/moonraker || true
           sudo chown -R runner:docker $HOME/moonraker-env || true
           sudo chown -R runner:docker $HOME/crowsnest || true
-          sudo chown -R runner:docker $HOME/klipper_out || true
+
+          # Verify what we copied
+          echo "=== Verifying copied directories ==="
+          ls -lh $HOME/klipper || true
+          ls -lh $HOME/crowsnest || true
+          du -sh $HOME/klipper $HOME/klippy-env $HOME/moonraker $HOME/moonraker-env $HOME/crowsnest || true
 
           # Unmount
-          echo "Unmounting..."
+          echo "=== Unmounting ==="
           sudo umount extracted
           sudo losetup -D
       - name: Save Klipper cache
         uses: actions/cache/save@v4
         with:
           path: |
-            $HOME/klipper
-            $HOME/klippy-env
-            $HOME/klipper_out
-          key: ${{ runner.os }}-klipper-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+            ~/klipper
+            ~/klippy-env
+          key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
 
       - name: Save Moonraker cache
         uses: actions/cache/save@v4
         with:
           path: |
-            $HOME/moonraker
-            $HOME/moonraker-env
-          key: ${{ runner.os }}-moonraker-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+            ~/moonraker
+            ~/moonraker-env
+          key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
 
       - name: Save Crowsnest cache
         uses: actions/cache/save@v4
         with:
           path: |
-            $HOME/crowsnest
-          key: ${{ runner.os }}-crowsnest-${{ hashFiles('src/modules/fullpageos/start_chroot_script') }}
+            ~/crowsnest
+          key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
