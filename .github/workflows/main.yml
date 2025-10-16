@@ -49,12 +49,6 @@ jobs:
         run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
       - name: Copy Output
         run: cp ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
-      - name: Zip Output
-        run: gzip build.img
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build.img.gz
-          path: build.img.gz
       - name: Extract build outputs from image for caching
         run: |
           # Clean up any previous mounts
@@ -147,3 +141,10 @@ jobs:
           path: |
             ~/crowsnest
           key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+
+      - name: Zip Output
+        run: gzip build.img
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build.img.gz
+          path: build.img.gz
