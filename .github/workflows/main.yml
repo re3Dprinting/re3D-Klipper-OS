@@ -32,6 +32,9 @@ jobs:
             ~/klipper
             ~/klippy-env
           key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          restore-keys: |
+            ${{ runner.os }}-klipper-
+            ${{ runner.os }}-
       - name: Cache Moonraker repo and venv
         uses: actions/cache@v4
         with:
@@ -39,12 +42,18 @@ jobs:
             ~/moonraker
             ~/moonraker-env
           key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          restore-keys: |
+            ${{ runner.os }}-moonraker-
+            ${{ runner.os }}-
       - name: Cache Crowsnest repo and build output
         uses: actions/cache@v4
         with:
           path: |
             ~/crowsnest
           key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          restore-keys: |
+            ${{ runner.os }}-crowsnest-
+            ${{ runner.os }}-
       - name: Stage caches into image for start_chroot_script
         run: |
           set -euxo pipefail
