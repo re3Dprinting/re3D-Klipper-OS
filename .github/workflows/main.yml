@@ -63,75 +63,87 @@ jobs:
           sudo parted "$IMAGE_FILE" print || true
 
       - name: Extract build outputs from image for caching
+        shell: bash
         run: |
+          set -euxo pipefail
+
           # Clean up any previous mounts
-          sudo umount extracted 2>/dev/null || true
+          sudo umount -R extracted 2>/dev/null || true
           sudo losetup -D 2>/dev/null || true
 
-          # Prepare mount point
           mkdir -p extracted
 
-          # Mount image
-          echo "Mounting image..."
-          sudo modprobe loop
-          IMAGE_FILE=$(ls repository/src/workspace/*.img | head -n1)
+          IMAGE_FILE="$(ls repository/src/workspace/*.img | head -n1)"
           echo "Image file: $IMAGE_FILE"
-          sudo mount -o loop,ro "$IMAGE_FILE" extracted
 
-          # List contents for debugging - discover what Crowsnest actually creates
+          # Attach loop with partition scanning (-P creates /dev/loopXp1, /dev/loopXp2)
+          LOOPDEV="$(sudo losetup -fP --show "$IMAGE_FILE")"
+          echo "Loop device: $LOOPDEV"
+
+          # Ensure we always clean up
+          cleanup() {
+            set +e
+            sudo umount -R extracted 2>/dev/null || true
+            sudo losetup -d "$LOOPDEV" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Rootfs is p2 on Raspberry Pi OS images
+          ROOT_PART="${LOOPDEV}p2"
+          if [ ! -b "$ROOT_PART" ]; then
+            echo "Did not find ${LOOPDEV}p2; available:"
+            ls -l ${LOOPDEV}*
+            exit 1
+          fi
+
+          echo "Mounting root partition: $ROOT_PART"
+          sudo mount -o ro "$ROOT_PART" extracted
+
           echo "=== Listing /home/pi in mounted image ==="
-          ls -lh extracted/home/pi || true
+          ls -lah extracted/home/pi || true
 
           echo "=== Klipper directory ==="
-          ls -lh extracted/home/pi/klipper || true
+          ls -lah extracted/home/pi/klipper || true
 
           echo "=== Klipper out/ directory (firmware) ==="
-          ls -lh extracted/home/pi/klipper/out || true
+          ls -lah extracted/home/pi/klipper/out || true
 
           echo "=== Klippy-env ==="
           du -sh extracted/home/pi/klippy-env || true
 
           echo "=== Moonraker directory ==="
-          ls -lh extracted/home/pi/moonraker || true
+          ls -lah extracted/home/pi/moonraker || true
 
           echo "=== Moonraker-env ==="
           du -sh extracted/home/pi/moonraker-env || true
 
           echo "=== Crowsnest directory ==="
-          ls -lh extracted/home/pi/crowsnest || true
+          ls -lah extracted/home/pi/crowsnest || true
 
           echo "=== Crowsnest bin/ directory ==="
-          ls -lh extracted/home/pi/crowsnest/bin || true
+          ls -lah extracted/home/pi/crowsnest/bin || true
 
           echo "=== Crowsnest build/ directory ==="
-          ls -lh extracted/home/pi/crowsnest/build || true
+          ls -lah extracted/home/pi/crowsnest/build || true
 
-          # Copy build outputs
           echo "=== Copying build outputs to runner ==="
-          sudo cp -r extracted/home/pi/klipper $HOME/klipper || true
-          sudo cp -r extracted/home/pi/klippy-env $HOME/klippy-env || true
-          sudo cp -r extracted/home/pi/moonraker $HOME/moonraker || true
-          sudo cp -r extracted/home/pi/moonraker-env $HOME/moonraker-env || true
-          sudo cp -r extracted/home/pi/crowsnest $HOME/crowsnest || true
+          sudo cp -r extracted/home/pi/klipper        "$HOME/klipper"        || true
+          sudo cp -r extracted/home/pi/klippy-env     "$HOME/klippy-env"     || true
+          sudo cp -r extracted/home/pi/moonraker      "$HOME/moonraker"      || true
+          sudo cp -r extracted/home/pi/moonraker-env  "$HOME/moonraker-env"  || true
+          sudo cp -r extracted/home/pi/crowsnest      "$HOME/crowsnest"      || true
 
-          # Fix permissions
           echo "=== Fixing permissions ==="
-          sudo chown -R runner:docker $HOME/klipper || true
-          sudo chown -R runner:docker $HOME/klippy-env || true
-          sudo chown -R runner:docker $HOME/moonraker || true
-          sudo chown -R runner:docker $HOME/moonraker-env || true
-          sudo chown -R runner:docker $HOME/crowsnest || true
+          sudo chown -R runner:docker "$HOME/klipper"        || true
+          sudo chown -R runner:docker "$HOME/klippy-env"     || true
+          sudo chown -R runner:docker "$HOME/moonraker"      || true
+          sudo chown -R runner:docker "$HOME/moonraker-env"  || true
+          sudo chown -R runner:docker "$HOME/crowsnest"      || true
 
-          # Verify what we copied
           echo "=== Verifying copied directories ==="
-          ls -lh $HOME/klipper || true
-          ls -lh $HOME/crowsnest || true
-          du -sh $HOME/klipper $HOME/klippy-env $HOME/moonraker $HOME/moonraker-env $HOME/crowsnest || true
-
-          # Unmount
-          echo "=== Unmounting ==="
-          sudo umount extracted
-          sudo losetup -D
+          ls -lah "$HOME/klipper" || true
+          ls -lah "$HOME/crowsnest" || true
+          du -sh "$HOME/klipper" "$HOME/klippy-env" "$HOME/moonraker" "$HOME/moonraker-env" "$HOME/crowsnest" || true
       - name: Save Klipper cache
         uses: actions/cache/save@v4
         with:
