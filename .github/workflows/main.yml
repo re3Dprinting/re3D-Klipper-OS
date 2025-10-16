@@ -54,6 +54,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-crowsnest-
             ${{ runner.os }}-
+      - name: Restore Crowsnest binary cache
+        uses: actions/cache@v4
+        with:
+          path: ~/crowsnest-binaries
+          key: ${{ runner.os }}-crowsnest-binaries
+          restore-keys: |
+            ${{ runner.os }}-crowsnest-binaries-
+      - name: Stage Crowsnest binaries into host_cache
+        run: |
+          set -euxo pipefail
+          DEST="repository/src/modules/fullpageos/filesystem/host_cache/crowsnest-binaries"
+          rm -rf "$DEST"
+          if [ -d "$HOME/crowsnest-binaries" ]; then
+            mkdir -p "$DEST"
+            rsync -a --delete "$HOME/crowsnest-binaries/" "$DEST/"
+          fi
       - name: Stage caches into image for start_chroot_script
         run: |
           set -euxo pipefail
@@ -164,6 +180,15 @@ jobs:
           sudo chown -R runner:docker "$HOME/moonraker-env"  || true
           sudo chown -R runner:docker "$HOME/crowsnest"      || true
 
+          # Extract Crowsnest binaries from image
+          sudo mkdir -p "$HOME/crowsnest-binaries"
+          sudo cp -f extracted/usr/local/bin/ustreamer       "$HOME/crowsnest-binaries/ustreamer"       2>/dev/null || true
+          sudo cp -f extracted/usr/local/bin/camera-streamer "$HOME/crowsnest-binaries/camera-streamer" 2>/dev/null || true
+          sudo cp -f extracted/usr/local/bin/crowsnest       "$HOME/crowsnest-binaries/crowsnest"       2>/dev/null || true
+          sudo cp -f extracted/lib/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
+          sudo cp -f extracted/etc/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
+          sudo chown -R runner:docker "$HOME/crowsnest-binaries" || true
+
           echo "=== Verifying copied directories ==="
           ls -lah "$HOME/klipper" || true
           ls -lah "$HOME/crowsnest" || true
@@ -190,7 +215,11 @@ jobs:
           path: |
             ~/crowsnest
           key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
-
+      - name: Save Crowsnest binary cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/crowsnest-binaries
+          key: ${{ runner.os }}-crowsnest-binaries
       - name: Zip Output
         run: gzip build.img
       - uses: actions/upload-artifact@v4
