@@ -640,6 +640,7 @@ REPO="https://github.com/mainsail-crew/crowsnest.git"
 apt-get update
 apt-get install -y --no-install-recommends git ca-certificates
 
+
 # Clone/update
 install -d -o "$BASE_USER" -g "$BASE_USER" "/home/$BASE_USER"
 if [ ! -d "/home/$BASE_USER/crowsnest/.git" ]; then
@@ -800,6 +801,18 @@ else
   rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
 
+###############################################################################
+# Clock setup for offline boots (avoid future timestamp warnings)
+###############################################################################
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y fake-hwclock
+
+# Enable fake-hwclock so time persists across reboots
+systemctl enable fake-hwclock
+systemctl start fake-hwclock
+
+# Allow normal time sync when network is available
+timedatectl set-ntp true
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
 systemctl daemon-reload || true
