@@ -61,29 +61,26 @@ jobs:
           key: ${{ runner.os }}-crowsnest-binaries
           restore-keys: |
             ${{ runner.os }}-crowsnest-binaries-
-      - name: Stage Crowsnest binaries into host_cache
-        run: |
-          set -euxo pipefail
-          DEST="repository/src/modules/fullpageos/filesystem/host_cache/crowsnest-binaries"
-          rm -rf "$DEST"
-          if [ -d "$HOME/crowsnest-binaries" ]; then
-            mkdir -p "$DEST"
-            rsync -a --delete "$HOME/crowsnest-binaries/" "$DEST/"
-          fi
-      - name: Stage caches into image for start_chroot_script
+      - name: Stage caches (incl. Crowsnest binaries) into host_cache
         run: |
           set -euxo pipefail
           DEST="repository/src/modules/fullpageos/filesystem/host_cache"
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
-          # Only copy what exists
+          # Stage repo/venv caches if present
           for d in klipper klippy-env moonraker moonraker-env crowsnest; do
             if [ -d "$HOME/$d" ]; then
               mkdir -p "$DEST/$d"
               rsync -a --delete "$HOME/$d/" "$DEST/$d/"
             fi
           done
+
+          # Stage prebuilt Crowsnest binaries if we have them
+          if [ -d "$HOME/crowsnest-binaries" ]; then
+            mkdir -p "$DEST/crowsnest-binaries"
+            rsync -a --delete "$HOME/crowsnest-binaries/" "$DEST/crowsnest-binaries/"
+          fi
 
       - name: Build Image
         run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
