@@ -15,6 +15,9 @@ step_end() { local end_time=$(date +%s); local elapsed=$((end_time-STEP_TIME)); 
 
 source /common.sh
 
+echo "=== Checking for host cache ==="
+ls -lah /host_cache || echo "No /host_cache found"
+
 apt-get install -y rsync
 set -e
 CACHE_ROOT="/host_cache"
@@ -251,16 +254,37 @@ step_start "Klipper Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
-    if [ ! -d "$HOME/klipper/.git" ]; then
-      git clone --depth 1 https://github.com/Klipper3d/klipper
+  # Only clone if not seeded from cache
+  if [ ! -d "$HOME/klipper/.git" ]; then
+    echo "Cloning Klipper (no cache)..."
+    git clone --depth 1 https://github.com/Klipper3d/klipper
   else
+    echo "Klipper already present (from cache or previous run)"
     cd klipper && git fetch --all -p && git reset --hard origin/master
   fi
   cd ~
-  if [ ! -d "$HOME/klippy-env" ]; then
+  # Only create venv if not seeded from cache
+  if [ ! -d "$HOME/klippy-env/bin" ]; then
+    echo "Creating klippy-env (no cache)..."
     virtualenv -p python3 ./klippy-env
+    ./klippy-env/bin/pip install -r ./klipper/scripts/klippy-requirements.txt
+    # Write hash on first creation
+    REQS_HASH=$(md5sum ./klipper/scripts/klippy-requirements.txt | cut -d" " -f1)
+    echo "$REQS_HASH" > "$HOME/klippy-env/.requirements-hash"
+  else
+    echo "klippy-env already present (from cache)"
+    # Only reinstall requirements if they changed
+    REQS_FILE="./klipper/scripts/klippy-requirements.txt"
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    HASH_FILE="$HOME/klippy-env/.requirements-hash"
+    if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
+      echo "Requirements changed, updating packages..."
+      ./klippy-env/bin/pip install -r "$REQS_FILE"
+      echo "$REQS_HASH" > "$HASH_FILE"
+    else
+      echo "Requirements unchanged, skipping pip install"
+    fi
   fi
-  ./klippy-env/bin/pip install -r ./klipper/scripts/klippy-requirements.txt
 '
 step_end
 # 2.5) Drop a fixed Klipper .config for firmware builds
@@ -294,13 +318,20 @@ sudo -u "${BASE_USER}" bash -lc '
   # Fill in any missing options from defaults (no TUI prompts)
   make olddefconfig
 
-  # OPTIONAL: build firmware now (comment out if you only want the .config staged)
-  # Cleaning first helps avoid any stale artifacts when building inside images
-  make clean
-  make -j"$(nproc)"
+  # Only rebuild if .config changed or out/ is missing
+  CONFIG_HASH=$(md5sum .config | cut -d" " -f1)
+  HASH_FILE="out/.config-hash"
+  
+  if [ ! -f "out/klipper.bin" ] || [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$CONFIG_HASH" ]; then
+    echo "Config changed or firmware missing, rebuilding..."
+    make clean
+    make -j"$(nproc)"
+    mkdir -p out
+    echo "$CONFIG_HASH" > "$HASH_FILE"
+  else
+    echo "Firmware already built with current config, skipping"
+  fi
 
-  # If you build, the output for SAM3X8E will be here:
-  #   ./out/klipper.bin  (or .hex/.elf depending on target)
   ls -l out || true
 '
 step_end
@@ -338,9 +369,12 @@ step_start "Moonraker Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
-    if [ ! -d "$HOME/moonraker/.git" ]; then
-      git clone --depth 1 https://github.com/Arksine/moonraker.git
+  # Only clone if not seeded from cache
+  if [ ! -d "$HOME/moonraker/.git" ]; then
+    echo "Cloning Moonraker (no cache)..."
+    git clone --depth 1 https://github.com/Arksine/moonraker.git
   else
+    echo "Moonraker already present (from cache)"
     cd moonraker && git fetch --all -p && git reset --hard origin/master
   fi
 
@@ -348,11 +382,30 @@ sudo -u "${BASE_USER}" bash -lc '
   mkdir -p ~/printer_data/{logs,systemd,comms,gcodes}
 
   # Create Moonraker venv and install requirements
-  if [ ! -d "$HOME/moonraker-env" ]; then
+  if [ ! -d "$HOME/moonraker-env/bin" ]; then
+    echo "Creating moonraker-env (no cache)..."
     python3 -m venv ~/moonraker-env
+    ~/moonraker-env/bin/pip install --upgrade pip wheel
+    REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
+    ~/moonraker-env/bin/pip install -r "$REQS_FILE"
+    # Write hash on first creation
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    echo "$REQS_HASH" > "$HOME/moonraker-env/.requirements-hash"
+  else
+    echo "moonraker-env already present (from cache)"
+    # Only reinstall requirements if they changed
+    REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    HASH_FILE="$HOME/moonraker-env/.requirements-hash"
+    if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
+      echo "Requirements changed, updating packages..."
+      ~/moonraker-env/bin/pip install --upgrade pip wheel
+      ~/moonraker-env/bin/pip install -r "$REQS_FILE"
+      echo "$REQS_HASH" > "$HASH_FILE"
+    else
+      echo "Requirements unchanged, skipping pip install"
+    fi
   fi
-  ~/moonraker-env/bin/pip install --upgrade pip wheel
-  ~/moonraker-env/bin/pip install -r ~/moonraker/scripts/moonraker-requirements.txt
 '
 step_end
 
@@ -627,9 +680,15 @@ systemctl restart nginx
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~/mainsail
-  wget -q -O mainsail.zip https://github.com/mainsail-crew/mainsail/releases/latest/download/mainsail.zip
-  unzip -o mainsail.zip
-  rm -f mainsail.zip
+  # Only download if index.html is missing (skip if Mainsail already present)
+  if [ ! -f "index.html" ]; then
+    echo "Downloading Mainsail..."
+    wget -q -O mainsail.zip https://github.com/mainsail-crew/mainsail/releases/latest/download/mainsail.zip
+    unzip -o mainsail.zip
+    rm -f mainsail.zip
+  else
+    echo "Mainsail already present, skipping download"
+  fi
 '
 
 # 10) Bookworm permission tweak: allow nginx (www-data) to traverse home
@@ -753,9 +812,19 @@ export CROWSNEST_CONFIG_PATH="/home/pi/printer_data/config"
 export CROWSNEST_LOG_PATH="/home/pi/printer_data/logs"
 export CROWSNEST_ENV_PATH="/home/pi/printer_data/systemd"
 
-pushd "/home/$BASE_USER/crowsnest" >/dev/null
-HOME="/home/$BASE_USER" make install
-popd >/dev/null
+# Only run make install if not already installed or if repo changed
+INSTALL_STAMP="/home/$BASE_USER/crowsnest/.installed-stamp"
+CURRENT_COMMIT=$(cd "/home/$BASE_USER/crowsnest" && git rev-parse HEAD 2>/dev/null || echo "none")
+
+if [ ! -f "$INSTALL_STAMP" ] || [ "$(cat "$INSTALL_STAMP" 2>/dev/null)" != "$CURRENT_COMMIT" ]; then
+  echo "Installing/updating Crowsnest..."
+  pushd "/home/$BASE_USER/crowsnest" >/dev/null
+  HOME="/home/$BASE_USER" make install
+  popd >/dev/null
+  echo "$CURRENT_COMMIT" > "$INSTALL_STAMP"
+else
+  echo "Crowsnest already installed at current commit, skipping make install"
+fi
 
 # Enable on first boot (safe in chroot)
 if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true; fi

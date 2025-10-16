@@ -57,7 +57,7 @@ jobs:
       - name: Stage caches into image for start_chroot_script
         run: |
           set -euxo pipefail
-          DEST="repository/src/modules/fullpageos/files/host_cache"
+          DEST="repository/src/modules/fullpageos/filesystem/host_cache"
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
