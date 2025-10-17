@@ -1,0 +1,12 @@
+[Unit]
+Description=BusyBox Configurator (CGI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/busybox httpd -f -p 0.0.0.0:8080 -h /opt/mconfig/www
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
