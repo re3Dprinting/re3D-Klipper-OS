@@ -69,6 +69,32 @@ if ! cd /home/pi/klipper/ 2>/dev/null; then
   exit 0
 fi
 
+# --- Clock bootstrap (handles no-WiFi boots) ---
+fix_clock_if_needed() {
+  local now ts ref
+  now=$(date +%s)
+
+  # Prefer git history time
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    ref=$(git log -1 --format=%ct 2>/dev/null || echo 0)
+  fi
+
+  # Fallback: newest file mtime
+  if [[ -z "$ref" || "$ref" -le 0 ]]; then
+    ref=$(find . -type f -printf '%T@\n' 2>/dev/null | sort -nr | head -1 | cut -d. -f1)
+    ref=${ref:-0}
+  fi
+
+  # If system time is >1 day behind the repo time, set date forward
+  if [[ "$ref" -gt 0 ]] && (( now + 86400 < ref )); then
+    echo "$(date +"%F %T") clock: system time ($now) << repo time ($ref) — setting date"
+    sudo date -u -s "@$ref" >/dev/null 2>&1 || true
+    command -v fake-hwclock >/dev/null 2>&1 && sudo fake-hwclock save || true
+  fi
+}
+fix_clock_if_needed
+
+
 echo "$(ts) make clean"
 jstatus "running" 30 "Cleaning build"
 make clean || true
