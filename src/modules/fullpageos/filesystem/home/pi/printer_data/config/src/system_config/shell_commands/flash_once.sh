@@ -69,49 +69,30 @@ if ! cd /home/pi/klipper/ 2>/dev/null; then
   exit 0
 fi
 
-# --- Clock & timestamp normalization (handles no-WiFi boots) ---
-logc(){ echo "$(date +"%F %T") clockfix: $*"; }
-
-fix_clock_and_mtimes(){
-  local now ref after
-
+# --- Clock bootstrap (handles no-WiFi boots) ---
+fix_clock_if_needed() {
+  local now ts ref
   now=$(date +%s)
 
-  # 1) Choose a sane reference time from the repo
+  # Prefer git history time
   if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ref=$(git log -1 --format=%ct 2>/dev/null || echo 0)
   fi
+
+  # Fallback: newest file mtime
   if [[ -z "$ref" || "$ref" -le 0 ]]; then
     ref=$(find . -type f -printf '%T@\n' 2>/dev/null | sort -nr | head -1 | cut -d. -f1)
     ref=${ref:-0}
   fi
-  logc "now=$now ref=$ref"
 
-  # 2) If the system time is >1 day behind the repo, bump clock forward
+  # If system time is >1 day behind the repo time, set date forward
   if [[ "$ref" -gt 0 ]] && (( now + 86400 < ref )); then
-    logc "bumping system clock forward to $ref"
+    echo "$(date +"%F %T") clock: system time ($now) << repo time ($ref) — setting date"
     sudo date -u -s "@$ref" >/dev/null 2>&1 || true
     command -v fake-hwclock >/dev/null 2>&1 && sudo fake-hwclock save || true
   fi
-
-  # Re-read "now" after potential change
-  after=$(date +%s)
-  logc "after-set now=$after"
-
-  # 3) Normalize any files that are STILL ahead of 'now' (future mtimes)
-  #    We only 'touch' files whose mtime is newer than current clock.
-  #    GNU find supports -newermt "@<epoch>" on Bookworm.
-  logc "normalizing mtimes newer than @$after"
-  find . -type f -newermt "@$after" -print0 | xargs -0r touch -m
-
-  # (Optional) show the worst offender to the log
-  local newest
-  newest=$(find . -type f -printf '%T@ %p\n' | sort -nr | head -1)
-  logc "newest after normalize: $newest"
 }
-
-fix_clock_and_mtimes
-
+fix_clock_if_needed
 
 
 echo "$(ts) make clean"
@@ -124,7 +105,7 @@ systemctl stop klipper || true
 
 echo "$(ts) flashing"
 jstatus "running" 70 "Flashing firmware"
-make -B flash FLASH_DEVICE="$ERASED_PATH" || true
+make flash FLASH_DEVICE="$ERASED_PATH" || true
 
 echo "$(ts) starting klipper"
 jstatus "running" 85 "Starting Klipper"
