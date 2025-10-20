@@ -828,17 +828,6 @@ else
   rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
 
-# chroot-safe clock setup (Bookworm / RPi OS)
-set -e
-
-export DEBIAN_FRONTEND=noninteractive
-
-# Enable at boot (works in chroot)
-systemctl enable fake-hwclock || true
-systemctl enable systemd-timesyncd || true   # NTP client for when network exists
-
-# DO NOT start services in chroot, and DO NOT run timedatectl here.
-# (they require a real init + dbus)
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
 systemctl daemon-reload || true
