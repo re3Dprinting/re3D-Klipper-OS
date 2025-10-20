@@ -201,45 +201,7 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
   ./klippy-env/bin/pip install -r ./klipper/scripts/klippy-requirements.txt
 '
-# 2.5) Drop a fixed Klipper .config for firmware builds
-sudo -u "${BASE_USER}" bash -lc '
-  set -e
-  KLIPPER_DIR="$HOME/klipper"
-  CONFIG_PATH="$KLIPPER_DIR/.config"
 
-  # Ensure dir exists (it should from the clone above, but be idempotent)
-  mkdir -p "$KLIPPER_DIR"
-
-  # Write as the user (avoid host/chroot redirection issues)
-  cat <<'"'EOF'"' | tee "$CONFIG_PATH" >/dev/null
-# Klipper firmware config: Atmel SAM3/SAM4 -> SAM3X8E, USB CDC
-CONFIG_LOW_LEVEL_OPTIONS=y
-CONFIG_MACH_ATSAM=y
-CONFIG_BOARD_DIRECTORY="atsam"
-CONFIG_MCU="sam3x8e"
-CONFIG_CLOCK_REF_12M=y
-CONFIG_USBSERIAL=y
-EOF
-
-  chmod 0644 "$CONFIG_PATH"
-'
-# 2.6) Non-interactive Kconfig defaults, then (optionally) build firmware
-sudo -u "${BASE_USER}" bash -lc '
-  set -e
-  cd ~/klipper
-
-  # Fill in any missing options from defaults (no TUI prompts)
-  make olddefconfig
-
-  # OPTIONAL: build firmware now (comment out if you only want the .config staged)
-  # Cleaning first helps avoid any stale artifacts when building inside images
-  #make clean
-  #make -j"$(nproc)"
-
-  # If you build, the output for SAM3X8E will be here:
-  #   ./out/klipper.bin  (or .hex/.elf depending on target)
-  ls -l out || true
-'
 
 # 3) Klipper systemd unit and env
 cat >/etc/systemd/system/klipper.service <<EOF

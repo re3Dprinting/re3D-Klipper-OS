@@ -35,9 +35,64 @@ list_devices_json(){
   printf '%s\n' "$out" > "$DEVLIST"
 }
 
+# --- NEW: make sure klipper tree exists and normalize timestamps ---
+normalize_klipper_tree(){
+  echo "$(ts) normalize_klipper_tree: ensuring ~/klipper exists and mtimes sane"
+  jstatus "running" 10 "Preparing Klipper sources"
+
+  # Everything below runs as 'pi' so ownership/permissions are correct.
+  sudo -u pi bash -lc '
+    set -e
+    KLIP=~/klipper
+    if [ ! -d "$KLIP" ]; then
+      echo "ERROR: ~/klipper missing"; exit 3
+    fi
+
+    cd "$KLIP"
+
+    # If git repo, make sure it is usable even if owner changed during image build
+    if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+      git config --global --add safe.directory "$KLIP" || true
+    fi
+
+    # Touch every file to "now - 2 minutes" to avoid future-mtime warnings when offline.
+    # Use -h to avoid dereferencing symlinks; skip .git objects for speed.
+    find . -path "./.git" -prune -o -type f -print0 | xargs -0 touch -m -a -d "now - 2 minutes" || true
+  '
+}
+
+# --- NEW: write .config on first boot (not in chroot) and fill defaults ---
+ensure_klipper_config(){
+  echo "$(ts) ensure_klipper_config: writing .config"
+  jstatus "running" 20 "Staging Klipper .config"
+
+  sudo -u pi bash -lc '
+    set -e
+    KLIP=~/klipper
+    cd "$KLIP"
+    cat > .config << "EOF"
+# Klipper firmware config: Atmel SAM3/SAM4 -> SAM3X8E, USB CDC
+CONFIG_LOW_LEVEL_OPTIONS=y
+CONFIG_MACH_ATSAM=y
+CONFIG_BOARD_DIRECTORY="atsam"
+CONFIG_MCU="sam3x8e"
+CONFIG_CLOCK_REF_12M=y
+CONFIG_USBSERIAL=y
+EOF
+    chmod 0644 .config
+
+    # Fill in any missing options without TUI
+    make olddefconfig
+  '
+}
+
 echo "$(ts) flash_once: starting"
 jstatus "starting" 0 "starting"
 list_devices_json
+
+# Prepare sources and config now (first boot), not in chroot
+normalize_klipper_tree
+ensure_klipper_config
 
 # --- Wait for ERASED device before flashing ---
 echo "$(ts) waiting for erased device: $ERASED_PATH"
@@ -47,7 +102,7 @@ while :; do
   list_devices_json
   if [[ -e "$ERASED_PATH" ]]; then
     echo "$(ts) found erased device"
-    jstatus "running" 20 "Detected erased board" "$ERASED_PATH"
+    jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
     break
   fi
   if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
@@ -62,27 +117,27 @@ done
 udevadm settle || true
 sleep 0.5
 
-# --- Flash sequence ---
-if ! cd /home/pi/klipper/ 2>/dev/null; then
+# --- Flash sequence (as pi for sane perms) ---
+if ! sudo -u pi test -d /home/pi/klipper/ ; then
   echo "$(ts) ERROR: /home/pi/klipper missing"
   jstatus "error" 5 "/home/pi/klipper not found"
   exit 0
 fi
 
 echo "$(ts) make clean"
-jstatus "running" 30 "Cleaning build"
-make clean || true
+jstatus "running" 40 "Cleaning build"
+sudo -u pi bash -lc 'cd ~/klipper && make clean || true'
 
 echo "$(ts) stopping klipper"
-jstatus "running" 40 "Stopping Klipper"
+jstatus "running" 50 "Stopping Klipper"
 systemctl stop klipper || true
 
 echo "$(ts) flashing"
-jstatus "running" 70 "Flashing firmware"
-make flash FLASH_DEVICE="$ERASED_PATH" || true
+jstatus "running" 80 "Flashing firmware"
+sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH' || true"
 
 echo "$(ts) starting klipper"
-jstatus "running" 85 "Starting Klipper"
+jstatus "running" 90 "Starting Klipper"
 systemctl start klipper || true
 
 # --- FINAL: Prompt user to power-cycle. Remove flags. Sit here forever. ---
