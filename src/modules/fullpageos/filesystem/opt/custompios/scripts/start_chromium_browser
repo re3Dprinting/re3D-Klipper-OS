@@ -2,18 +2,13 @@
 # FullPageOS: start_chromium_browser with one-time splash flow
 # Runs as user 'pi' inside the LightDM session. Cleanup/reboot are handled by systemd (root).
 
-set -u  # don't use -e; keep session alive even if something small fails
+set -u  # don't use -e; keep the session alive even if something small fails
 
 FIRSTBOOT_FLAG="/etc/firstboot-splash"
 UI_STARTED="/tmp/firstboot-ui-started"
 WAIT_HTML="/home/pi/wait.html"
 FLASH_UNIT="flash_once.service"
 LOG="/tmp/firstboot-kiosk.log"
-
-# Be explicit about the X session
-export DISPLAY=${DISPLAY:-:0}
-export XAUTHORITY=${XAUTHORITY:-/home/pi/.Xauthority}
-export HOME=/home/pi
 
 flags=(
   --kiosk
@@ -35,21 +30,16 @@ flags=(
 if [[ -f "$FIRSTBOOT_FLAG" ]]; then
   {
     echo "[$(date)] firstboot: flag present"
+
+    # Mark that the UI path has started
     touch "$UI_STARTED"
 
-    # --- Single-instance guard (user-writable lock) ---
-    LOCKDIR="/run/user/1000"
-    [[ -d "$LOCKDIR" ]] || LOCKDIR="/tmp"
-    LOCK="$LOCKDIR/firstboot-kiosk.lock"
-
-    # try to create/open the lock; if it fails, continue without lock
-    if exec 9>"$LOCK"; then
-      if ! flock -n 9; then
-        echo "[$(date)] firstboot: another kiosk instance is running; exiting"
-        exit 0
-      fi
-    else
-      echo "[$(date)] firstboot: WARN: could not open lock at $LOCK; continuing without lock"
+    # --- Single-instance guard ---
+    LOCK="/run/firstboot-kiosk.lock"
+    exec 9>"$LOCK"
+    if ! flock -n 9; then
+      echo "[$(date)] firstboot: another kiosk instance already running; exiting" >>"$LOG"
+      exit 0
     fi
 
     CHROME_BIN="$(command -v chromium-browser || command -v chromium || true)"
@@ -62,7 +52,7 @@ if [[ -f "$FIRSTBOOT_FLAG" ]]; then
       exit 0
     fi
 
-    # Launch only if no other wait.html app exists
+    # Launch only if no other Chromium --app=file:///home/pi/wait.html exists
     if pgrep -f -- "--app=file:///home/pi/wait.html" >/dev/null 2>&1; then
       echo "[$(date)] firstboot: chromium splash already running; skipping launch"
     else
@@ -83,7 +73,7 @@ if [[ -f "$FIRSTBOOT_FLAG" ]]; then
     echo "[$(date)] firstboot: starting $FLASH_UNIT"
     systemctl start "$FLASH_UNIT" || true
 
-    # Keep session alive while the unit runs OR while the kiosk window exists
+    # Keep session alive while the unit runs or while kiosk is open
     while systemctl is-active --quiet "$FLASH_UNIT" || \
           pgrep -f -- "--app=file:///home/pi/wait.html" >/dev/null; do
       sleep 5
@@ -103,6 +93,7 @@ if [[ -n "${CHROME_BIN:-}" ]]; then
 fi
 
 # ---------- Legacy signage mode disabled ----------
+# (prevents Chromium relaunching infinitely)
 #chromium-browser --enable-logging --log-level=2 --v=0 "${flags[@]}" --app=$(/opt/custompios/scripts/get_url) &
 #export logfile="/home/$(id -nu 1000)/.config/chromium/chrome_debug.log"
 #tail -n 0 -F "$logfile" | while read -r LOGLINE; do
