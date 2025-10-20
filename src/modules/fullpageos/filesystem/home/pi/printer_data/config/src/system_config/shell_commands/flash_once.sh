@@ -136,6 +136,22 @@ echo "$(ts) flashing"
 jstatus "running" 80 "Flashing firmware"
 sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH' || true"
 
+echo "$(ts) rebuilding chelper via CFFI"
+jstatus "running" 88 "Building Klippy C helper"
+sudo -u pi bash -lc '
+  set -e
+  rm -f ~/klipper/klippy/chelper/c_helper.* 2>/dev/null || true
+  rm -rf ~/.cache/cffi ~/.cache/klipper 2>/dev/null || true
+  ~/klippy-env/bin/python - <<'"'"'PY'"'"'
+import os, sys
+sys.path.insert(0, os.path.expanduser('~/klipper'))
+from klippy import chelper
+ffi, lib = chelper.get_ffi()
+print("chelper rebuild OK")
+PY
+'
+
+
 echo "$(ts) starting klipper"
 jstatus "running" 90 "Starting Klipper"
 systemctl start klipper || true
