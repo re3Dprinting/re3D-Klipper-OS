@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=1024, initial-scale=1"/>
+<title>Machine Configurator</title>
+<style>
+  :root{
+    --bg:#0f1013; --panel:#15171b; --muted:#9aa3b2; --fg:#e9eef5; --brand:#2d6cdf;
+    --ok:#7bd88f; --err:#ff6b6b; --border:#262a31;
+    --radius:14px; --pad:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+  }
+  [hidden]{ display:none !important; }
+  /* Shell */
+  .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px}
+  .app{
+    display:grid; gap:12px;
+    grid-template-rows: 56px 1fr;
+    height:100dvh; /* use available height, prevents scrolling on kiosks */
+  }
+
+  /* Tabs (top nav) */
+  .tabs{
+    display:flex; align-items:center; gap:8px;
+    padding:6px; background:var(--panel); border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .tab{
+    appearance:none; border:1px solid var(--border); background:#13151a;
+    color:var(--fg); padding:10px 14px; border-radius:10px; cursor:pointer;
+    user-select:none; font-weight:600; letter-spacing:.2px;
+  }
+  .tab[aria-current="page"], .tab.active{
+    background:var(--brand); border-color:#1e50a8;
+  }
+
+  /* Pages */
+  .pages{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px; overflow:hidden; /* no scroll by default */
+    display:grid;
+    grid-template-rows: 34px 1fr; /* title + content */
+  }
+  .page-title{font-size:16px; font-weight:700; color:#dce3ee; display:flex; align-items:center; gap:10px}
+  .content{
+    margin-top:8px;
+    display:grid; gap:12px;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows:minmax(120px, auto);
+  }
+  .card{
+    border:1px solid var(--border); border-radius:12px; padding:12px; background:#111318;
+    display:grid; gap:10px;
+  }
+  .row{display:grid; gap:8px; grid-template-columns: 1fr 1fr}
+  label{color:var(--muted); font-size:12px}
+  input, select{
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border);
+    background:#0c0e12; color:var(--fg);
+  }
+  button{
+    border:0; padding:10px 14px; border-radius:10px; background:var(--brand); color:#fff; font-weight:700; cursor:pointer;
+  }
+  .hint{color:var(--muted); font-size:12px}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+
+  /* 2-up layout helpers */
+  .span2{grid-column:1 / span 2}
+
+  /* Footer bar (compact status/output) */
+  .out{
+    margin-top:4px; padding:8px 10px; border-radius:10px; background:#0b0c10; border:1px dashed var(--border);
+    max-height:120px; overflow:auto; font-size:12px;
+  }
+
+  /* Small screens (if ever hit) */
+  @media (max-width: 980px){
+    .wrap{max-width: 960px}
+    .content{grid-template-columns: 1fr}
+    .span2{grid-column:auto}
+  }
+/* Machine gallery */
+.machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
+.machine-card{position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease}
+.machine-card:hover{transform:translateY(-1px)}
+.machine-card.selected{border-color:#3f6fe0;box-shadow:0 0 0 2px rgba(45,108,223,.35) inset}
+.machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
+.machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
+/* Machine gallery */
+.machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
+.machine-card{position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease}
+.machine-card:hover{transform:translateY(-1px)}
+.machine-card.selected{border-color:#3f6fe0;box-shadow:0 0 0 2px rgba(45,108,223,.35) inset}
+.machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
+.machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap app">
+  <!-- Top Tab Bar -->
+  <nav class="tabs" id="tabbar">
+    <button class="tab active" data-page="machine">Machine</button>
+    <button class="tab" data-page="wifi">Wi-Fi</button>
+    <button class="tab" data-page="hostname">Hostname</button>
+    <button class="tab" data-page="system">System</button>
+  </nav>
+
+  <!-- Pages container -->
+  <section class="pages">
+    <div class="page-title" id="page-title">Machine</div>
+
+    <!-- MACHINE PAGE -->
+    <div class="content" data-page="machine">
+
+<form class="card span2" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
+  <div style="font-weight:700; margin-bottom:6px">Select your machine</div>
+  <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4" />
+  <div class="machine-grid" id="machine-grid">
+    <label class="machine-card selected" data-type="Gigabot 4">
+      <input type="radio" name="type-radio" value="Gigabot 4" checked />
+      <img src="/img/gigabot-4.png" alt="Gigabot 4"/>
+      <div class="title">Gigabot 4</div>
+    </label>
+    <label class="machine-card" data-type="Gigabot 4 XLT">
+      <input type="radio" name="type-radio" value="Gigabot 4 XLT" />
+      <img src="/img/gigabot-4-xlt.png" alt="Gigabot 4 XLT"/>
+      <div class="title">Gigabot 4 XLT</div>
+    </label>
+    <label class="machine-card" data-type="Terabot 4">
+      <input type="radio" name="type-radio" value="Terabot 4" />
+      <img src="/img/terabot-4.png" alt="Terabot 4"/>
+      <div class="title">Terabot 4</div>
+    </label>
+    <label class="machine-card" data-type="GigabotX 2">
+      <input type="radio" name="type-radio" value="GigabotX 2" />
+      <img src="/img/gigabotx-2.png" alt="GigabotX 2"/>
+      <div class="title">GigabotX 2</div>
+    </label>
+    <label class="machine-card" data-type="GigabotX XLT 2">
+      <input type="radio" name="type-radio" value="GigabotX XLT 2" />
+      <img src="/img/gigabotx-2-xlt.png" alt="GigabotX XLT 2"/>
+      <div class="title">GigabotX XLT 2</div>
+    </label>
+    <label class="machine-card" data-type="TerabotX 2">
+      <input type="radio" name="type-radio" value="TerabotX 2" />
+      <img src="/img/terabotx-2.png" alt="TerabotX 2"/>
+      <div class="title">TerabotX 2</div>
+    </label>
+  </div>
+  <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:10px">
+    <button type="submit">Set Machine</button>
+  </div>
+  <div class="hint">Posts <span class="mono">type=&lt;selection&gt;</span> to <span class="mono">/cgi-bin/set_machine_type.sh</span>.</div>
+  <div class="out mono" id="out-machine"></div>
+</form>
+
+    </div>
+
+    <!-- WIFI PAGE -->
+    <div class="content" data-page="wifi" hidden>
+      <form class="card span2" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
+        <div class="row">
+          <div>
+            <label>SSID</label>
+            <input name="ssid" placeholder="MyWiFi" required />
+          </div>
+          <div>
+            <label>Password</label>
+            <input name="psk" placeholder="••••••••" required />
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px">
+          <button type="submit">Apply Wi-Fi</button>
+          <span class="hint">Runs <span class="mono">/usr/local/bin/wifi.sh &lt;ssid&gt; &lt;psk&gt;</span></span>
+        </div>
+        <div class="out mono" id="out-wifi"></div>
+      </form>
+    </div>
+
+    <!-- HOSTNAME PAGE -->
+    <div class="content" data-page="hostname" hidden>
+      <form class="card span2" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe">
+        <div class="row">
+          <div>
+            <label>Hostname</label>
+            <input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required />
+          </div>
+          <div style="display:flex; align-items:end">
+            <button type="submit">Set Hostname</button>
+          </div>
+        </div>
+        <div class="hint">Updates <span class="mono">/etc/hostname</span> and <span class="mono">/etc/hosts</span> immediately.</div>
+        <div class="out mono" id="out-host"></div>
+      </form>
+    </div>
+
+    <!-- SYSTEM PAGE -->
+    <div class="content" data-page="system" hidden>
+      <form class="card" action="/cgi-bin/reboot.sh" method="post" target="hidden_iframe"
+            onsubmit="return confirm('Reboot now?');">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+          <div>
+            <div style="font-weight:700; margin-bottom:6px">Reboot</div>
+            <div class="hint">Performs a clean reboot in ~2 seconds.</div>
+          </div>
+          <button type="submit">Reboot</button>
+        </div>
+        <div class="out mono" id="out-system"></div>
+      </form>
+
+      <div class="card">
+        <div style="font-weight:700; margin-bottom:6px">Network Info</div>
+        <div class="hint">(Optional: wire this to a status CGI later)</div>
+        <div class="out mono" id="netinfo">IP: <script>document.write((location.host||'').split(':')[0]||'localhost')(function(){const g=document.getElementById("machine-grid");const h=document.getElementById("machine-type-hidden");if(!g||!h)return;g.addEventListener("change",e=>{if(e.target&&e.target.name==="type-radio"){const v=e.target.value;h.value=v;g.querySelectorAll(".machine-card").forEach(c=>c.classList.remove("selected"));const card=e.target.closest(".machine-card");if(card)card.classList.add("selected");}});g.addEventListener("click",e=>{const card=e.target.closest(".machine-card");if(!card)return;const r=card.querySelector(input[type=radio]);if(r){r.checked=true;r.dispatchEvent(new Event("change",{bubbles:true}));}});})();
+</script></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Hidden iframe to avoid page reload on form submit, then fetch output back -->
+<iframe name="hidden_iframe" style="display:none"></iframe>
+
+<script>
+  // Simple tab switcher
+  const tabs = document.querySelectorAll('.tab');
+  const pages = document.querySelectorAll('.content');
+  const title = document.getElementById('page-title');
+
+  function show(page){
+    pages.forEach(p => p.hidden = (p.dataset.page !== page));
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.page === page));
+    title.textContent = page.charAt(0).toUpperCase() + page.slice(1);
+    history.replaceState(null, '', '#'+page);
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.page)));
+
+  // Deep link support (#wifi etc.)
+  const initHash = (location.hash || '#machine').replace('#','');
+  show(['machine','wifi','hostname','system'].includes(initHash) ? initHash : 'machine');
+
+  // Optional: capture form responses via fetch to show output blocks without reloads.
+  // (BusyBox httpd returns HTML; we’ll just insert the <pre> block’s text.)
+  function intercept(formId, outId){
+    const form = document.getElementById(formId) || document.querySelector(`form[action$="${formId.replace('-form','')}.sh"]`);
+    const out = document.getElementById(outId);
+    if(!form || !out) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      out.textContent = 'Running...';
+      const resp = await fetch(form.action, { method:'POST', body: new URLSearchParams(fd) });
+      const html = await resp.text();
+      // extract text content from <pre> if present
+      const tmp = document.createElement('div'); tmp.innerHTML = html;
+      out.textContent = (tmp.querySelector('pre')?.innerText || html).trim();
+    });
+  }
+  intercept('wifi-form','out-wifi');
+  // You can add intercepts for other forms too if you want inline output:
+  // intercept('<form-id>','<out-id>');
+</script>
+</body>
+</html>
