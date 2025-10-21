@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URL Switcher Options</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 24px; }
+  label { display:block; margin:12px 0 4px; }
+  input, select { width: 520px; max-width: 100%; }
+  button { margin-top: 16px; padding: 8px 12px; }
+</style>
+<h1>URL Switcher</h1>
+<label>URL A <input id="a"></label>
+<label>URL B <input id="b"></label>
+<label>
+  Mode
+  <select id="mode">
+    <option value="navigate">Navigate current tab</option>
+    <option value="tabs">Flip between two tabs</option>
+  </select>
+</label>
+<button id="save">Save</button>
+<script>
+  (async () => {
+    const def = await (await fetch(chrome.runtime.getURL("config.json"))).json();
+    const cur = await chrome.storage.local.get(["urlA","urlB","mode"]);
+    a.value = cur.urlA || def.urlA || "";
+    b.value = cur.urlB || def.urlB || "";
+    mode.value = cur.mode || def.mode || "navigate";
+  })();
+  save.onclick = async () => {
+    await chrome.storage.local.set({ urlA: a.value.trim(), urlB: b.value.trim(), mode: mode.value });
+    alert("Saved");
+  };
+</script>
