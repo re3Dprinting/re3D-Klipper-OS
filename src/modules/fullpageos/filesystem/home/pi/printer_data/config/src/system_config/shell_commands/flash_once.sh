@@ -151,40 +151,39 @@ sudo -u pi -H bash -lc '
   fi
 '
 
-# --- Rebuild chelper via CFFI (correct quoting, atomic-ish) ---
+# --- Rebuild chelper via CFFI (offline-safe) ---
 echo "$(ts) rebuilding chelper via CFFI"
 jstatus "running" 88 "Building Klippy C helper"
-sudo -u pi -H bash -lc '
+
+# Clean bad artifact and caches as 'pi'
+sudo -u pi -H bash -c '
   set -euo pipefail
-  KLIP="$HOME/klipper"
-  PY="$HOME/klippy-env/bin/python"
-  CHELP_DIR="$KLIP/klippy/chelper"
-  SO="$CHELP_DIR/c_helper.so"
-  LOCK=/tmp/chelper.build.lock
-
-  test -d "$KLIP" || { echo "ERROR: $KLIP missing"; exit 1; }
-  mkdir -p "$CHELP_DIR"
-
-  # Prevent concurrent rebuilds
-  exec 9>"$LOCK"
-  flock 9
-
-  rm -f "$SO" 2>/dev/null || true
+  rm -f "$HOME/klipper/klippy/chelper/c_helper.so" 2>/dev/null || true
   rm -rf "$HOME/.cache/cffi" "$HOME/.cache/klipper" 2>/dev/null || true
+'
 
-  "$PY" - <<'"PY"'
+# Trigger the CFFI build from the parent shell with a proper heredoc.
+# IMPORTANT: PY must be alone on its own line, no spaces/tabs.
+sudo -u pi -H env HOME=/home/pi /home/pi/klippy-env/bin/python - <<'PY'
 import os, sys, pathlib
-home = pathlib.Path(os.environ.get("HOME","/home/pi"))
-klip = home/"klipper"
-sys.path.insert(0, str(klip))           # point import to ~/klipper
+home = pathlib.Path(os.environ.get("HOME", "/home/pi"))
+klip = home / "klipper"
+sys.path.insert(0, str(klip))
+
+# Import will build chelper if missing
 from klippy import chelper
-ffi, lib = chelper.get_ffi()            # triggers compile if needed
-dest = klip/"klippy"/"chelper"/"c_helper.so"
+ffi, lib = chelper.get_ffi()
+
+dest = klip / "klippy" / "chelper" / "c_helper.so"
 if not dest.exists() or dest.stat().st_size == 0:
     raise SystemExit(f"chelper not built at {dest}")
+
 print("chelper OK; size:", dest.stat().st_size)
-"PY"
-'
+PY
+
+# Optional: log the file info for diagnostics
+sudo -u pi -H bash -c 'ls -lh "$HOME/klipper/klippy/chelper/c_helper.so" || true'
+
 
 
 echo "$(ts) starting klipper"
