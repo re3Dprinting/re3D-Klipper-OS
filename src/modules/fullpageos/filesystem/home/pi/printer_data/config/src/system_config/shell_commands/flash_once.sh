@@ -136,19 +136,54 @@ echo "$(ts) flashing"
 jstatus "running" 80 "Flashing firmware"
 sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH' || true"
 
+# --- Ensure build deps + venv exist (safe to re-run) ---
+echo "$(ts) ensuring build deps + klippy-env"
+jstatus "running" 86 "Preparing build environment"
+apt-get update -y || true
+DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
+
+sudo -u pi -H bash -lc '
+  set -e
+  if [ ! -x "$HOME/klippy-env/bin/python" ]; then
+    python3 -m venv "$HOME/klippy-env"
+    "$HOME/klippy-env/bin/pip" install --upgrade pip wheel
+    "$HOME/klippy-env/bin/pip" install -r "$HOME/klipper/scripts/klippy-requirements.txt"
+  fi
+'
+
+# --- Rebuild chelper via CFFI (correct quoting, atomic-ish) ---
 echo "$(ts) rebuilding chelper via CFFI"
 jstatus "running" 88 "Building Klippy C helper"
-sudo -u pi bash -lc '
-  set -e
-  rm -f ~/klipper/klippy/chelper/c_helper.* 2>/dev/null || true
-  rm -rf ~/.cache/cffi ~/.cache/klipper 2>/dev/null || true
-  ~/klippy-env/bin/python - <<'"'"'PY'"'"'
-import os, sys
-sys.path.insert(0, os.path.expanduser('~/klipper'))
+sudo -u pi -H bash -lc '
+  set -euo pipefail
+  KLIP="$HOME/klipper"
+  PY="$HOME/klippy-env/bin/python"
+  CHELP_DIR="$KLIP/klippy/chelper"
+  SO="$CHELP_DIR/c_helper.so"
+  LOCK=/tmp/chelper.build.lock
+
+  test -d "$KLIP" || { echo "ERROR: $KLIP missing"; exit 1; }
+  mkdir -p "$CHELP_DIR"
+
+  # Prevent concurrent rebuilds
+  exec 9>"$LOCK"
+  flock 9
+
+  rm -f "$SO" 2>/dev/null || true
+  rm -rf "$HOME/.cache/cffi" "$HOME/.cache/klipper" 2>/dev/null || true
+
+  "$PY" - <<'"PY"'
+import os, sys, pathlib
+home = pathlib.Path(os.environ.get("HOME","/home/pi"))
+klip = home/"klipper"
+sys.path.insert(0, str(klip))           # point import to ~/klipper
 from klippy import chelper
-ffi, lib = chelper.get_ffi()
-print("chelper rebuild OK")
-PY
+ffi, lib = chelper.get_ffi()            # triggers compile if needed
+dest = klip/"klippy"/"chelper"/"c_helper.so"
+if not dest.exists() or dest.stat().st_size == 0:
+    raise SystemExit(f"chelper not built at {dest}")
+print("chelper OK; size:", dest.stat().st_size)
+"PY"
 '
 
 
