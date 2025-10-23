@@ -57,8 +57,25 @@ seed_dir "${CACHE_ROOT}/moonraker"      "${USER_HOME}/moonraker"
 seed_dir "${CACHE_ROOT}/moonraker-env"  "${USER_HOME}/moonraker-env"
 seed_dir "${CACHE_ROOT}/crowsnest"      "${USER_HOME}/crowsnest"
 
-echo "Cache contents:"
-find /host_cache -maxdepth 2 -type d -print || true
+# If present, restore prebuilt Crowsnest binaries BEFORE deleting /host_cache
+CROWSNEST_PREINSTALLED=0
+BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
+if [ -x "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
+  echo "CROWSNEST FAST-PATH: installing prebuilt binaries from cache"
+  install -Dm0755 "${BIN_SRC}/ustreamer"       /usr/local/bin/ustreamer
+  install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer
+  [ -x "${BIN_SRC}/crowsnest" ] && install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest
+  [ -f "${BIN_SRC}/crowsnest.service" ] && install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service
+  systemctl daemon-reload || true
+  systemctl enable crowsnest || true
+  CROWSNEST_PREINSTALLED=1
+fi
+
+# Reclaim space BEFORE pip installs
+rm -rf "${CACHE_ROOT}" || true
+apt-get clean
+# NOTE: do NOT purge /var/lib/apt/lists/* here or you'll need to apt-get update again
+df -h / || true
 
 # If we seeded venvs, make sure wheels are up-to-date with requirements
 sudo -u "${BASE_USER}" bash -lc '
@@ -88,11 +105,6 @@ sudo -u "${BASE_USER}" bash -lc '
       pip install -r "$HOME/moonraker/scripts/moonraker-requirements.txt" --no-cache-dir
   fi
 '
-
-# Free some space: remove heavy seeded venv caches we no longer need now that venvs were updated
-rm -rf /host_cache/klippy-env /host_cache/moonraker-env /host_cache/klipper/.git || true
-
-# Note: host cache will be removed at the end of the script after all steps that may use it
 
 
 # Keep the image lean
