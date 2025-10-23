@@ -79,8 +79,7 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 '
 
-# Optional: remove the host cache so it doesn't get copied into the final image
-rm -rf "${CACHE_ROOT}" || true
+# Note: host cache will be removed at the end of the script after all steps that may use it
 
 
 # Keep the image lean
@@ -828,24 +827,42 @@ if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
   INSTALL_STAMP="/home/$BASE_USER/crowsnest/.installed-stamp"
   CURRENT_COMMIT=$(cd "/home/$BASE_USER/crowsnest" && git rev-parse HEAD 2>/dev/null || echo "none")
   if [ ! -f "$INSTALL_STAMP" ] || [ "$(cat "$INSTALL_STAMP" 2>/dev/null)" != "$CURRENT_COMMIT" ]; then
-    echo "Installing/updating Crowsnest..."
+    echo "Installing/updating Crowsnest (partial-install tolerant)..."
     pushd "/home/$BASE_USER/crowsnest" >/dev/null
-    # Prefer full install if camera-streamer was built; otherwise attempt a partial install
-    if [ -x "bin/camera-streamer" ]; then
-      HOME="/home/$BASE_USER" make install
-    else
-      echo "camera-streamer not built; attempting partial install (ustreamer only)"
-      # Try the specific target for ustreamer if available, otherwise fall back to full install (may still fail)
-      if make -n ustreamer >/dev/null 2>&1; then
-        HOME="/home/$BASE_USER" make ustreamer install || { echo "Partial install failed"; exit 1; }
-      else
-        HOME="/home/$BASE_USER" make install || { echo "make install failed and camera-streamer missing"; exit 1; }
-      fi
+
+    # Try to build both targets but don't fail the build if camera-streamer fails
+    echo "Building crowsnest components (ustreamer and camera-streamer if possible)"
+    HOME="/home/$BASE_USER" make -k ustreamer camera-streamer || true
+
+    # Install whatever binaries were produced (avoid calling the repo's global 'make install' which expects all artifacts)
+    if [ -x "bin/ustreamer" ]; then
+      echo "Installing built ustreamer"
+      install -Dm0755 bin/ustreamer /usr/local/bin/ustreamer
     fi
+    if [ -x "bin/camera-streamer" ]; then
+      echo "Installing built camera-streamer"
+      install -Dm0755 bin/camera-streamer /usr/local/bin/camera-streamer
+    fi
+    if [ -x "bin/crowsnest" ]; then
+      echo "Installing crowsnest binary"
+      install -Dm0755 bin/crowsnest /usr/local/bin/crowsnest
+    fi
+
+    # Install unit file if present in repo (common locations)
+    if [ -f "packages/debian/crowsnest.service" ]; then
+      install -Dm0644 packages/debian/crowsnest.service /lib/systemd/system/crowsnest.service
+      command -v systemctl >/dev/null && systemctl daemon-reload || true
+      command -v systemctl >/dev/null && systemctl enable crowsnest || true
+    elif [ -f "crowsnest.service" ]; then
+      install -Dm0644 crowsnest.service /lib/systemd/system/crowsnest.service
+      command -v systemctl >/dev/null && systemctl daemon-reload || true
+      command -v systemctl >/dev/null && systemctl enable crowsnest || true
+    fi
+
     popd >/dev/null
     echo "$CURRENT_COMMIT" > "$INSTALL_STAMP"
   else
-    echo "Crowsnest already installed at current commit, skipping make install"
+    echo "Crowsnest already installed at current commit, skipping build/install"
   fi
 else
   echo "Crowsnest binaries restored from cache, skipping build/install"
@@ -966,6 +983,9 @@ touch /etc/firstboot-splash
 # NTP servers
 echo "server time.nist.gov" >> /etc/ntp.conf
 echo "server ntp.ubuntu.com" >> /etc/ntp.conf
+
+# Remove host cache now that all seeding/install steps are complete
+rm -rf "${CACHE_ROOT}" || true
 
 # cleanup
 apt-get clean
