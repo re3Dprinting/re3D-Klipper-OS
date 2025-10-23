@@ -47,6 +47,7 @@ unpack /filesystem/host_cache /host_cache
 step_end
 
 apt-get update
+install -d -m 1777 /tmp && chown root:root /tmp
 
 # Seed Klipper / Moonraker / Crowsnest and their venvs if present (after unpack so /host_cache exists)
 step_start "Seed host_cache into chroot"
@@ -62,7 +63,16 @@ find /host_cache -maxdepth 2 -type d -print || true
 # If we seeded venvs, make sure wheels are up-to-date with requirements
 sudo -u "${BASE_USER}" bash -lc '
   set -e
+  # Ensure pip has a user-writable temp dir in case /tmp is unavailable/unwritable in chroot
+  mkdir -p "$HOME/.tmp"
+  chmod 700 "$HOME/.tmp"
+  export TMPDIR="$HOME/.tmp"
+
+  # Diagnostics: show disk usage for root and /tmp
+  df -h / || true
+  df -h "$TMPDIR" || true
   if [ -d "$HOME/klippy-env" ] && [ -d "$HOME/klipper" ]; then
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
     source "$HOME/klippy-env/bin/activate"
     pip install -U pip setuptools wheel
     if [ -f "$HOME/klipper/scripts/klippy-requirements.txt" ]; then
@@ -71,6 +81,7 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 
   if [ -d "$HOME/moonraker-env" ] && [ -d "$HOME/moonraker" ]; then
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
     source "$HOME/moonraker-env/bin/activate"
     pip install -U pip setuptools wheel
     if [ -f "$HOME/moonraker/scripts/moonraker-requirements.txt" ]; then
