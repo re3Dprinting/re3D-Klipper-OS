@@ -38,12 +38,26 @@ seed_dir () {
   fi
 }
 
-# Seed Klipper / Moonraker / Crowsnest and their venvs if present
+step_start "Unpack Filesystem"
+unpack /filesystem/home/pi /home/"${BASE_USER}" "${BASE_USER}"
+unpack /filesystem/opt /opt
+unpack /filesystem/boot /"${BASE_BOOT_MOUNT_PATH}"
+unpack /filesystem/root_init /
+unpack /filesystem/host_cache /host_cache
+step_end
+
+apt-get update
+
+# Seed Klipper / Moonraker / Crowsnest and their venvs if present (after unpack so /host_cache exists)
+step_start "Seed host_cache into chroot"
 seed_dir "${CACHE_ROOT}/klipper"        "${USER_HOME}/klipper"
 seed_dir "${CACHE_ROOT}/klippy-env"     "${USER_HOME}/klippy-env"
 seed_dir "${CACHE_ROOT}/moonraker"      "${USER_HOME}/moonraker"
 seed_dir "${CACHE_ROOT}/moonraker-env"  "${USER_HOME}/moonraker-env"
 seed_dir "${CACHE_ROOT}/crowsnest"      "${USER_HOME}/crowsnest"
+
+echo "Cache contents:"
+find /host_cache -maxdepth 2 -type d -print || true
 
 # If we seeded venvs, make sure wheels are up-to-date with requirements
 sudo -u "${BASE_USER}" bash -lc '
@@ -65,14 +79,9 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 '
 
-step_start "Unpack Filesystem"
-unpack /filesystem/home/pi /home/"${BASE_USER}" "${BASE_USER}"
-unpack /filesystem/opt /opt
-unpack /filesystem/boot /"${BASE_BOOT_MOUNT_PATH}"
-unpack /filesystem/root_init /
-step_end
+# Optional: remove the host cache so it doesn't get copied into the final image
+rm -rf "${CACHE_ROOT}" || true
 
-apt-get update
 
 # Keep the image lean
 echo 'APT::Install-Recommends "0"; APT::Install-Suggests "0";' >/etc/apt/apt.conf.d/99norecommends
@@ -801,9 +810,16 @@ if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
   else
     INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-generic.sh"
   fi
-  PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"$PKGLIST\"")
-  read -ra PKGARRAY <<< "$PKGLIST"
-  apt-get install -y "${PKGARRAY[@]}"
+  # Derive and print the package list; fail clearly or fallback to explicit deps
+  set -e
+  PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"")
+  echo "Crowsnest PKGLIST: $PKGLIST"
+  if [ -z "$PKGLIST" ]; then
+    echo "WARNING: PKGLIST from $INSTALL_SCRIPT is empty; falling back to explicit camera-streamer deps"
+    PKGLIST="libcamera-dev libdrm-dev libevent-dev libjpeg-dev libturbojpeg0-dev libv4l-dev meson ninja-build pkg-config cmake libavcodec-dev libavformat-dev libavutil-dev libswscale-dev"
+  fi
+  apt-get update
+  apt-get install -y $PKGLIST
 fi
 
 # Only run make install when building:
@@ -814,7 +830,18 @@ if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
   if [ ! -f "$INSTALL_STAMP" ] || [ "$(cat "$INSTALL_STAMP" 2>/dev/null)" != "$CURRENT_COMMIT" ]; then
     echo "Installing/updating Crowsnest..."
     pushd "/home/$BASE_USER/crowsnest" >/dev/null
-    HOME="/home/$BASE_USER" make install
+    # Prefer full install if camera-streamer was built; otherwise attempt a partial install
+    if [ -x "bin/camera-streamer" ]; then
+      HOME="/home/$BASE_USER" make install
+    else
+      echo "camera-streamer not built; attempting partial install (ustreamer only)"
+      # Try the specific target for ustreamer if available, otherwise fall back to full install (may still fail)
+      if make -n ustreamer >/dev/null 2>&1; then
+        HOME="/home/$BASE_USER" make ustreamer install || { echo "Partial install failed"; exit 1; }
+      else
+        HOME="/home/$BASE_USER" make install || { echo "make install failed and camera-streamer missing"; exit 1; }
+      fi
+    fi
     popd >/dev/null
     echo "$CURRENT_COMMIT" > "$INSTALL_STAMP"
   else
@@ -919,18 +946,20 @@ step_end
 
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
-systemctl daemon-reload || true
-# Do NOT restart Klipper here in the chroot; it will pick up the module on first boot.
-sudo chmod +x /home/${BASE_USER}/printer_data/config/src/get_serial.sh || true
-# 5) Ensure nginx starts on first boot
-systemctl enable nginx
-#systemctl enable splash_video.service
-systemctl enable klipper_config.service
-systemctl enable flash_once.service
-systemctl enable klipper-autostart.service
 
-chmod +x /usr/local/bin/flash_once.sh
-chown pi:pi /home/pi/wait.html
+# Reload systemd units where available (safe in chroot)
+command -v systemctl >/dev/null && systemctl daemon-reload || true
+# Do NOT restart Klipper here in the chroot; it will pick up the module on first boot.
+[ -f "/home/${BASE_USER}/printer_data/config/src/get_serial.sh" ] && sudo chmod +x /home/${BASE_USER}/printer_data/config/src/get_serial.sh || true
+# 5) Ensure services start on first boot (guarded; systemctl may not be available in chroot)
+command -v systemctl >/dev/null && systemctl enable nginx || true
+#systemctl enable splash_video.service
+command -v systemctl >/dev/null && systemctl enable klipper_config.service || true
+command -v systemctl >/dev/null && systemctl enable flash_once.service || true
+command -v systemctl >/dev/null && systemctl enable klipper-autostart.service || true
+
+[ -f /usr/local/bin/flash_once.sh ] && chmod +x /usr/local/bin/flash_once.sh || true
+[ -f /home/pi/wait.html ] && chown pi:pi /home/pi/wait.html || true
 
 touch /etc/firstboot-splash
 
