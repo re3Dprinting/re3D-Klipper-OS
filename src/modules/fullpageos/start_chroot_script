@@ -63,32 +63,34 @@ find /host_cache -maxdepth 2 -type d -print || true
 # If we seeded venvs, make sure wheels are up-to-date with requirements
 sudo -u "${BASE_USER}" bash -lc '
   set -e
-  # Ensure pip has a user-writable temp dir in case /tmp is unavailable/unwritable in chroot
-  mkdir -p "$HOME/.tmp"
-  chmod 700 "$HOME/.tmp"
-  export TMPDIR="$HOME/.tmp"
+  if [ -w /tmp ]; then
+    export TMPDIR=/tmp
+  else
+    mkdir -p "$HOME/.tmp"; chmod 700 "$HOME/.tmp"; export TMPDIR="$HOME/.tmp"
+  fi
 
-  # Diagnostics: show disk usage for root and /tmp
   df -h / || true
   df -h "$TMPDIR" || true
+
   if [ -d "$HOME/klippy-env" ] && [ -d "$HOME/klipper" ]; then
     export PIP_DISABLE_PIP_VERSION_CHECK=1
     source "$HOME/klippy-env/bin/activate"
-    pip install -U pip setuptools wheel
-    if [ -f "$HOME/klipper/scripts/klippy-requirements.txt" ]; then
-      pip install -r "$HOME/klipper/scripts/klippy-requirements.txt"
-    fi
+    pip install -U pip setuptools wheel --no-cache-dir
+    [ -f "$HOME/klipper/scripts/klippy-requirements.txt" ] && \
+      pip install -r "$HOME/klipper/scripts/klippy-requirements.txt" --no-cache-dir
   fi
 
   if [ -d "$HOME/moonraker-env" ] && [ -d "$HOME/moonraker" ]; then
     export PIP_DISABLE_PIP_VERSION_CHECK=1
     source "$HOME/moonraker-env/bin/activate"
-    pip install -U pip setuptools wheel
-    if [ -f "$HOME/moonraker/scripts/moonraker-requirements.txt" ]; then
-      pip install -r "$HOME/moonraker/scripts/moonraker-requirements.txt"
-    fi
+    pip install -U pip setuptools wheel --no-cache-dir
+    [ -f "$HOME/moonraker/scripts/moonraker-requirements.txt" ] && \
+      pip install -r "$HOME/moonraker/scripts/moonraker-requirements.txt" --no-cache-dir
   fi
 '
+
+# Free some space: remove heavy seeded venv caches we no longer need now that venvs were updated
+rm -rf /host_cache/klippy-env /host_cache/moonraker-env /host_cache/klipper/.git || true
 
 # Note: host cache will be removed at the end of the script after all steps that may use it
 
