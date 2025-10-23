@@ -1,0 +1,15 @@
+#url-switcher-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483647;
+  padding: 10px 14px;
+  border-radius: 9999px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  font: 600 14px/1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+#url-switcher-fab:hover { background: rgba(0,0,0,0.75); }

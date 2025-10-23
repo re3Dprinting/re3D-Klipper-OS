@@ -29,5 +29,6 @@ Every new commit an image is created, streamlining development and removing the 
 * [Multi-machine configuration](https://github.com/re3Dprinting/re3D-Klipper-OS/blob/devel/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/reload.py): Checks for printer type and uses the appropriate configuration files.
 * (WIP)
 
+
 ## Installation
 (WIP) - follows similiar steps to [previous instructions](https://github.com/user-attachments/files/16969831/Klipper.Installation.Instructions.V0.5.0.pdf) 

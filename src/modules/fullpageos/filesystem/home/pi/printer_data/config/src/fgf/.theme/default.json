@@ -1,221 +1,262 @@
 {
-    "console": {
+      "console": {
         "direction": "shell",
-        "entryStyle": "compact"
-    },
-    "control": {
+        "entryStyle": "compact",
+        "cleared_since": 1692971469584
+      },
+      "control": {
         "style": "cross",
-        "selectedCrossStep": 3,
+        "selectedCrossStep": 2,
         "extruder": {
-            "feedamount": 50,
-            "feedrate": 5
+          "feedamount": 25,
+          "feedrate": 3,
+          "feedamounts": [50, 25, 10],
+          "feedrates": [2, 1, 3]
         },
-        "reverseZ": true
-    },
-    "dashboard": {
+        "stepsAll": [100, 10, 0.1, 1],
+        "reverseZ": true,
+        "offsetsZ": [0.01, 0.025, 0.05, 0.1]
+      },
+      "dashboard": {
         "widescreenLayout3": [
-            {
-                "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
-                "visible": true
-            },
-            {
-                "name": "temperature",
-                "visible": true
-            },
-            {
-                "name": "miniconsole",
-                "visible": true
-            }
+          {
+            "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_cbeb4345-8aab-445a-88e8-101fb00a96b6",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_ed6df0b8-6ead-4406-9785-cd7e830e66d5",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_716cc073-dd16-4eca-8d96-614e7b20ae9e",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_5f8dd451-5b7f-4107-b591-0d70041abc0f",
+            "visible": true
+          },
+          {
+            "name": "miniconsole",
+            "visible": true
+          }
         ],
         "widescreenLayout1": [
-            {
-                "name": "zoffset",
-                "visible": true
-            },
-            {
-                "name": "machine-settings",
-                "visible": true
-            },
-            {
-                "name": "miscellaneous",
-                "visible": true
-            }
+          {
+            "name": "toolhead-control",
+            "visible": true
+          },
+          {
+            "name": "miscellaneous",
+            "visible": true
+          },
+          {
+            "name": "machine-settings",
+            "visible": true
+          },
+          {
+            "name": "webcam",
+            "visible": true
+          }
         ],
         "widescreenLayout2": [
-            {
-                "name": "control",
-                "visible": true
-            },
-            {
-                "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
-                "visible": true
-            },
-            {
-                "name": "macrogroup_8185909e-9433-4af8-991b-83972df55b8f",
-                "visible": true
-            },
-            {
-                "name": "printsettings",
-                "visible": true
-            }
+          {
+            "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
+            "visible": true
+          },
+          {
+            "name": "temperature",
+            "visible": true
+          },
+          {
+            "name": "extruder-control",
+            "visible": true
+          }
         ],
         "desktopLayout2": [
-            {
-                "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
-                "visible": true
-            },
-            {
-                "name": "temperature",
-                "visible": true
-            },
-            {
-                "name": "miscellaneous",
-                "visible": true
-            },
-            {
-                "name": "miniconsole",
-                "visible": true
-            },
-            {
-                "name": "webcam",
-                "visible": false
-            }
+          {
+            "name": "temperature",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_cbeb4345-8aab-445a-88e8-101fb00a96b6",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_716cc073-dd16-4eca-8d96-614e7b20ae9e",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_5f8dd451-5b7f-4107-b591-0d70041abc0f",
+            "visible": true
+          },
+          {
+            "name": "miniconsole",
+            "visible": true
+          },
+          {
+            "name": "webcam",
+            "visible": true
+          }
         ],
         "desktopLayout1": [
-            {
-                "name": "control",
-                "visible": true
-            },
-            {
-                "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
-                "visible": true
-            },
-            {
-                "name": "macrogroup_8185909e-9433-4af8-991b-83972df55b8f",
-                "visible": true
-            },
-            {
-                "name": "zoffset",
-                "visible": true
-            },
-            {
-                "name": "printsettings",
-                "visible": true
-            },
-            {
-                "name": "machine-settings",
-                "visible": true
-            }
+          {
+            "name": "toolhead-control",
+            "visible": true
+          },
+          {
+            "name": "extruder-control",
+            "visible": true
+          },
+          {
+            "name": "miscellaneous",
+            "visible": true
+          },
+          {
+            "name": "machine-settings",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_ed6df0b8-6ead-4406-9785-cd7e830e66d5",
+            "visible": true
+          }
         ],
         "tabletLayout1": [
-            {
-                "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
-                "visible": true
-            },
-            {
-                "name": "control",
-                "visible": true
-            },
-            {
-                "name": "macrogroup_8185909e-9433-4af8-991b-83972df55b8f",
-                "visible": true
-            },
-            {
-                "name": "zoffset",
-                "visible": true
-            },
-            {
-                "name": "printsettings",
-                "visible": true
-            },
-            {
-                "name": "machine-settings",
-                "visible": true
-            }
+          {
+            "name": "toolhead-control",
+            "visible": true
+          },
+          {
+            "name": "extruder-control",
+            "visible": true
+          },
+          {
+            "name": "miscellaneous",
+            "visible": true
+          },
+          {
+            "name": "machine-settings",
+            "visible": true
+          },
+          {
+            "name": "webcam",
+            "visible": true
+          }
         ],
         "tabletLayout2": [
-            {
-                "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
-                "visible": true
-            },
-            {
-                "name": "temperature",
-                "visible": true
-            },
-            {
-                "name": "miscellaneous",
-                "visible": true
-            },
-            {
-                "name": "miniconsole",
-                "visible": false
-            },
-            {
-                "name": "webcam",
-                "visible": false
-            }
+          {
+            "name": "temperature",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_ed6df0b8-6ead-4406-9785-cd7e830e66d5",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_cbeb4345-8aab-445a-88e8-101fb00a96b6",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_716cc073-dd16-4eca-8d96-614e7b20ae9e",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_5f8dd451-5b7f-4107-b591-0d70041abc0f",
+            "visible": true
+          },
+          {
+            "name": "miniconsole",
+            "visible": true
+          }
         ],
         "mobileLayout": [
-            {
-                "name": "webcam",
-                "visible": false
-            },
-            {
-                "name": "temperature",
-                "visible": true
-            },
-            {
-                "name": "zoffset",
-                "visible": true
-            },
-            {
-                "name": "control",
-                "visible": true
-            },
-            {
-                "name": "printsettings",
-                "visible": true
-            },
-            {
-                "name": "machine-settings",
-                "visible": true
-            },
-            {
-                "name": "miscellaneous",
-                "visible": true
-            },
-            {
-                "name": "miniconsole",
-                "visible": false
-            },
-            {
-                "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
-                "visible": true
-            },
-            {
-                "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
-                "visible": true
-            }
+          {
+            "name": "temperature",
+            "visible": true
+          },
+          {
+            "name": "toolhead-control",
+            "visible": true
+          },
+          {
+            "name": "extruder-control",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_34e0f282-7ad7-4ec2-b775-9b5ab65dd270",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_1707e1ff-31fd-4f91-8d18-302750bbe5fd",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_ed6df0b8-6ead-4406-9785-cd7e830e66d5",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_cbeb4345-8aab-445a-88e8-101fb00a96b6",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_716cc073-dd16-4eca-8d96-614e7b20ae9e",
+            "visible": true
+          },
+          {
+            "name": "macrogroup_5f8dd451-5b7f-4107-b591-0d70041abc0f",
+            "visible": true
+          },
+          {
+            "name": "miniconsole",
+            "visible": true
+          },
+          {
+            "name": "machine-settings",
+            "visible": true
+          },
+          {
+            "name": "miscellaneous",
+            "visible": true
+          },
+          {
+            "name": "webcam",
+            "visible": true
+          }
         ],
         "nonExpandPanels": {
-            "widescreen": [
-                "webcam-panel",
-                "pressure-advance-settings-subpanel"
-            ]
+          "widescreen": [
+            "zoffset-panel",
+            "printsettings-panel",
+            "webcam-panel"
+          ],
+          "desktop": [
+            "machine-update-panel"
+          ],
+          "tablet": [
+            "machine-update-panel"
+          ]
         }
-    },
-    "gcodefiles": {
-        "countPerPage": 10,
-        "sortBy": "modified",
-        "sortDesc": true,
-        "showHiddenFiles": false,
-        "showPrintedFiles": true,
-        "hideMetadataColums": [
-            "filament_total",
-            "slicer"
-        ]
-    },
-    "gcodeViewer": {
+      },
+      "gcodeViewer": {
         "colorMode": 0,
         "specularLighting": true,
         "hdRendering": true,
@@ -224,310 +265,538 @@
         "voxelMode": false,
         "forceLineRendering": true,
         "klipperCache": {
-            "kinematics": "cartesian",
-            "axis_maximum": [
-                565,
-                750,
-                765,
-                0
-            ],
-            "axis_minimum": [
-                0,
-                0,
-                0,
-                0
-            ]
+          "kinematics": "cartesian",
+          "axis_maximum": [552, 603, 470, 0],
+          "axis_minimum": [0, 0, 0, 0]
         }
-    },
-    "macros": {
+      },
+      "gcodefiles": {
+        "countPerPage": 10,
+        "sortBy": "modified",
+        "sortDesc": true,
+        "showHiddenFiles": false,
+        "showPrintedFiles": true,
+        "hideMetadataColums": [
+          "filament_total",
+          "slicer"
+        ]
+      },
+      "gcodehistory": {
+        "entries": [
+          "SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=1 ACCEL=500",
+          "TUNING_TOWER COMMAND=SET_PRESSURE_ADVANCE PARAMETER=ADVANCE START=0 FACTOR=.005",
+          "SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=1 ACCEL=500",
+          "TUNING_TOWER COMMAND=SET_PRESSURE_ADVANCE PARAMETER=ADVANCE START=0 FACTOR=.005\n"
+        ]
+      },
+      "initVersion": "2.14.0",
+      "macros": {
         "mode": "expert",
         "macrogroups": {
-            "34e0f282-7ad7-4ec2-b775-9b5ab65dd270": {
-                "name": "Preheat Macros",
-                "color": "custom",
-                "colorCustom": "#64439B",
-                "showInStandby": true,
-                "showInPause": true,
-                "showInPrinting": false,
-                "macros": [
-                    {
-                        "pos": 1,
-                        "name": "PET_HEATERS",
-                        "color": "primary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 2,
-                        "name": "PET_BED",
-                        "color": "primary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 3,
-                        "name": "PET_ALL",
-                        "color": "primary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 4,
-                        "name": "PC_HEATERS",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 5,
-                        "name": "PC_BED",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 6,
-                        "name": "PC_ALL",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 7,
-                        "name": "PLA_HEATERS",
-                        "color": "error",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 8,
-                        "name": "PLA_BED",
-                        "color": "error",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 9,
-                        "name": "PLA_ALL",
-                        "color": "error",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 10,
-                        "name": "DYNAPURGE_HEATERS",
-                        "color": "group",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 11,
-                        "name": "TPU_HEATERS",
-                        "color": "success",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    }
-                ]
-            },
-            "1707e1ff-31fd-4f91-8d18-302750bbe5fd": {
-                "name": "Control Macros",
-                "color": "custom",
-                "colorCustom": "#16CCC7",
-                "showInStandby": true,
-                "showInPause": true,
-                "showInPrinting": false,
-                "macros": [
-                    {
-                        "pos": 1,
-                        "name": "DISABLE_MOTORS",
-                        "color": "secondary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 2,
-                        "name": "PARK_NOZZLE",
-                        "color": "secondary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 3,
-                        "name": "T0",
-                        "color": "primary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 4,
-                        "name": "T1",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 5,
-                        "name": "PURGE_TWO_MINUTES",
-                        "color": "group",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 6,
-                        "name": "PURGE_FIVE_MINUTES",
-                        "color": "group",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 7,
-                        "name": "PURGE_TEN_MINUTES",
-                        "color": "group",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 8,
-                        "name": "Z_GAP_CALIBRATION_POSITION",
-                        "color": "secondary",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    }
-                ]
-            },
-            "8185909e-9433-4af8-991b-83972df55b8f": {
-                "name": "Crammer Control",
+          "34e0f282-7ad7-4ec2-b775-9b5ab65dd270": {
+            "name": "Preheat",
+            "color": "custom",
+            "colorCustom": "#64439B",
+            "showInStandby": true,
+            "showInPause": true,
+            "showInPrinting": false,
+            "macros": [
+              {
+                "pos": 1,
+                "name": "PLA_E0",
                 "color": "primary",
-                "colorCustom": "#fff",
                 "showInStandby": true,
-                "showInPause": true,
                 "showInPrinting": true,
-                "macros": [
-                    {
-                        "pos": 1,
-                        "name": "CRAMMER_ON",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 2,
-                        "name": "CRAMMER_OFF",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 3,
-                        "name": "CRAMMER_SET_RATIO",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    },
-                    {
-                        "pos": 4,
-                        "name": "CRAMMER_MOVE",
-                        "color": "warning",
-                        "showInStandby": true,
-                        "showInPrinting": true,
-                        "showInPause": true
-                    }
-                ]
-            }
+                "showInPause": true
+              },
+              {
+                "pos": 2,
+                "name": "PLA_E1",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 3,
+                "name": "PLA_HEATERS",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 4,
+                "name": "PLA_BED",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 5,
+                "name": "PLA_ALL",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 6,
+                "name": "PETG_E0",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 7,
+                "name": "PETG_E1",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 8,
+                "name": "PETG_HEATERS",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 9,
+                "name": "PETG_BED",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 10,
+                "name": "PETG_ALL",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 11,
+                "name": "PC_E0",
+                "color": "error",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 12,
+                "name": "PC_E1",
+                "color": "error",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 13,
+                "name": "PC_HEATERS",
+                "color": "error",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 14,
+                "name": "PC_BED",
+                "color": "error",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 15,
+                "name": "PC_ALL",
+                "color": "error",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              }
+            ]
+          },
+          "ed6df0b8-6ead-4406-9785-cd7e830e66d5": {
+            "name": "Calibration",
+            "color": "primary",
+            "colorCustom": "#fff",
+            "showInStandby": true,
+            "showInPause": true,
+            "showInPrinting": true,
+            "macros": [
+              {
+                "pos": 1,
+                "name": "GET_CURRENT_DUAL_NOZZLE_OFFSET",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 2,
+                "name": "ADJUST_DUAL_NOZZLE_OFFSET",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 3,
+                "name": "RESET_DUAL_NOZZLE_OFFSET",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              }
+            ]
+          },
+          "1707e1ff-31fd-4f91-8d18-302750bbe5fd": {
+            "name": "Control Macros",
+            "color": "custom",
+            "colorCustom": "#000000",
+            "showInStandby": true,
+            "showInPause": true,
+            "showInPrinting": false,
+            "macros": [
+              {
+                "pos": 1,
+                "name": "UNLOAD_FILAMENT_LEFT",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 2,
+                "name": "UNLOAD_FILAMENT_RIGHT",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 3,
+                "name": "LOAD_FILAMENT_LEFT",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 4,
+                "name": "LOAD_FILAMENT_RIGHT",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 5,
+                "name": "PURGE_LEFT",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 6,
+                "name": "PURGE_RIGHT",
+                "color": "warning",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 7,
+                "name": "PURGE_TWO_MINUTES",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 8,
+                "name": "PURGE_FIVE_MINUTES",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 9,
+                "name": "PURGE_TEN_MINUTES",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              }
+            ]
+          },
+          "cbeb4345-8aab-445a-88e8-101fb00a96b6": {
+            "name": "Crammer ",
+            "color": "primary",
+            "colorCustom": "#FFFFFF",
+            "showInStandby": true,
+            "showInPause": true,
+            "showInPrinting": true,
+            "macros": [
+              {
+                "pos": 1,
+                "name": "CRAMMER_MOVE",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 2,
+                "name": "CRAMMER_OFF",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 3,
+                "name": "CRAMMER_ON",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 4,
+                "name": "CRAMMER_SET_RATIO",
+                "color": "primary",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              }
+            ]
+          },
+          "716cc073-dd16-4eca-8d96-614e7b20ae9e": {
+            "name": "Software Updates",
+            "color": "custom",
+            "colorCustom": "#08C327",
+            "showInStandby": true,
+            "showInPause": false,
+            "showInPrinting": false,
+            "macros": [
+              {
+                "pos": 1,
+                "name": "CHECK_FOR_UPDATES",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 2,
+                "name": "INSTALL_UPDATES",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 3,
+                "name": "ENABLE_AUTO_UPDATES",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 4,
+                "name": "RESTORE_BACKUP",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              }
+            ]
+          },
+          "5f8dd451-5b7f-4107-b591-0d70041abc0f": {
+            "name": "Software Operations",
+            "color": "custom",
+            "colorCustom": "#0516F0",
+            "showInStandby": true,
+            "showInPause": true,
+            "showInPrinting": true,
+            "macros": [
+              {
+                "pos": 1,
+                "name": "CHANGE_CONFIGURATION",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 2,
+                "name": "CHANGE_HOSTNAME",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 3,
+                "name": "DEBUG",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 4,
+                "name": "MAC_NETWORK_ADDRESS",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              },
+              {
+                "pos": 5,
+                "name": "WIFI_SETUP",
+                "color": "group",
+                "showInStandby": true,
+                "showInPrinting": true,
+                "showInPause": true
+              }
+            ]
+          }
         }
-    },
-    "notifications": {
-        "dismiss": [
-            {
-                "id": "Moonraker/v0.7.1-486",
-                "category": "dependency",
-                "type": "reboot",
-                "date": 1659534893247
-            }
+      },
+      "navigation": {
+        "entries": [
+          {
+            "type": "route",
+            "title": "G-Code Viewer",
+            "visible": true,
+            "position": 5
+          },
+          {
+            "type": "route",
+            "title": "Dashboard",
+            "visible": true,
+            "position": 1
+          },
+          {
+            "type": "route",
+            "title": "Console",
+            "visible": true,
+            "position": 2
+          },
+          {
+            "type": "route",
+            "title": "G-Code Files",
+            "visible": true,
+            "position": 3
+          },
+          {
+            "type": "route",
+            "title": "History",
+            "visible": true,
+            "position": 4
+          },
+          {
+            "type": "route",
+            "title": "Machine",
+            "visible": true,
+            "position": 6
+          }
         ]
-    },
-    "presets": {
-        "presets": {}
-    },
-    "theme": {
+      },
+      "notifications": {
+        "dismiss": [
+          {
+            "id": "2c0b8c98d3ee11e5657bc4a332f18ed52ce93ec4bba46841134f0dc885b51edc",
+            "category": "moonrakerWarning",
+            "type": "reboot",
+            "date": 1692635731461
+          },
+          {
+            "id": "6380baad55983731eb12a9bf1b42556639cc0741da0fccd5710a150a1efde1cd",
+            "category": "moonrakerWarning",
+            "type": "reboot",
+            "date": 1694009831382
+          }
+        ]
+      },
+      "presets": {
+        "presets": {
+
+        }
+      },
+      "theme": {
         "logo": "#FFFFFF"
-    },
-    "uiSettings": {
+      },
+      "uiSettings": {
         "logo": "#FFFFFF",
         "boolBigThumbnail": true,
         "boolWebcamNavi": true,
         "displayCancelPrint": true,
         "lockSlidersOnTouchDevices": true,
         "navigationStyle": "iconsOnly",
-        "boolHideUploadAndPrintButton": false,
-        "displayZOffsetStandby": true,
+        "boolHideUploadAndPrintButton": true,
+        "displayZOffsetStandby": false,
         "confirmOnEmergencyStop": false,
         "confirmOnPowerDeviceChange": false,
-        "primary": "#E4DB32"
-    },
-    "view": {
+        "primary": "#FFD400",
+        "hideUpdateWarnings": false,
+        "disableFanAnimation": true
+      },
+      "view": {
         "history": {
-            "countPerPage": 10,
-            "toggleChartCol3": "filament_usage",
-            "hidePrintStatus": [],
-            "hideColums": [
-                "modified",
-                "end_time",
-                "first_layer_height",
-                "first_layer_extr_temp",
-                "first_layer_bed_temp",
-                "filament_total",
-                "layer_height",
-                "object_height",
-                "size"
-            ]
+          "countPerPage": 10,
+          "toggleChartCol3": "filament_usage",
+          "hidePrintStatus": [],
+          "hideColums": [
+            "modified",
+            "end_time",
+            "first_layer_height",
+            "first_layer_extr_temp",
+            "first_layer_bed_temp",
+            "filament_total",
+            "layer_height",
+            "object_height",
+            "size"
+          ]
         },
         "configfiles": {
-            "countPerPage": 50,
-            "sortBy": "modified",
-            "sortDesc": true,
-            "showHiddenFiles": false
+          "countPerPage": 50,
+          "sortBy": "filename",
+          "sortDesc": true,
+          "showHiddenFiles": true
         },
         "tempchart": {
-            "autoscale": true,
-            "boolTempchart": true,
-            "datasetSettings": {
-                "extruder": {
-                    "power": false
-                },
-                "extruder1": {
-                    "color": "#8E379D"
-                },
-                "extruder2": {
-                    "color": "#569D37"
-                }
+          "autoscale": true,
+          "boolTempchart": true,
+          "datasetSettings": {
+            "extruder": {
+              "power": false
+            },
+            "extruder1": {
+              "color": "#12DC25"
+            },
+            "heater_bed": {
+              "color": "#031CEB"
             }
+          }
         },
         "gcodefiles": {
-            "showHiddenFiles": false,
-            "countPerPage": -1
+          "showHiddenFiles": false,
+          "countPerPage": -1,
+          "sortBy": "modified",
+          "sortDesc": false
         }
+      }
     }
-}

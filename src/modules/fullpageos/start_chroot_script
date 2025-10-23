@@ -737,6 +737,34 @@ step_end
 ### End Mainsail Manual Setup                                                ###
 ###############################################################################
 
+###############################################################################
+# Machine Configurator: finalize files + enable service (chroot-safe)
+###############################################################################
+set -e
+
+# 2) Ensure shipped paths exist (unpack should have created them)
+install -d -m 0755 /opt/mconfig/www/cgi-bin
+
+# 3) Permissions/ownership (in case VCS dropped +x)
+#    Adjust the glob if your filenames differ.
+chmod 0755 /opt/mconfig/www/cgi-bin/_cgi_common.sh || true
+chmod 0755 /opt/mconfig/www/cgi-bin/set_*.sh       || true
+chmod 0755 /opt/mconfig/www/cgi-bin/reboot.sh      || true
+chown -R root:root /opt/mconfig
+
+# 4) Wire up the service you ship (already present in /etc/systemd/system/)
+#    Do NOT 'start' in chroot; only enable so it runs on first boot.
+systemctl daemon-reload || true
+systemctl enable mconfig.service || true
+
+# (Optional) quick visibility in build logs
+echo "[mconfig] files:"
+ls -l /opt/mconfig/www/cgi-bin || true
+echo "[mconfig] service:"
+systemctl status mconfig.service || true
+###############################################################################
+
+
 # --- Recommended extras (safe order & guards) ---
 
 # 1) Let your user talk to USB serial boards (SKR, Arduino, etc.)
@@ -936,15 +964,38 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 '
 
-# Run installer as pi (so it sees ~/klipper and ~/klippy-env). Guard if missing.
+# Pin NumPy to 2.3.3 only
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  REQ="$HOME/beacon_klipper/requirements.txt"
+  [ -f "$REQ" ] || exit 0
+  if grep -qE "^numpy" "$REQ"; then
+    sed -i -E "s/^numpy([[:space:]]*).*/numpy==2.3.3/" "$REQ"
+  else
+    echo "numpy==2.3.3" >> "$REQ"
+  fi
+'
+
+# Run installer as pi
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   if [ -d "$HOME/klipper" ] && [ -x "$HOME/klippy-env/bin/python" ]; then
     cd ~/beacon_klipper
-    # Use -y if supported; otherwise it just ignores it and runs normally.
     ./install.sh -y || ./install.sh
   else
     echo "Beacon installer skipped: ~/klipper or ~/klippy-env not found for ${USER}."
+  fi
+'
+
+# change NumPy requirements.txt back to prevent dirty message
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  REQ="$HOME/beacon_klipper/requirements.txt"
+  [ -f "$REQ" ] || exit 0
+  if grep -qE "^numpy" "$REQ"; then
+    sed -i -E "s/^numpy([[:space:]]*).*/numpy>=2.3.3/" "$REQ"
+  else
+    echo "numpy>=2.3.3" >> "$REQ"
   fi
 '
 step_end

@@ -6,63 +6,63 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <style>
     :root{
-      --bg:#0b1220; --card:#0e1726cc; --border:#1e2a3f; --accent:#5aa2ff; --muted:#142034;
-      --txt:#ffffff; --txt2:#d6e2f1;
+      --white:#FFFFFF; --black:#000000;
+      --y-500:#FFD400; --y-200:#FFBD00;
+      --g-400:#BCBEC0; --d-700:#212429; --d-800:#181B20; --d-900:#101318;
+      --bg:var(--d-900); --card:#111316; --card-border:var(--d-700);
+      --text:var(--white); --text-sub:#E9EAEC; --muted:var(--d-800); --accent:#FFD400;
     }
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial}
     .wrap{height:100%;display:grid;place-items:center;padding:16px}
-    /* Sized for 1024x640: take most of width, comfy height */
-    .card{
-      width:min(960px, 96vw);
-      min-height:480px;
-      box-sizing:border-box;
-      padding:32px 32px 24px;
-      border:1px solid var(--border);
-      border-radius:18px;
-      background:var(--card);
-      backdrop-filter:blur(3px);
-    }
-    /* Header row */
+    .card{width:min(960px,96vw);min-height:480px;box-sizing:border-box;padding:32px 32px 24px;
+      border:1px solid var(--card-border);border-radius:18px;background:var(--card)}
     .row{display:flex;gap:18px;align-items:center;margin:0 0 8px}
-    h1{margin:0;font-size:28px}
-    .sub{color:var(--txt2);opacity:.9}
-    /* Spinner & progress */
-    .spin{width:72px;height:72px;border:7px solid #32465f;border-top-color:#fff;border-radius:50%;
-      animation:spin 1s linear infinite;flex:0 0 auto}
+    h1{margin:0;font-size:28px}.sub{color:var(--text-sub)}
+    .spin{width:72px;height:72px;border:7px solid #2B2E33;border-top-color:var(--accent);
+      border-radius:50%;animation:spin 1s linear infinite;flex:0 0 auto}
     @keyframes spin{to{transform:rotate(360deg)}}
     .bar{height:14px;border-radius:999px;background:var(--muted);overflow:hidden;margin:12px 0 6px}
-    .bar>div{height:100%;width:0%;background:var(--accent);transition:width .3s ease}
-    #status{font-size:18px;margin-top:6px}
-    #pnum{font-size:14px;color:var(--txt2)}
-    /* Big refresh button when waiting */
-    button{
-      margin-top:14px;padding:16px 28px;font-size:18px;font-weight:600;
-      border-radius:12px;border:1px solid var(--border);background:#1a2a42;color:#fff;cursor:pointer
-    }
-    button:hover{filter:brightness(1.15)}
-    /* Collapsible details */
-    details{margin-top:14px}
-    summary{cursor:pointer;color:var(--txt2);font-size:15px}
-    pre{white-space:pre-wrap;background:#0a1524;padding:12px;border-radius:12px;
-      max-height:36vh;overflow:auto;border:1px solid #1a2a42;margin:10px 0 0;font-size:13px}
-    /* Layout grid to use width: main left, details right (collapsible still) */
+    .bar>div{height:100%;width:0%;background:linear-gradient(90deg,var(--y-200),var(--accent));
+      box-shadow:0 0 0 1px rgba(0,0,0,.15) inset;transition:width .3s ease}
+    #status{font-size:18px;margin-top:6px;min-height:1.6em}
+    #pnum{font-size:14px;color:var(--g-400)}
     .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:start;margin-top:12px}
-    @media (max-width: 880px){
-      .grid{grid-template-columns:1fr}
-    }
-    .panel{border:1px solid var(--border);border-radius:14px;padding:16px}
+    @media (max-width:880px){.grid{grid-template-columns:1fr}}
+    .panel{border:1px solid var(--card-border);border-radius:14px;padding:16px;background:var(--d-800)}
     .panel h3{margin:0 0 6px;font-size:18px}
+    pre{white-space:pre-wrap;background:var(--d-900);padding:12px;border-radius:12px;max-height:36vh;
+      overflow:auto;border:1px solid var(--card-border);margin:10px 0 0;font-size:13px}
+    .hint-banner{font-size:20px;font-weight:800;line-height:1.35;padding:16px 18px;margin:10px 0 0;
+      border-radius:12px;border:2px solid var(--accent);background:#17170F;color:var(--white);
+      box-shadow:0 0 0 1px rgba(0,0,0,.35) inset}
+    .hint-banner.warn{border-color:#8A3A3A;background:#2B1A1A;color:#FFE7E7}
+    .hint-banner.success{border-color:#2F6A3F;background:#0F2016;color:#E9FFE9}
+    @keyframes pulseRing {0%{box-shadow:0 0 0 0 rgba(255,212,0,.35)}100%{box-shadow:0 0 0 16px rgba(255,212,0,0)}}
+    .hint-banner.attn{animation:pulseRing 1.8s ease-out infinite}
+
+    /* top-right logo */
+    .logo{
+      position:fixed; top:50px; right:50px;
+      width:90px; height:auto;
+      opacity:.95;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.6));
+      user-select:none; pointer-events:none; /* don’t steal clicks */
+    }
+    @media (max-width:880px){ .logo{ width:110px } }
   </style>
 </head>
 <body>
+  <!-- Logo (place your PNG at /home/pi/logo.png or change the src) -->
+  <img class="logo" src="re3d-logo.png" alt="re:3D logo" />
+
   <div class="wrap">
     <div class="card">
       <div class="row">
         <div class="spin"></div>
         <div>
           <h1>Preparing printer…</h1>
-          <div class="sub">Keep the printer powered and the USB cable connected. It will reboot automatically when finished.</div>
+          <div class="sub">Keep the printer powered and the USB cable connected.</div>
         </div>
       </div>
 
@@ -71,20 +71,16 @@
       <div id="pnum">0%</div>
 
       <div class="grid">
-        <!-- Main guidance -->
         <div class="panel">
           <h3>Status</h3>
-          <p id="hint" class="sub" style="margin:6px 0 0">
-            Please wait. Do not unplug or power off.
-          </p>
-          <button id="refresh" style="display:none">Refresh</button>
+          <div id="hint" class="hint-banner">Please wait. Do not unplug or power off.</div>
         </div>
 
-        <!-- Optional details -->
         <div class="panel">
           <h3>More information</h3>
-          <details id="details">
-            <summary>Show technical details</summary>
+          <!-- Always open -->
+          <details id="details" open>
+            <summary>Technical details</summary>
             <pre id="log">waiting for logs…</pre>
           </details>
         </div>
@@ -97,49 +93,74 @@
     const STATUS  = 'file:///tmp/flash_status.json';
     const DEVLIST = 'file:///tmp/flash_devices.json';
 
-    async function fetchJSON(u){ try{const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw 0; return r.json();}catch{ return null; } }
-    async function fetchText(u){ try{const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw 0; return r.text();}catch{ return null; } }
-    function tail(t,n=300){ if(!t) return ''; const a=t.trimEnd().split(/\r?\n/); return a.slice(-n).join('\n'); }
-
-    function simpleHint(state,msg){
-      // Friendly user guidance based on state/message
-      if(state==='waiting_device'){
-        if(/No USB/i.test(msg)) return 'No connection detected. Check printer power and the USB cable/port, then press Refresh.';
-        return 'Board detected but not ready. If needed, erase the board so it appears as the Atmel device, then press Refresh.';
+    function statusLabel(state){
+      switch(state){
+        case 'waiting_device': return 'Waiting for board…';
+        case 'running':        return 'Working…';
+        case 'power_cycle':    return 'Power-cycle required';
+        case 'done':           return 'Complete';
+        case 'error':          return 'Error';
+        default:               return 'Working…';
       }
-      if(state==='done') return 'Flashing complete. The printer will reboot automatically.';
-      if(state==='error') return 'There was an issue. You can check “Show technical details” for more info.';
+    }
+    function hintFor(state, hasAnyDevices){
+      if(state==='power_cycle')
+        return 'Please switch the machine OFF, then ON. This power-cycles both the Pi and mainboard.';
+      if(state==='waiting_device'){
+        return hasAnyDevices
+          ? 'Board detected but not ready. If needed, erase the board so it appears as the Atmel device.'
+          : 'No connection detected. Check printer power and the USB cable/port.';
+      }
+      if(state==='done')  return 'Flashing complete.';
+      if(state==='error') return 'There was an issue. See the details for more information.';
       return 'Please wait. Do not unplug or power off.';
     }
 
+    async function fetchJSON(u){ try{const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw 0; return r.json();}catch{ return null; } }
+    async function fetchText(u){ try{const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw 0; return r.text();}catch{ return null; } }
+    function tail(t,n=300){ if(!t) return ''; const a=t.trimEnd().split(/\r?\n/); return a.slice(-n).join('\n'); }
+    function autoscroll(pre){ pre.scrollTop = pre.scrollHeight; }
+
+    let ticking=false;
     async function tick(){
+      if(ticking) return; ticking=true;
+
+      let state='running', progress=0;
+
       const s = await fetchJSON(STATUS);
       if(s){
-        const st = s.state || 'running';
-        const msg = s.message || '';
-        const p  = Math.max(0, Math.min(100, Number(s.progress||0)));
-
-        document.getElementById('status').textContent = msg || 'Working…';
-        document.getElementById('pbar').style.width = p + '%';
-        document.getElementById('pnum').textContent = p + '%';
-
-        // Big friendly hints + refresh visibility
-        const hint = document.getElementById('hint');
-        hint.textContent = simpleHint(st, msg);
-        const refreshBtn = document.getElementById('refresh');
-        refreshBtn.style.display = (st==='waiting_device') ? 'inline-block' : 'none';
+        state = s.state ?? state;
+        progress = Math.max(0,Math.min(100,Number(s.progress||0)));
       }
 
-      // Show logs under details (kept compact)
+      // real device presence
+      let hasAnyDevices=false;
+      const devs = await fetchJSON(DEVLIST);
+      if(Array.isArray(devs) && devs.length>0) hasAnyDevices = true;
+
+      // update UI
+      document.getElementById('status').textContent = statusLabel(state);
+      document.getElementById('pbar').style.width   = progress + '%';
+      document.getElementById('pnum').textContent   = progress + '%';
+
+      const hintEl = document.getElementById('hint');
+      hintEl.textContent = hintFor(state, hasAnyDevices);
+      hintEl.classList.remove('attn','warn','success');
+      if(state==='power_cycle' || state==='waiting_device') hintEl.classList.add('attn');
+      if(state==='error') hintEl.classList.add('warn');
+      if(state==='done')  hintEl.classList.add('success');
+
+      const logEl = document.getElementById('log');
       const log = await fetchText(LOG);
       if(log!==null){
-        document.getElementById('log').textContent = tail(log, 300);
-
+        logEl.textContent = tail(log, 300);
+        requestAnimationFrame(()=>autoscroll(logEl));
       }
+
+      ticking=false;
     }
 
-    document.getElementById('refresh').addEventListener('click', ()=>tick());
-    setInterval(tick, 1000);
+    setInterval(tick,1000);
     tick();
   </script>
 </body>
