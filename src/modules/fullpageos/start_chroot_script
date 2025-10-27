@@ -790,6 +790,8 @@ else
   rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
 
+
+
 # 3) Tie it to Klipper start without editing klipper.service
 install -d /etc/systemd/system/klipper.service.wants
 ln -sf /etc/systemd/system/klippy-ensure-chelper.service \

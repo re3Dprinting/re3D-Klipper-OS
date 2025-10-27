@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG=/var/log/klippy-ensure-chelper.log
+LOG=/home/pi/printer_data/logs/klippy-ensure-chelper.log
 exec >>"$LOG" 2>&1
 echo "[ $(date +'%F %T') ] ensure chelper start"
 
@@ -11,6 +11,7 @@ VENV="$USER_HOME/klippy-env"
 PY="$VENV/bin/python"
 SO="$KLIP/klippy/chelper/c_helper.so"
 LOCK=/tmp/chelper.build.lock
+
 
 # If venv or klipper tree are missing, just skip (don’t fail boot)
 if [ ! -x "$PY" ] || [ ! -d "$KLIP" ]; then
