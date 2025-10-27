@@ -17,6 +17,7 @@
     font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
   }
   [hidden]{ display:none !important; }
+
   /* Shell */
   .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px}
   .app{
@@ -80,28 +81,21 @@
     max-height:120px; overflow:auto; font-size:12px;
   }
 
-  /* Small screens (if ever hit) */
+  /* Small screens */
   @media (max-width: 980px){
     .wrap{max-width: 960px}
     .content{grid-template-columns: 1fr}
     .span2{grid-column:auto}
   }
-/* Machine gallery */
-.machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
-.machine-card{position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease}
-.machine-card:hover{transform:translateY(-1px)}
-.machine-card.selected{border-color:#3f6fe0;box-shadow:0 0 0 2px rgba(45,108,223,.35) inset}
-.machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
-.machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
-/* Machine gallery */
-.machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
-.machine-card{position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease}
-.machine-card:hover{transform:translateY(-1px)}
-.machine-card.selected{border-color:#3f6fe0;box-shadow:0 0 0 2px rgba(45,108,223,.35) inset}
-.machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
-.machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
+
+  /* Machine gallery */
+  .machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
+  .machine-card{position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease}
+  .machine-card:hover{transform:translateY(-1px)}
+  .machine-card.selected{border-color:#3f6fe0;box-shadow:0 0 0 2px rgba(45,108,223,.35) inset}
+  .machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
+  .machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
 </style>
 </head>
 <body>
@@ -120,49 +114,47 @@
 
     <!-- MACHINE PAGE -->
     <div class="content" data-page="machine">
-
-<form class="card span2" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
-  <div style="font-weight:700; margin-bottom:6px">Select your machine</div>
-  <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4" />
-  <div class="machine-grid" id="machine-grid">
-    <label class="machine-card selected" data-type="Gigabot 4">
-      <input type="radio" name="type-radio" value="Gigabot 4" checked />
-      <img src="/img/gigabot-4.png" alt="Gigabot 4"/>
-      <div class="title">Gigabot 4</div>
-    </label>
-    <label class="machine-card" data-type="Gigabot 4 XLT">
-      <input type="radio" name="type-radio" value="Gigabot 4 XLT" />
-      <img src="/img/gigabot-4-xlt.png" alt="Gigabot 4 XLT"/>
-      <div class="title">Gigabot 4 XLT</div>
-    </label>
-    <label class="machine-card" data-type="Terabot 4">
-      <input type="radio" name="type-radio" value="Terabot 4" />
-      <img src="/img/terabot-4.png" alt="Terabot 4"/>
-      <div class="title">Terabot 4</div>
-    </label>
-    <label class="machine-card" data-type="GigabotX 2">
-      <input type="radio" name="type-radio" value="GigabotX 2" />
-      <img src="/img/gigabotx-2.png" alt="GigabotX 2"/>
-      <div class="title">GigabotX 2</div>
-    </label>
-    <label class="machine-card" data-type="GigabotX XLT 2">
-      <input type="radio" name="type-radio" value="GigabotX XLT 2" />
-      <img src="/img/gigabotx-2-xlt.png" alt="GigabotX XLT 2"/>
-      <div class="title">GigabotX XLT 2</div>
-    </label>
-    <label class="machine-card" data-type="TerabotX 2">
-      <input type="radio" name="type-radio" value="TerabotX 2" />
-      <img src="/img/terabotx-2.png" alt="TerabotX 2"/>
-      <div class="title">TerabotX 2</div>
-    </label>
-  </div>
-  <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:10px">
-    <button type="submit">Set Machine</button>
-  </div>
-  <div class="hint">Posts <span class="mono">type=&lt;selection&gt;</span> to <span class="mono">/cgi-bin/set_machine_type.sh</span>.</div>
-  <div class="out mono" id="out-machine"></div>
-</form>
-
+      <form class="card span2" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
+        <div style="font-weight:700; margin-bottom:6px">Select your machine</div>
+        <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4" />
+        <div class="machine-grid" id="machine-grid">
+          <label class="machine-card selected" data-type="Gigabot 4">
+            <input type="radio" name="type-radio" value="Gigabot 4" checked />
+            <img src="/img/gigabot-4.png" alt="Gigabot 4"/>
+            <div class="title">Gigabot 4</div>
+          </label>
+          <label class="machine-card" data-type="Gigabot 4 XLT">
+            <input type="radio" name="type-radio" value="Gigabot 4 XLT" />
+            <img src="/img/gigabot-4-xlt.png" alt="Gigabot 4 XLT"/>
+            <div class="title">Gigabot 4 XLT</div>
+          </label>
+          <label class="machine-card" data-type="Terabot 4">
+            <input type="radio" name="type-radio" value="Terabot 4" />
+            <img src="/img/terabot-4.png" alt="Terabot 4"/>
+            <div class="title">Terabot 4</div>
+          </label>
+          <label class="machine-card" data-type="GigabotX 2">
+            <input type="radio" name="type-radio" value="GigabotX 2" />
+            <img src="/img/gigabotx-2.png" alt="GigabotX 2"/>
+            <div class="title">GigabotX 2</div>
+          </label>
+          <label class="machine-card" data-type="GigabotX XLT 2">
+            <input type="radio" name="type-radio" value="GigabotX XLT 2" />
+            <img src="/img/gigabotx-2-xlt.png" alt="GigabotX XLT 2"/>
+            <div class="title">GigabotX XLT 2</div>
+          </label>
+          <label class="machine-card" data-type="TerabotX 2">
+            <input type="radio" name="type-radio" value="TerabotX 2" />
+            <img src="/img/terabotx-2.png" alt="TerabotX 2"/>
+            <div class="title">TerabotX 2</div>
+          </label>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:10px">
+          <button type="submit">Set Machine</button>
+        </div>
+        <div class="hint">Posts <span class="mono">type=&lt;selection&gt;</span> to <span class="mono">/cgi-bin/set_machine_type.sh</span>.</div>
+        <div class="out mono" id="out-machine"></div>
+      </form>
     </div>
 
     <!-- WIFI PAGE -->
@@ -188,7 +180,7 @@
 
     <!-- HOSTNAME PAGE -->
     <div class="content" data-page="hostname" hidden>
-      <form class="card span2" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe">
+      <form class="card span2" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
         <div class="row">
           <div>
             <label>Hostname</label>
@@ -206,7 +198,7 @@
     <!-- SYSTEM PAGE -->
     <div class="content" data-page="system" hidden>
       <form class="card" action="/cgi-bin/reboot.sh" method="post" target="hidden_iframe"
-            onsubmit="return confirm('Reboot now?');">
+            onsubmit="return confirm('Reboot now?');" id="system-form">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
           <div>
             <div style="font-weight:700; margin-bottom:6px">Reboot</div>
@@ -220,8 +212,9 @@
       <div class="card">
         <div style="font-weight:700; margin-bottom:6px">Network Info</div>
         <div class="hint">(Optional: wire this to a status CGI later)</div>
-        <div class="out mono" id="netinfo">IP: <script>document.write((location.host||'').split(':')[0]||'localhost')(function(){const g=document.getElementById("machine-grid");const h=document.getElementById("machine-type-hidden");if(!g||!h)return;g.addEventListener("change",e=>{if(e.target&&e.target.name==="type-radio"){const v=e.target.value;h.value=v;g.querySelectorAll(".machine-card").forEach(c=>c.classList.remove("selected"));const card=e.target.closest(".machine-card");if(card)card.classList.add("selected");}});g.addEventListener("click",e=>{const card=e.target.closest(".machine-card");if(!card)return;const r=card.querySelector(input[type=radio]);if(r){r.checked=true;r.dispatchEvent(new Event("change",{bubbles:true}));}});})();
-</script></div>
+        <div class="out mono" id="netinfo">
+          IP: <script>document.write((location.host||'').split(':')[0]||'localhost');</script>
+        </div>
       </div>
     </div>
   </section>
@@ -248,26 +241,65 @@
   const initHash = (location.hash || '#machine').replace('#','');
   show(['machine','wifi','hostname','system'].includes(initHash) ? initHash : 'machine');
 
-  // Optional: capture form responses via fetch to show output blocks without reloads.
-  // (BusyBox httpd returns HTML; we’ll just insert the <pre> block’s text.)
+  // Intercept form responses and print to their output boxes
   function intercept(formId, outId){
-    const form = document.getElementById(formId) || document.querySelector(`form[action$="${formId.replace('-form','')}.sh"]`);
+    const form = document.getElementById(formId) || document.querySelector(`form#${formId}`);
     const out = document.getElementById(outId);
     if(!form || !out) return;
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
       out.textContent = 'Running...';
-      const resp = await fetch(form.action, { method:'POST', body: new URLSearchParams(fd) });
-      const html = await resp.text();
-      // extract text content from <pre> if present
-      const tmp = document.createElement('div'); tmp.innerHTML = html;
-      out.textContent = (tmp.querySelector('pre')?.innerText || html).trim();
+      try{
+        const resp = await fetch(form.action, { method:'POST', body: new URLSearchParams(fd) });
+        const html = await resp.text();
+        const tmp = document.createElement('div'); tmp.innerHTML = html;
+        out.textContent = (tmp.querySelector('pre')?.innerText || html).trim();
+      }catch(err){
+        out.textContent = 'Error: ' + (err?.message || err);
+      }
     });
   }
   intercept('wifi-form','out-wifi');
-  // You can add intercepts for other forms too if you want inline output:
-  // intercept('<form-id>','<out-id>');
+  intercept('form-machine','out-machine');
+  intercept('host-form','out-host');
+  intercept('system-form','out-system');
+
+  // Machine grid: update hidden field and visual highlight
+  (function(){
+    const g = document.getElementById('machine-grid');
+    const h = document.getElementById('machine-type-hidden');
+    if (!g || !h) return;
+
+    function selectCardFor(radio){
+      g.querySelectorAll('.machine-card').forEach(card => {
+        card.classList.toggle('selected', card.contains(radio));
+      });
+      h.value = radio.value;
+    }
+
+    // initial sync from any pre-checked input
+    const init = g.querySelector('input[type="radio"]:checked');
+    if (init) selectCardFor(init);
+
+    // when a radio changes (label click will trigger this)
+    g.addEventListener('change', (e) => {
+      const r = e.target;
+      if (r && r.name === 'type-radio') selectCardFor(r);
+    });
+
+    // clicking anywhere on a card should check its radio
+    g.addEventListener('click', (e) => {
+      const card = e.target.closest('.machine-card');
+      if (!card) return;
+      const r = card.querySelector('input[type="radio"]');
+      if (!r) return;
+      if (!r.checked) {
+        r.checked = true;
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  })();
 </script>
 </body>
 </html>

@@ -1,0 +1,14 @@
+[Unit]
+Description=Build Klippy C helper before Klipper starts
+# Ensure this runs before Klipper
+Before=klipper.service
+
+[Service]
+Type=oneshot
+User=pi
+Environment=HOME=/home/pi
+ExecStart=/usr/local/bin/klippy-ensure-chelper
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
