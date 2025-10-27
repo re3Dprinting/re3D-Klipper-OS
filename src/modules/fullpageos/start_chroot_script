@@ -731,7 +731,8 @@ sudo -u "${BASE_USER}" bash -lc '
     echo "numpy>=2.3.3" >> "$REQ"
   fi
 '
-
+apt-get update
+apt-get install -y --no-install-recommends libopenblas-dev
 
 
 ###############################################################################
