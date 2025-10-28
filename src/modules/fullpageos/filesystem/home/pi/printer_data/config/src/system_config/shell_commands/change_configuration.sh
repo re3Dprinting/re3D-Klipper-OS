@@ -10,7 +10,8 @@ update_config() {
     local board_type=$3
     local crammer_enabled=$4
     local heater_bed_enabled=$5
-    
+    local mesh_compensation_enabled=$6
+
     # Replace the entire file content with the new section and parameters
     cat > $config_file <<EOF
 [$section]
@@ -18,6 +19,7 @@ platform_type=$platform_type
 board_type=$board_type
 crammer_enabled=$crammer_enabled
 heater_bed_enabled=$heater_bed_enabled
+mesh_compensation_enabled=$mesh_compensation_enabled
 EOF
 }
 
@@ -27,31 +29,31 @@ set_combination() {
     
     case $choice in
         1)
-            update_config "fff" "regular" "archimajor" "false" "true"
+            update_config "fff" "regular" "archimajor" "false" "true" "false"
             ;;
         2)
-            update_config "fff" "xlt" "archimajor" "false" "true"
+            update_config "fff" "xlt" "archimajor" "false" "true" "false"
             ;;
         3)
-            update_config "fff" "terabot" "archimajor" "false" "true"
+            update_config "fff" "terabot" "archimajor" "false" "true" "false"
             ;;
         4)
-            update_config "fgf" "regular" "archimajor" "false" "true"
+            update_config "fgf" "regular" "archimajor" "false" "true" "false"
             ;;
         5)
-            update_config "fgf" "xlt" "archimajor" "false" "true"
+            update_config "fgf" "xlt" "archimajor" "false" "true" "false"
             ;;
         6)
-            update_config "fgf" "terabot" "archimajor" "false" "true"
+            update_config "fgf" "terabot" "archimajor" "false" "true" "false"
             ;;
         7)
-            update_config "fgf" "regular" "archimajor" "true" "true"
+            update_config "fgf" "regular" "archimajor" "true" "true" "false"
             ;;
         8)
-            update_config "fgf" "xlt" "archimajor" "true" "true"
+            update_config "fgf" "xlt" "archimajor" "true" "true" "false"
             ;;
         9)
-            update_config "fgf" "terabot" "archimajor" "true" "true"
+            update_config "fgf" "terabot" "archimajor" "true" "true" "false"
             ;;
         # Add more combinations as needed
         *)
