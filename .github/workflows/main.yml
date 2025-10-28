@@ -221,8 +221,12 @@ jobs:
         with:
           path: ~/crowsnest-binaries
           key: ${{ runner.os }}-crowsnest-binaries
+      
+      - name: Install pigz (faster gzip)
+        run: sudo apt-get update && sudo apt-get install -y pigz
+
       - name: Zip Output
-        run: gzip build.img
+        run: pigz -1 build.img
       - uses: actions/upload-artifact@v4
         with:
           name: build.img.gz
