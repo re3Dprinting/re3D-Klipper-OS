@@ -151,40 +151,6 @@ sudo -u pi -H bash -lc '
   fi
 '
 
-# --- Rebuild chelper via CFFI (offline-safe) ---
-echo "$(ts) rebuilding chelper via CFFI"
-jstatus "running" 88 "Building Klippy C helper"
-
-# Clean bad artifact and caches as 'pi'
-sudo -u pi -H bash -c '
-  set -euo pipefail
-  rm -f "$HOME/klipper/klippy/chelper/c_helper.so" 2>/dev/null || true
-  rm -rf "$HOME/.cache/cffi" "$HOME/.cache/klipper" 2>/dev/null || true
-'
-
-# Trigger the CFFI build from the parent shell with a proper heredoc.
-# IMPORTANT: PY must be alone on its own line, no spaces/tabs.
-sudo -u pi -H env HOME=/home/pi /home/pi/klippy-env/bin/python - <<'PY'
-import os, sys, pathlib
-home = pathlib.Path(os.environ.get("HOME", "/home/pi"))
-klip = home / "klipper"
-sys.path.insert(0, str(klip))
-
-# Import will build chelper if missing
-from klippy import chelper
-ffi, lib = chelper.get_ffi()
-
-dest = klip / "klippy" / "chelper" / "c_helper.so"
-if not dest.exists() or dest.stat().st_size == 0:
-    raise SystemExit(f"chelper not built at {dest}")
-
-print("chelper OK; size:", dest.stat().st_size)
-PY
-
-# Optional: log the file info for diagnostics
-sudo -u pi -H bash -c 'ls -lh "$HOME/klipper/klippy/chelper/c_helper.so" || true'
-
-
 
 echo "$(ts) starting klipper"
 jstatus "running" 90 "Starting Klipper"

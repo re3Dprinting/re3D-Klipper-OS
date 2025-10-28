@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG=/home/pi/printer_data/logs/klippy-ensure-chelper.log
+exec >>"$LOG" 2>&1
+echo "[ $(date +'%F %T') ] ensure chelper start"
+
+USER_HOME="${HOME:-/home/pi}"
+KLIP="$USER_HOME/klipper"
+VENV="$USER_HOME/klippy-env"
+PY="$VENV/bin/python"
+SO="$KLIP/klippy/chelper/c_helper.so"
+LOCK=/tmp/chelper.build.lock
+
+
+# If venv or klipper tree are missing, just skip (don’t fail boot)
+if [ ! -x "$PY" ] || [ ! -d "$KLIP" ]; then
+  echo "Missing venv or klipper tree; skipping (PY=$PY KLIP=$KLIP)"
+  exit 0
+fi
+
+# Prevent concurrent rebuilds (e.g., multiple restarts)
+exec 9>"$LOCK"
+flock 9
+
+# Rebuild if missing or 0 bytes
+if [ -s "$SO" ]; then
+  echo "chelper present: $(ls -lh "$SO")"
+  exit 0
+fi
+
+echo "chelper missing/empty; rebuilding"
+rm -f "$SO" 2>/dev/null || true
+rm -rf "$USER_HOME/.cache/cffi" "$USER_HOME/.cache/klipper" 2>/dev/null || true
+
+HOME="$USER_HOME" "$PY" - <<'PY'
+import os, sys, pathlib
+home = pathlib.Path(os.environ.get("HOME","/home/pi"))
+klip = home / "klipper"
+sys.path.insert(0, str(klip))
+from klippy import chelper
+ffi, lib = chelper.get_ffi()  # triggers compile if needed
+dest = klip / "klippy" / "chelper" / "c_helper.so"
+if not dest.exists() or dest.stat().st_size == 0:
+    raise SystemExit(f"chelper not built at {dest}")
+print("chelper OK; size:", dest.stat().st_size)
+PY
+
+ls -lh "$SO" || true
+echo "chelper rebuild complete"
