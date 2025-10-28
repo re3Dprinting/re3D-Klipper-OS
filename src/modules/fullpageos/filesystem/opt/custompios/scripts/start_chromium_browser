@@ -17,6 +17,9 @@ flags=(
   --disable-pinch
   --noerrdialogs
   --no-memcheck
+  --no-first-run
+  --no-default-browser-check
+  --disable-features=MemorySaverFeatureNotification,HighEfficiencyModeAvailable
   --disable-session-crashed-bubble
   --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT'
   --disable-component-update
