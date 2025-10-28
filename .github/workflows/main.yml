@@ -217,6 +217,17 @@ jobs:
         with:
           path: ~/crowsnest-binaries
           key: ${{ runner.os }}-crowsnest-binaries
+      - name: Free space before compression
+        run: |
+          set -euxo pipefail
+          ls -lh build.img
+          rm -f repository/src/workspace/*.img || true
+          sudo rm -rf repository CustomPiOS extracted || true
+          sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb || true
+          # Optional big frees (guard the toolcache var)
+          sudo rm -rf /usr/share/dotnet /opt/ghc || true
+          [ -n "${AGENT_TOOLSDIRECTORY:-}" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          df -h
       - name: Zip Output
         run: gzip build.img
       - uses: actions/upload-artifact@v4
