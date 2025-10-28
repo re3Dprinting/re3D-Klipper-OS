@@ -11,12 +11,12 @@ jobs:
       - name: Install Dependencies
         run: sudo apt-get install -y coreutils p7zip-full qemu-user-static python3-git rsync
       - name: Checkout CustomPiOS
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: "guysoft/CustomPiOS"
           path: CustomPiOS
       - name: Checkout Project Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
           path: repository
@@ -30,22 +30,20 @@ jobs:
         with:
           path: |
             ~/klipper
-            ~/klippy-env
           key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
           restore-keys: |
             ${{ runner.os }}-klipper-
             ${{ runner.os }}-
-      - name: Cache Moonraker repo and venv
+      - name: Cache Moonraker repo
         uses: actions/cache@v4
         with:
           path: |
             ~/moonraker
-            ~/moonraker-env
           key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
           restore-keys: |
             ${{ runner.os }}-moonraker-
             ${{ runner.os }}-
-      - name: Cache Crowsnest repo and build output
+      - name: Cache Crowsnest repo
         uses: actions/cache@v4
         with:
           path: |
@@ -65,18 +63,15 @@ jobs:
         run: |
           set -euxo pipefail
           DEST="repository/src/modules/fullpageos/filesystem/host_cache"
-          rm -rf "$DEST"
-          mkdir -p "$DEST"
-
-          # Stage repo/venv caches if present
-          for d in klipper klippy-env moonraker moonraker-env crowsnest; do
+          rm -rf "$DEST"; mkdir -p "$DEST"
+          
+          for d in klipper moonraker crowsnest; do
             if [ -d "$HOME/$d" ]; then
               mkdir -p "$DEST/$d"
               rsync -a --delete "$HOME/$d/" "$DEST/$d/"
             fi
           done
 
-          # Stage prebuilt Crowsnest binaries if we have them
           if [ -d "$HOME/crowsnest-binaries" ]; then
             mkdir -p "$DEST/crowsnest-binaries"
             rsync -a --delete "$HOME/crowsnest-binaries/" "$DEST/crowsnest-binaries/"
@@ -145,14 +140,8 @@ jobs:
           echo "=== Klipper out/ directory (firmware) ==="
           ls -lah extracted/home/pi/klipper/out || true
 
-          echo "=== Klippy-env ==="
-          du -sh extracted/home/pi/klippy-env || true
-
           echo "=== Moonraker directory ==="
           ls -lah extracted/home/pi/moonraker || true
-
-          echo "=== Moonraker-env ==="
-          du -sh extracted/home/pi/moonraker-env || true
 
           echo "=== Crowsnest directory ==="
           ls -lah extracted/home/pi/crowsnest || true
@@ -165,16 +154,12 @@ jobs:
 
           echo "=== Copying build outputs to runner ==="
           sudo cp -r extracted/home/pi/klipper        "$HOME/klipper"        || true
-          sudo cp -r extracted/home/pi/klippy-env     "$HOME/klippy-env"     || true
           sudo cp -r extracted/home/pi/moonraker      "$HOME/moonraker"      || true
-          sudo cp -r extracted/home/pi/moonraker-env  "$HOME/moonraker-env"  || true
           sudo cp -r extracted/home/pi/crowsnest      "$HOME/crowsnest"      || true
 
           echo "=== Fixing permissions ==="
           sudo chown -R runner:docker "$HOME/klipper"        || true
-          sudo chown -R runner:docker "$HOME/klippy-env"     || true
           sudo chown -R runner:docker "$HOME/moonraker"      || true
-          sudo chown -R runner:docker "$HOME/moonraker-env"  || true
           sudo chown -R runner:docker "$HOME/crowsnest"      || true
 
           # Extract Crowsnest binaries from image
@@ -189,13 +174,33 @@ jobs:
           echo "=== Verifying copied directories ==="
           ls -lah "$HOME/klipper" || true
           ls -lah "$HOME/crowsnest" || true
-          du -sh "$HOME/klipper" "$HOME/klippy-env" "$HOME/moonraker" "$HOME/moonraker-env" "$HOME/crowsnest" || true
+          du -sh "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" || true
+      - name: Free space before caching
+        run: |
+          set -euxo pipefail
+          # prune repos so caches are small
+          for d in klipper moonraker crowsnest; do
+            if [ -d "$HOME/$d/.git" ]; then
+              git -C "$HOME/$d" gc --prune=now --aggressive || true
+              git -C "$HOME/$d" repack -a -d --depth=1 --window=1 || true
+            fi
+          done
+
+          # show sizes we’re about to cache
+          du -sh "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" 2>/dev/null || true
+          du -sh "$HOME/crowsnest-binaries" 2>/dev/null || true
+
+          # delete big unneeded stuff BEFORE cache-save (keeps tar from OOM-ing)
+          sudo rm -rf repository CustomPiOS extracted || true
+          sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc || true
+          [ -n "${AGENT_TOOLSDIRECTORY:-}" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          df -h
       - name: Save Klipper cache
         uses: actions/cache/save@v4
         with:
           path: |
             ~/klipper
-            ~/klippy-env
           key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
 
       - name: Save Moonraker cache
@@ -203,7 +208,6 @@ jobs:
         with:
           path: |
             ~/moonraker
-            ~/moonraker-env
           key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
 
       - name: Save Crowsnest cache
@@ -217,17 +221,6 @@ jobs:
         with:
           path: ~/crowsnest-binaries
           key: ${{ runner.os }}-crowsnest-binaries
-      - name: Free space before compression
-        run: |
-          set -euxo pipefail
-          ls -lh build.img
-          rm -f repository/src/workspace/*.img || true
-          sudo rm -rf repository CustomPiOS extracted || true
-          sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb || true
-          # Optional big frees (guard the toolcache var)
-          sudo rm -rf /usr/share/dotnet /opt/ghc || true
-          [ -n "${AGENT_TOOLSDIRECTORY:-}" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
-          df -h
       - name: Zip Output
         run: gzip build.img
       - uses: actions/upload-artifact@v4
