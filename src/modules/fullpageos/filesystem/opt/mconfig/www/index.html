@@ -29,9 +29,21 @@
   .tab{
     appearance:none;border:1px solid var(--border);background:#13151a;
     color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer;
-    user-select:none;font-weight:600;letter-spacing:.2px;
+    user-select:none;font-weight:600;letter-spacing:.2px;text-decoration:none;display:inline-block;
   }
   .tab.active{background:var(--brand);border-color:#1e50a8}
+
+  /* NEW: right-aligned, separated Dashboard button styles */
+  .tabs .spacer{flex:1}
+  .tabs .divider{width:1px;height:32px;background:var(--border);border-radius:1px}
+  .tab.cta{
+    background:var(--brand);
+    border-color:#1e50a8;
+    font-size:15px;
+    padding:12px 18px;
+    font-weight:800;
+    box-shadow:0 0 0 2px rgba(45,108,223,.25) inset;
+  }
 
   .pages{
     background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
@@ -89,6 +101,11 @@
     <button class="tab" data-page="wifi">Wi-Fi</button>
     <button class="tab" data-page="hostname">Hostname</button>
     <button class="tab" data-page="system">System</button>
+
+    <span class="spacer"></span>
+    <span class="divider" aria-hidden="true"></span>
+    <!-- NEW: Large, separated Dashboard link (same-window navigation) -->
+    <a class="tab cta" href="http://localhost/" title="Open Dashboard">Dashboard ↗</a>
   </nav>
 
   <section class="pages">
@@ -175,7 +192,7 @@
             <div style="font-weight:700;margin-bottom:6px">Reboot</div>
             <div class="hint">Performs a clean reboot in ~2 seconds.</div>
           </div>
-          <button type="submit">Reboot</button>
+            <button type="submit">Reboot</button>
         </div>
         <div class="out mono" id="out-system"></div>
       </form>
@@ -194,9 +211,10 @@
 <iframe name="hidden_iframe" style="display:none"></iframe>
 
 <script>
-  const tabs=document.querySelectorAll('.tab');
+  const tabs=document.querySelectorAll('.tab[data-page]');
   const pages=document.querySelectorAll('.content');
   const title=document.getElementById('page-title');
+
   function show(page){
     pages.forEach(p=>p.hidden=(p.dataset.page!==page));
     tabs.forEach(t=>t.classList.toggle('active',t.dataset.page===page));
@@ -205,11 +223,12 @@
   }
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.page)));
   show((location.hash||'#machine').replace('#',''));
+
   // keep hidden field in sync
   document.querySelectorAll('input[name="type-radio"]').forEach(r=>{
-    r.addEventListener('change',()=>{
+    r.addEventListener('change',e=>{
       const h=document.getElementById('machine-type-hidden');
-      if(h)h.value=r.value;
+      if(h) h.value = e.target.value;
     });
   });
 </script>
