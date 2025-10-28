@@ -2,9 +2,15 @@ name: Build Image
 
 on: push
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CACHE_VER: v1
     steps:
       - name: Update apt
         run: sudo apt-get update
@@ -21,50 +27,60 @@ jobs:
           repository: ${{ github.repository }}
           path: repository
           submodules: true
+      - name: Compute cache keys
+        id: keys
+        run: |
+          FILE=repository/src/modules/fullpageos/start_chroot_script
+          H=$( [ -f "$FILE" ] && sha256sum "$FILE" | cut -d' ' -f1 || echo none )
+          echo "KLIPPER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-klipper-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "MOONRAKER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "CROWSNEST_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "CROWSNEST_BIN_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-${{ github.ref_name }}" >> $GITHUB_OUTPUT
       - name: Download Raspbian Image
         run: cd repository/src/image && wget -q -c --trust-server-names 'https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz'
       - name: Update CustomPiOS Paths
         run: cd repository/src && ../../CustomPiOS/src/update-custompios-paths
-      - name: Cache Klipper repo, venv, and firmware
+      - id: klipper-restore
         uses: actions/cache@v4
         with:
           path: |
             ~/klipper
-          key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ steps.keys.outputs.KLIPPER_KEY }}
           restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VER }}-klipper-
             ${{ runner.os }}-klipper-
-            ${{ runner.os }}-
-      - name: Cache Moonraker repo
+      - id: moonraker-restore
         uses: actions/cache@v4
         with:
           path: |
             ~/moonraker
-          key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ steps.keys.outputs.MOONRAKER_KEY }}
           restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-
             ${{ runner.os }}-moonraker-
-            ${{ runner.os }}-
-      - name: Cache Crowsnest repo
+      - id: crowsnest-restore
         uses: actions/cache@v4
         with:
           path: |
             ~/crowsnest
-          key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ steps.keys.outputs.CROWSNEST_KEY }}
           restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-
             ${{ runner.os }}-crowsnest-
-            ${{ runner.os }}-
-      - name: Restore Crowsnest binary cache
+      - id: crowsnest-bin-restore
         uses: actions/cache@v4
         with:
           path: ~/crowsnest-binaries
-          key: ${{ runner.os }}-crowsnest-binaries
+          key: ${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
           restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-
             ${{ runner.os }}-crowsnest-binaries-
       - name: Stage caches (incl. Crowsnest binaries) into host_cache
         run: |
           set -euxo pipefail
           DEST="repository/src/modules/fullpageos/filesystem/host_cache"
           rm -rf "$DEST"; mkdir -p "$DEST"
-          
+
           for d in klipper moonraker crowsnest; do
             if [ -d "$HOME/$d" ]; then
               mkdir -p "$DEST/$d"
@@ -191,36 +207,42 @@ jobs:
           du -sh "$HOME/crowsnest-binaries" 2>/dev/null || true
 
           # delete big unneeded stuff BEFORE cache-save (keeps tar from OOM-ing)
-          sudo rm -rf repository CustomPiOS extracted || true
           sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb || true
           sudo rm -rf /usr/share/dotnet /opt/ghc || true
           [ -n "${AGENT_TOOLSDIRECTORY:-}" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
           df -h
       - name: Save Klipper cache
+        if: steps.klipper-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             ~/klipper
-          key: ${{ runner.os }}-klipper-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ steps.keys.outputs.KLIPPER_KEY }}
 
       - name: Save Moonraker cache
+        if: steps.moonraker-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             ~/moonraker
-          key: ${{ runner.os }}-moonraker-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ steps.keys.outputs.MOONRAKER_KEY }}
 
       - name: Save Crowsnest cache
+        if: steps.crowsnest-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             ~/crowsnest
-          key: ${{ runner.os }}-crowsnest-${{ hashFiles('repository/src/modules/fullpageos/start_chroot_script') }}
+          key: ${{ steps.keys.outputs.CROWSNEST_KEY }}
       - name: Save Crowsnest binary cache
+        if: steps.crowsnest-bin-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/crowsnest-binaries
-          key: ${{ runner.os }}-crowsnest-binaries
+          key: ${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
+
+      - name: Cleanup
+        run: sudo rm -rf repository CustomPiOS extracted || true
       - name: Zip Output
         run: pigz -1 build.img
       - uses: actions/upload-artifact@v4
