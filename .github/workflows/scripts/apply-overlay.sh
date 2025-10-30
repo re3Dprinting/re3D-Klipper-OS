@@ -20,7 +20,24 @@ cleanup() {
   # then filesystems
   mountpoint -q "${MNT_BOOT}" && sudo umount -R "${MNT_BOOT}" || true
   mountpoint -q "${MNT_ROOT}" && sudo umount -R "${MNT_ROOT}" || true
-  [ -n "${LOOP}" ] && sudo losetup -d "${LOOP}" || true
+  # Run an offline fsck on the root partition (p2) to repair ext4 metadata
+  # before detaching the loop device. This prevents EUCLEAN/"Structure needs cleaning"
+  # kernel failures on first boot after heavy metadata changes.
+  if [ -n "${LOOP}" ]; then
+    ROOT_PART="${LOOP}p2"
+    if [ -b "${ROOT_PART}" ]; then
+      if command -v e2fsck >/dev/null 2>&1; then
+        echo "Running offline fsck on ${ROOT_PART}"
+        sudo sync
+        sudo e2fsck -f -y "${ROOT_PART}" || true
+        # Clear any multi-mount protection flags if present
+        sudo tune2fs -E clear_mmp "${ROOT_PART}" || true
+      else
+        echo "Warning: e2fsck not found; skipping offline fsck"
+      fi
+    fi
+    sudo losetup -d "${LOOP}" || true
+  fi
   rm -rf "${WORK_DIR}"
 }
 trap cleanup EXIT
