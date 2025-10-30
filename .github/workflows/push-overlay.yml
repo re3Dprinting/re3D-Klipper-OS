@@ -1,4 +1,4 @@
-name: Quick Build from Baseline (Overlay only)
+name: Quick Build from Baseline
 
 on:
   push:
@@ -70,31 +70,33 @@ jobs:
           script: |
             const workflow_id = 'nightly.yml';
             const { owner, repo } = context.repo;
-            // Find recent successful runs of the nightly workflow
-            const runs = await github.actions.listWorkflowRuns({ owner, repo, workflow_id, status: 'success', per_page: 50 });
-            if (!runs || !runs.data || runs.data.total_count === 0) {
+            // Find recent successful runs of the nightly workflow (use REST namespace)
+            const runsResp = await github.rest.actions.listWorkflowRunsForRepo({ owner, repo, workflow_id, status: 'success', per_page: 50 });
+            const runs = (runsResp && runsResp.data && runsResp.data.workflow_runs) || [];
+            if (!runs || runs.length === 0) {
               core.setFailed('No successful nightly workflow runs found (workflow: ' + workflow_id + ')');
               return;
             }
-            const run = runs.data.workflow_runs.find(r => r.conclusion === 'success');
+            const run = runs.find(r => r.conclusion === 'success');
             if (!run) {
               core.setFailed('No successful workflow run found in the recent runs for ' + workflow_id);
               return;
             }
             const run_id = run.id;
-            const artifacts = await github.actions.listWorkflowRunArtifacts({ owner, repo, run_id });
-            if (!artifacts || !artifacts.data || artifacts.data.total_count === 0) {
+            const artifactsResp = await github.rest.actions.listWorkflowRunArtifacts({ owner, repo, run_id });
+            const artifacts = (artifactsResp && artifactsResp.data && artifactsResp.data.artifacts) || [];
+            if (!artifacts || artifacts.length === 0) {
               core.setFailed('No artifacts found for workflow run ' + run_id);
               return;
             }
             // Prefer the canonical nightly baseline artifact name, fallback to heuristics
             const preferredName = 'baseline-os_apps_ui.img.gz';
-            let artifact = artifacts.data.artifacts.find(a => a.name === preferredName);
+            let artifact = artifacts.find(a => a.name === preferredName);
             if (!artifact) {
-              artifact = artifacts.data.artifacts.find(a => a.name.includes('baseline') || a.name.includes('os_apps_ui') || a.name.includes('baseline-os'));
+              artifact = artifacts.find(a => a.name.includes('baseline') || a.name.includes('os_apps_ui') || a.name.includes('baseline-os'));
             }
             if (!artifact) {
-              core.setFailed('No baseline-style artifact found in run ' + run_id + '. Available artifacts: ' + artifacts.data.artifacts.map(a=>a.name).join(','));
+              core.setFailed('No baseline-style artifact found in run ' + run_id + '. Available artifacts: ' + artifacts.map(a=>a.name).join(','));
               return;
             }
             core.setOutput('artifact_id', String(artifact.id));
