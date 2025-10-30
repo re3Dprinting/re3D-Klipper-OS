@@ -59,13 +59,15 @@ if [ -n "${OVERLAY_DIR}" ]; then
   echo "Applying overlay from: ${OVERLAY_DIR}"
 
   # Rootfs (everything except 'boot/')
-  sudo rsync -a --delete --exclude 'boot/' "${OVERLAY_DIR}/" "${MNT_ROOT}/"
+  # Use --force so rsync can replace directories, and keep -a for permissions on rootfs
+  sudo rsync -a --delete --force --exclude 'boot/' "${OVERLAY_DIR}/" "${MNT_ROOT}/"
 
   # Boot overlay (if present and p1 mounted)
   if [ -d "${OVERLAY_DIR}/boot" ]; then
     if mountpoint -q "${MNT_BOOT}"; then
       echo "Applying boot overlay from: ${OVERLAY_DIR}/boot -> p1"
-      sudo rsync -a "${OVERLAY_DIR}/boot/" "${MNT_BOOT}/"
+      # Boot is usually vfat; avoid attempting chown/chgrp which will fail on vfat
+      sudo rsync -rltD --delete --force --no-owner --no-group "${OVERLAY_DIR}/boot/" "${MNT_BOOT}/"
     else
       echo "WARN: ${OVERLAY_DIR}/boot exists, but boot partition not mounted; skipping boot overlay."
     fi
