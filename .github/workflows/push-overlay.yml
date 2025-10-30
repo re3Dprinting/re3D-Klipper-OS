@@ -48,19 +48,45 @@ jobs:
           echo "CROWSNEST_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
           echo "CROWSNEST_BIN_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-${{ github.ref_name }}" >> $GITHUB_OUTPUT
 
-      - name: Restore caches (per-component recommended)
+      - id: klipper-restore
+        name: Restore Klipper cache
         uses: actions/cache@v4
         with:
           path: |
             ~/klipper
-            ~/moonraker
-            ~/crowsnest
-            ~/crowsnest-binaries
-          key: ${{ steps.keys.outputs.KLIPPER_KEY }}-${{ steps.keys.outputs.MOONRAKER_KEY }}-${{ steps.keys.outputs.CROWSNEST_KEY }}-${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
+          key: ${{ steps.keys.outputs.KLIPPER_KEY }}
           restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-klipper-
+
+      - id: moonraker-restore
+        name: Restore Moonraker cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/moonraker
+          key: ${{ steps.keys.outputs.MOONRAKER_KEY }}
+          restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-
+
+      - id: crowsnest-restore
+        name: Restore Crowsnest cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/crowsnest
+          key: ${{ steps.keys.outputs.CROWSNEST_KEY }}
+          restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-
+
+      - id: crowsnest-bin-restore
+        name: Restore Crowsnest binaries cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/crowsnest-binaries
+          key: ${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-
 
       - name: Find latest successful nightly run's baseline artifact
         id: find_baseline_artifact
