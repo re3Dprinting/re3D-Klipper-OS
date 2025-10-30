@@ -10,16 +10,23 @@ MNT_ROOT="${WORK_DIR}/mnt"
 MNT_BOOT="${WORK_DIR}/mnt_boot"
 LOOP=""
 
+# ---------- helpers ----------
+unmount_all() {
+  set +e
+  # Unbinds first (in safe order)
+  mountpoint -q "${MNT_ROOT}/dev/pts" && sudo umount -R "${MNT_ROOT}/dev/pts"
+  mountpoint -q "${MNT_ROOT}/dev"     && sudo umount -R "${MNT_ROOT}/dev"
+  mountpoint -q "${MNT_ROOT}/proc"    && sudo umount -R "${MNT_ROOT}/proc"
+  mountpoint -q "${MNT_ROOT}/sys"     && sudo umount -R "${MNT_ROOT}/sys"
+  # Then filesystems
+  mountpoint -q "${MNT_BOOT}" && sudo umount -R "${MNT_BOOT}"
+  mountpoint -q "${MNT_ROOT}" && sudo umount -R "${MNT_ROOT}"
+  set -e
+}
+
 cleanup() {
   set +e
-  # unbinds first
-  mountpoint -q "${MNT_ROOT}/dev/pts" && sudo umount -R "${MNT_ROOT}/dev/pts" || true
-  mountpoint -q "${MNT_ROOT}/dev"     && sudo umount -R "${MNT_ROOT}/dev"     || true
-  mountpoint -q "${MNT_ROOT}/proc"    && sudo umount -R "${MNT_ROOT}/proc"    || true
-  mountpoint -q "${MNT_ROOT}/sys"     && sudo umount -R "${MNT_ROOT}/sys"     || true
-  # then filesystems
-  mountpoint -q "${MNT_BOOT}" && sudo umount -R "${MNT_BOOT}" || true
-  mountpoint -q "${MNT_ROOT}" && sudo umount -R "${MNT_ROOT}" || true
+  unmount_all || true
   [ -n "${LOOP}" ] && sudo losetup -d "${LOOP}" || true
   rm -rf "${WORK_DIR}"
 }
@@ -27,10 +34,10 @@ trap cleanup EXIT
 
 mkdir -p "${MNT_ROOT}" "${MNT_BOOT}"
 
-# 1) Work on a copy so IMG_IN is never mutated
+# 1) Work on a copy so input is never mutated
 cp -f --reflink=auto "${IMG_IN}" "${WORK_IMG}"
 
-# 2) Attach & mount root/boot
+# 2) Attach loop & mount
 LOOP="$(sudo losetup -fP --show "${WORK_IMG}")"
 ROOT_PART="${LOOP}p2"
 BOOT_PART="${LOOP}p1"
@@ -42,8 +49,6 @@ if [ ! -b "${ROOT_PART}" ]; then
 fi
 
 sudo mount "${ROOT_PART}" "${MNT_ROOT}"
-
-# FAT doesn’t carry unix perms; mount is still writable by root
 if [ -b "${BOOT_PART}" ]; then
   sudo mount "${BOOT_PART}" "${MNT_BOOT}"
 fi
@@ -58,42 +63,34 @@ elif [ -d modules/fullpageos/filesystem ]; then
   OVERLAY_DIR="modules/fullpageos/filesystem"
 fi
 
+# 4) Apply overlay (root + boot)
 if [ -n "${OVERLAY_DIR}" ]; then
   echo "Applying overlay from: ${OVERLAY_DIR}"
+  # Root overlay: add/override only (no --delete)
+  sudo rsync -a --exclude 'boot/' "${OVERLAY_DIR}/" "${MNT_ROOT}/"
 
-  # 3a) Root overlay: ADD/OVERRIDE ONLY (no --delete)
-  sudo rsync -a \
-    --exclude 'boot/' \
-    "${OVERLAY_DIR}/" "${MNT_ROOT}/"
-
-  # 3b) Boot overlay: FAT-safe copy (no owner/group/perms)
-  if [ -d "${OVERLAY_DIR}/boot" ]; then
-    if mountpoint -q "${MNT_BOOT}"; then
-      echo "Applying boot overlay from: ${OVERLAY_DIR}/boot -> p1"
-      sudo rsync -rltD \
-        --no-owner --no-group --no-perms \
-        --modify-window=1 \
-        "${OVERLAY_DIR}/boot/" "${MNT_BOOT}/"
-    else
-      echo "WARN: boot overlay present but boot partition not mounted; skipping"
-    fi
+  # Boot overlay (FAT-safe flags)
+  if [ -d "${OVERLAY_DIR}/boot" ] && mountpoint -q "${MNT_BOOT}"; then
+    echo "Applying boot overlay from: ${OVERLAY_DIR}/boot -> p1"
+    sudo rsync -rltD --no-owner --no-group --no-perms --modify-window=1 \
+      "${OVERLAY_DIR}/boot/" "${MNT_BOOT}/"
   fi
 else
   echo "No overlay directory found (tried filesystem/, src/modules/fullpageos/filesystem/, modules/fullpageos/filesystem/)"
 fi
 
-# 4) Ensure /host_cache exists (CustomPiOS unpack tolerance)
+# 5) Tolerance for CustomPiOS unpack
 if [ ! -d "${MNT_ROOT}/host_cache" ]; then
   sudo mkdir -p "${MNT_ROOT}/host_cache"
   sudo chmod 0755 "${MNT_ROOT}/host_cache"
 fi
 
-# 5) Optional: normalize ownership for files you overlay under /home/pi
+# 6) Optional ownership nudge for known files
 if [ -f "${MNT_ROOT}/home/pi/wait.html" ]; then
   sudo chown 1000:1000 "${MNT_ROOT}/home/pi/wait.html" 2>/dev/null || true
 fi
 
-# 6) Optional fast updater: provide /dev,/proc,/sys for chroot
+# 7) Optional fast updater inside chroot
 sudo mount --bind /dev  "${MNT_ROOT}/dev"
 sudo mount --bind /proc "${MNT_ROOT}/proc"
 sudo mount --bind /sys  "${MNT_ROOT}/sys"
@@ -110,19 +107,21 @@ else
   echo "No fast updater present; skipping."
 fi
 
+# 8) Flush, then unmount EVERYTHING before fsck
 sync
+unmount_all
 
-if [ -b "${ROOT_PART}" ]; then
-  if command -v e2fsck >/dev/null 2>&1; then
-    echo "Running offline fsck on ${ROOT_PART}"
-    # -p = preen (fix safely); fallback to -y if you really want fully automatic
-    sudo e2fsck -f -p "${ROOT_PART}" || {
-      echo "e2fsck reported unfixable issues; aborting" >&2
-      exit 1
-    }
-  fi
+# 9) Offline fsck on the unmounted root partition
+if command -v e2fsck >/dev/null 2>&1; then
+  echo "Running offline fsck on ${ROOT_PART}"
+  # -p (preen) fixes safely; if you truly want full auto, switch to -y
+  sudo e2fsck -f -p "${ROOT_PART}"
+else
+  echo "Warning: e2fsck not found; skipping offline fsck"
 fi
 
-# 7) Emit final image (the work copy that we changed)
+# 10) Detach loop and emit the image
+sudo losetup -d "${LOOP}"
+LOOP=""
 cp -f "${WORK_IMG}" "${IMG_OUT}"
 echo "Wrote overlayed image to: ${IMG_OUT}"
