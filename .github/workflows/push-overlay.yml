@@ -1,0 +1,143 @@
+name: Quick Build from Baseline (Overlay only)
+
+on:
+  push:
+    paths:
+      - "filesystem/**"
+      - "modules/**"
+      - "src/modules/**"
+      - ".github/workflows/push-overlay.yml"
+  pull_request:
+    paths:
+      - "filesystem/**"
+      - "modules/**"
+      - "src/modules/**"
+      - ".github/workflows/push-overlay.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: overlay-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASELINE_RELEASE_TAG: baseline-latest
+  CACHE_VER: v1
+
+jobs:
+  quick-overlay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static coreutils rsync pigz jq gh unzip
+
+      - name: Compute cache keys
+        id: keys
+        run: |
+          FILE=src/modules/fullpageos/start_chroot_script
+          H=$( [ -f "$FILE" ] && sha256sum "$FILE" | cut -d' ' -f1 || echo none )
+          echo "KLIPPER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-klipper-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "MOONRAKER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "CROWSNEST_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "CROWSNEST_BIN_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+      - name: Restore caches (per-component recommended)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/klipper
+            ~/moonraker
+            ~/crowsnest
+            ~/crowsnest-binaries
+          key: ${{ steps.keys.outputs.KLIPPER_KEY }}-${{ steps.keys.outputs.MOONRAKER_KEY }}-${{ steps.keys.outputs.CROWSNEST_KEY }}-${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VER }}-klipper-
+            ${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-
+            ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-
+
+      - name: Find latest successful nightly run's baseline artifact
+        id: find_baseline_artifact
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const workflow_id = 'nightly.yml';
+            const { owner, repo } = context.repo;
+            // Find recent successful runs of the nightly workflow
+            const runs = await github.actions.listWorkflowRuns({ owner, repo, workflow_id, status: 'success', per_page: 50 });
+            if (!runs || !runs.data || runs.data.total_count === 0) {
+              core.setFailed('No successful nightly workflow runs found (workflow: ' + workflow_id + ')');
+              return;
+            }
+            const run = runs.data.workflow_runs.find(r => r.conclusion === 'success');
+            if (!run) {
+              core.setFailed('No successful workflow run found in the recent runs for ' + workflow_id);
+              return;
+            }
+            const run_id = run.id;
+            const artifacts = await github.actions.listWorkflowRunArtifacts({ owner, repo, run_id });
+            if (!artifacts || !artifacts.data || artifacts.data.total_count === 0) {
+              core.setFailed('No artifacts found for workflow run ' + run_id);
+              return;
+            }
+            // Prefer the canonical nightly baseline artifact name, fallback to heuristics
+            const preferredName = 'baseline-os_apps_ui.img.gz';
+            let artifact = artifacts.data.artifacts.find(a => a.name === preferredName);
+            if (!artifact) {
+              artifact = artifacts.data.artifacts.find(a => a.name.includes('baseline') || a.name.includes('os_apps_ui') || a.name.includes('baseline-os'));
+            }
+            if (!artifact) {
+              core.setFailed('No baseline-style artifact found in run ' + run_id + '. Available artifacts: ' + artifacts.data.artifacts.map(a=>a.name).join(','));
+              return;
+            }
+            core.setOutput('artifact_id', String(artifact.id));
+            core.setOutput('artifact_name', artifact.name);
+
+      - name: Download and extract baseline artifact
+        id: download_baseline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ART_ID=${{ steps.find_baseline_artifact.outputs.artifact_id }}
+          echo "Found artifact id: ${ART_ID}"
+          API_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${ART_ID}/zip"
+          echo "Downloading artifact zip from: ${API_URL}"
+          curl -L -H "Authorization: token ${GITHUB_TOKEN}" -o baseline.zip "${API_URL}"
+          unzip -o baseline.zip -d baseline
+          # Find the first image (img or img.gz) inside the artifact
+          BASELINE_FILE=$(find baseline -type f -name '*.img*' | head -n1 || true)
+          if [ -z "${BASELINE_FILE}" ]; then
+            echo "No image file found inside artifact zip" >&2
+            ls -R baseline
+            exit 1
+          fi
+          echo "Found baseline file: ${BASELINE_FILE}"
+          if [[ "${BASELINE_FILE}" == *.gz ]]; then
+            gunzip -c "${BASELINE_FILE}" > baseline.img
+          else
+            mv "${BASELINE_FILE}" baseline.img
+          fi
+          ls -lh baseline.img
+
+      - name: Apply overlay changes to baseline
+        run: |
+          bash ./.github/workflows/scripts/apply-overlay.sh baseline.img final.img
+
+      - name: Compress output
+        run: |
+          pigz -1 -c final.img > final.img.gz
+          ls -lh final.img.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final.img.gz
+          path: final.img.gz
+          retention-days: 7

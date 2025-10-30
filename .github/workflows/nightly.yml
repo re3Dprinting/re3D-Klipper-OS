@@ -1,0 +1,195 @@
+name: Nightly Baseline (Base → Packages → Apps → UI)
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CACHE_VER: v1
+  BASELINE_RELEASE_TAG: baseline-latest
+  IMAGE_URL: https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz
+
+jobs:
+  base:
+    name: "Build layer: base"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static coreutils p7zip-full rsync pigz jq
+
+      - name: Checkout CustomPiOS
+        uses: actions/checkout@v4
+        with:
+          repository: guysoft/CustomPiOS
+          path: CustomPiOS
+
+      - name: Download Raspberry Pi OS image
+        run: |
+          set -euo pipefail
+          mkdir -p src/image
+          cd src/image
+          wget -q -c --trust-server-names "${IMAGE_URL}"
+
+      - name: Update CustomPiOS paths
+        run: |
+          set -euo pipefail
+          cd src && ../CustomPiOS/src/update-custompios-paths
+
+      - name: Build base image (only base layer)
+        run: |
+          set -euo pipefail
+          cd src
+          LAYER_MODE=base sudo bash -x ./build_dist
+
+      - name: Collect artifact
+        run: |
+          set -euo pipefail
+          ls -lh src/workspace/ || true
+          cp src/workspace/*-raspios-*-lite.img base.img
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: layer-base
+          path: base.img
+          retention-days: 5
+          if-no-files-found: error
+
+  packages:
+    name: "Build layer: packages"
+    runs-on: ubuntu-latest
+    needs: base
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static coreutils rsync pigz
+
+      - name: Download base layer
+        uses: actions/download-artifact@v4
+        with:
+          name: layer-base
+          path: .
+
+      - name: Clone CustomPiOS
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/guysoft/CustomPiOS CustomPiOS || true
+
+      - name: Apply packages layer
+        run: |
+          set -euo pipefail
+          IMAGE_IN=base.img IMAGE_OUT=os_pkgs.img \
+          bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/base.img" "$PWD/os_pkgs.img" .github/workflows/scripts/layer_packages.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: layer-packages
+          path: os_pkgs.img
+          retention-days: 5
+          if-no-files-found: error
+
+  apps:
+    name: "Build layer: apps (Klipper, Moonraker, Crowsnest)"
+    runs-on: ubuntu-latest
+    needs: packages
+    env:
+      CACHE_VER: v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static coreutils rsync pigz git
+
+      - name: Restore component caches (placeholder)
+        run: |
+          echo "(Note) Caching should be split per-component in a follow-up change"
+
+      - name: Download packages layer
+        uses: actions/download-artifact@v4
+        with:
+          name: layer-packages
+          path: .
+
+      - name: Clone CustomPiOS
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/guysoft/CustomPiOS CustomPiOS || true
+
+      - name: Apply apps layer (seed host_cache if present)
+        run: |
+          set -euo pipefail
+          HOST_CACHE_PATH="${{ github.workspace }}/src/modules/fullpageos/filesystem/host_cache"
+          if [ -d "$HOST_CACHE_PATH" ]; then
+            IMAGE_IN=os_pkgs.img IMAGE_OUT=os_apps.img HOST_CACHE="$HOST_CACHE_PATH" \
+            bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_pkgs.img" "$PWD/os_apps.img" .github/workflows/scripts/layer_apps.sh
+          else
+            IMAGE_IN=os_pkgs.img IMAGE_OUT=os_apps.img \
+            bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_pkgs.img" "$PWD/os_apps.img" .github/workflows/scripts/layer_apps.sh
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: layer-apps
+          path: os_apps.img
+          retention-days: 5
+          if-no-files-found: error
+
+  ui:
+    name: "Build layer: UI + finalize baseline"
+    runs-on: ubuntu-latest
+    needs: apps
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static coreutils rsync pigz jq || true
+
+      - name: Download apps layer
+        uses: actions/download-artifact@v4
+        with:
+          name: layer-apps
+          path: .
+
+      - name: Clone CustomPiOS
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/guysoft/CustomPiOS CustomPiOS || true
+
+      - name: Apply UI layer
+        run: |
+          set -euo pipefail
+          IMAGE_IN=os_apps.img IMAGE_OUT=os_apps_ui.img \
+          bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_apps.img" "$PWD/os_apps_ui.img" .github/workflows/scripts/layer_ui.sh
+
+      - name: Compress baseline
+        run: |
+          set -euo pipefail
+          pigz -1 -c os_apps_ui.img > os_apps_ui.img.gz
+          ls -lh os_apps_ui.img.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baseline-os_apps_ui.img.gz
+          path: os_apps_ui.img.gz
+          retention-days: 7
+          if-no-files-found: error

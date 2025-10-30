@@ -15,6 +15,19 @@ step_end() { local end_time=$(date +%s); local elapsed=$((end_time-STEP_TIME)); 
 
 source /common.sh
 
+# LAYER_MODE dispatcher: allow running only selected parts of this script
+# LAYER_MODE can be: base | packages | apps | ui | all (default: all)
+MODE="${LAYER_MODE:-all}"
+echo "LAYER_MODE=$MODE"
+run_mode_or_all() {
+  local want="$1"
+  if [ "$MODE" = "all" ] || [ "$MODE" = "$want" ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 echo "=== Checking for host cache ==="
 ls -lah /host_cache || echo "No /host_cache found"
 
