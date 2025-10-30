@@ -115,18 +115,41 @@ jobs:
               core.setFailed('No artifacts found for workflow run ' + run_id);
               return;
             }
-            // Prefer the canonical nightly baseline artifact name, fallback to heuristics
+            // Prefer the canonical nightly baseline artifact name, fallback to heuristics.
+            // Search recent successful runs in descending order and pick the first run that contains
+            // a baseline-style artifact. This avoids picking an older successful run that didn't
+            // upload the baseline artifact.
             const preferredName = 'baseline-os_apps_ui.img.gz';
-            let artifact = artifacts.find(a => a.name === preferredName);
-            if (!artifact) {
-              artifact = artifacts.find(a => a.name.includes('baseline') || a.name.includes('os_apps_ui') || a.name.includes('baseline-os'));
+            let chosenArtifact = null;
+            let chosenRunId = null;
+
+            // sort runs by created_at desc (most recent first)
+            runs.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            for (const r of runs) {
+              const rid = r.id;
+              const artResp = await github.rest.actions.listWorkflowRunArtifacts({ owner, repo, run_id: rid });
+              const arts = (artResp && artResp.data && artResp.data.artifacts) || [];
+              if (!arts || arts.length === 0) continue;
+              // prefer exact name
+              let art = arts.find(a => a.name === preferredName);
+              if (!art) {
+                art = arts.find(a => a.name.includes('baseline') || a.name.includes('os_apps_ui') || a.name.includes('baseline-os'));
+              }
+              if (art) {
+                chosenArtifact = art;
+                chosenRunId = rid;
+                break;
+              }
             }
-            if (!artifact) {
-              core.setFailed('No baseline-style artifact found in run ' + run_id + '. Available artifacts: ' + artifacts.map(a=>a.name).join(','));
+
+            if (!chosenArtifact) {
+              core.setFailed('No baseline-style artifact found in recent successful nightly runs. Last inspected run id: ' + run_id + '.');
               return;
             }
-            core.setOutput('artifact_id', String(artifact.id));
-            core.setOutput('artifact_name', artifact.name);
+
+            core.info('Selected run id ' + chosenRunId + ' with artifact ' + chosenArtifact.name);
+            core.setOutput('artifact_id', String(chosenArtifact.id));
+            core.setOutput('artifact_name', chosenArtifact.name);
 
       - name: Download and extract baseline artifact
         id: download_baseline
