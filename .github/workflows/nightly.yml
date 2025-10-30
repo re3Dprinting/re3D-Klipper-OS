@@ -1,8 +1,11 @@
 name: Nightly Baseline (Base → Packages → Apps → UI)
 
 on:
+  push:
+    branches:
+      - modular-build
   schedule:
-    - cron: "48 12 * * *"
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 concurrency:
