@@ -23,6 +23,13 @@ if [ -d filesystem ]; then
   sudo rsync -a filesystem/ "$WORK/mnt/"
 fi
 
+# Ensure /host_cache exists inside the mounted image so unpack helpers don't fail
+if [ ! -d "$WORK/mnt/host_cache" ]; then
+  echo "No host_cache in overlay; creating empty /host_cache inside image to be tolerant"
+  sudo mkdir -p "$WORK/mnt/host_cache"
+  sudo chmod 0755 "$WORK/mnt/host_cache"
+fi
+
 # Detect changed files via git if available; fallback to always skip
 CHANGED="$(git diff --name-only HEAD~1..HEAD || true)"
 if echo "$CHANGED" | grep -qE 'modules/(klipper|moonraker|crowsnest)'; then

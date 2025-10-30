@@ -28,8 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          # install system deps and pip (GitPython needed by CustomPiOS generate_board_config)
-            sudo apt-get install -y qemu-user-static coreutils p7zip-full rsync pigz jq python3-git
+          # python3-git is used by CustomPiOS in some paths
+          sudo apt-get install -y qemu-user-static coreutils p7zip-full rsync pigz jq python3-git
 
       - name: Checkout CustomPiOS
         uses: actions/checkout@v4
@@ -48,6 +48,11 @@ jobs:
         run: |
           set -euo pipefail
           cd src && ../CustomPiOS/src/update-custompios-paths
+
+      - name: Ensure empty host_cache (required by start_chroot_script unpack)
+        run: |
+          set -euo pipefail
+          mkdir -p src/modules/fullpageos/filesystem/host_cache
 
       - name: Build base image (only base layer)
         run: |
@@ -96,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE_IN=base.img IMAGE_OUT=os_pkgs.img \
-          bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/base.img" "$PWD/os_pkgs.img" .github/workflows/scripts/layer_packages.sh
+          bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/base.img" "$PWD/os_pkgs.img" layer_packages.sh
 
       - uses: actions/upload-artifact@v4
         with:
@@ -141,10 +146,10 @@ jobs:
           HOST_CACHE_PATH="${{ github.workspace }}/src/modules/fullpageos/filesystem/host_cache"
           if [ -d "$HOST_CACHE_PATH" ]; then
             IMAGE_IN=os_pkgs.img IMAGE_OUT=os_apps.img HOST_CACHE="$HOST_CACHE_PATH" \
-            bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_pkgs.img" "$PWD/os_apps.img" .github/workflows/scripts/layer_apps.sh
+            bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_pkgs.img" "$PWD/os_apps.img" layer_apps.sh
           else
             IMAGE_IN=os_pkgs.img IMAGE_OUT=os_apps.img \
-            bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_pkgs.img" "$PWD/os_apps.img" .github/workflows/scripts/layer_apps.sh
+            bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_pkgs.img" "$PWD/os_apps.img" layer_apps.sh
           fi
 
       - uses: actions/upload-artifact@v4
@@ -167,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static coreutils rsync pigz jq || true
+          sudo apt-get install -y qemu-user-static coreutils rsync pigz jq
 
       - name: Download apps layer
         uses: actions/download-artifact@v4
@@ -184,13 +189,14 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE_IN=os_apps.img IMAGE_OUT=os_apps_ui.img \
-          bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_apps.img" "$PWD/os_apps_ui.img" .github/workflows/scripts/layer_ui.sh
+          bash ./.github/workflows/scripts/mount_and_run.sh "$PWD/os_apps.img" "$PWD/os_apps_ui.img" layer_ui.sh
 
       - name: Compress baseline
         run: |
           set -euo pipefail
           pigz -1 -c os_apps_ui.img > os_apps_ui.img.gz
           ls -lh os_apps_ui.img.gz
+
       - uses: actions/upload-artifact@v4
         with:
           name: baseline-os_apps_ui.img.gz

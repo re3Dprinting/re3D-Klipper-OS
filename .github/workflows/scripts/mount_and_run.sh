@@ -43,10 +43,14 @@ sudo mount --bind /dev  "$TMPDIR/mnt/dev"
 sudo mount --bind /proc "$TMPDIR/mnt/proc"
 sudo mount --bind /sys  "$TMPDIR/mnt/sys"
 
-# Optionally seed host cache into /host_cache inside chroot (if present in WORKDIR)
+# Ensure /host_cache exists inside the chroot. If HOST_CACHE is provided we seed it,
+# otherwise create an empty directory so scripts expecting /host_cache don't fail.
+sudo mkdir -p "$TMPDIR/mnt/host_cache"
 if [ -n "${HOST_CACHE:-}" ] && [ -d "${HOST_CACHE}" ]; then
-  sudo mkdir -p "$TMPDIR/mnt/host_cache"
+  echo "Seeding host cache from: ${HOST_CACHE}"
   sudo rsync -a --delete "${HOST_CACHE}/" "$TMPDIR/mnt/host_cache/"
+else
+  echo "No host cache provided; created empty /host_cache inside chroot to be tolerant"
 fi
 
 # Run the chrooted script
