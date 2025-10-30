@@ -28,7 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static coreutils p7zip-full rsync pigz jq
+          # install system deps and pip (GitPython needed by CustomPiOS generate_board_config)
+            sudo apt-get install -y qemu-user-static coreutils p7zip-full rsync pigz jq python3-git
 
       - name: Checkout CustomPiOS
         uses: actions/checkout@v4
