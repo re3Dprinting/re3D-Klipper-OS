@@ -791,6 +791,34 @@ else
   rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
 
+###############################################################################
+# Minimal: install /usr/lib/cgi-bin/host_ip.sh (no web server changes)
+###############################################################################
+set -e
+
+# Ensure cgi-bin exists
+install -d -m 0755 /usr/lib/cgi-bin
+
+# Write helper
+cat > /usr/lib/cgi-bin/host_ip.sh <<'EOF'
+#!/bin/bash
+echo "Content-Type: text/plain"
+echo
+# Prefer primary IPv4 used for outbound traffic
+if command -v ip >/dev/null 2>&1; then
+  ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/{print $7; exit}'
+  exit 0
+fi
+# Fallback: first RFC1918 address from hostname -I
+hostname -I 2>/dev/null | tr ' ' '\n' | awk '
+  $0 ~ /^10\./ || $0 ~ /^192\.168\./ || ($0 ~ /^172\.(1[6-9]|2[0-9]|3[0-1])\./){print; exit}
+'
+EOF
+
+# Make it executable
+chmod 0755 /usr/lib/cgi-bin/host_ip.sh
+
+echo "[mconfig] Installed /cgi-bin/host_ip.sh"
 
 
 # 3) Tie it to Klipper start without editing klipper.service

@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=1024, initial-scale=1"/>
-<title>Machine Configurator</title>
+<title>Machine Configurator (LAN-aware, /opt/mconfig/www)</title>
+
+<!-- Kill caching while testing -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
 <style>
   :root{
     --bg:#0f1013; --panel:#15171b; --muted:#9aa3b2; --fg:#e9eef5; --brand:#2d6cdf;
@@ -22,10 +28,13 @@
   .app{display:grid;gap:12px;grid-template-rows:56px 1fr;height:100dvh}
 
   .tabs{
+    position:relative;z-index:10;
     display:flex;align-items:center;gap:8px;
     padding:6px;background:var(--panel);border:1px solid var(--border);
     border-radius:var(--radius);
+    overflow-x:auto;overflow-y:hidden;
   }
+  .tabs > *{flex-shrink:0}
   .tab{
     appearance:none;border:1px solid var(--border);background:#13151a;
     color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer;
@@ -33,12 +42,13 @@
   }
   .tab.active{background:var(--brand);border-color:#1e50a8}
 
-  /* NEW: right-aligned, separated Dashboard button styles */
+  /* right-aligned, separated Dashboard link */
   .tabs .spacer{flex:1}
   .tabs .divider{width:1px;height:32px;background:var(--border);border-radius:1px}
   .tab.cta{
     background:var(--brand);
     border-color:#1e50a8;
+    color:#fff;
     font-size:15px;
     padding:12px 18px;
     font-weight:800;
@@ -104,8 +114,8 @@
 
     <span class="spacer"></span>
     <span class="divider" aria-hidden="true"></span>
-    <!-- NEW: Large, separated Dashboard link (same-window navigation) -->
-    <a class="tab cta" href="http://localhost/" title="Open Dashboard">Dashboard ↗</a>
+    <!-- Default to localhost; JS will swap to LAN IP when possible -->
+    <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Dashboard ↗</a>
   </nav>
 
   <section class="pages">
@@ -192,16 +202,16 @@
             <div style="font-weight:700;margin-bottom:6px">Reboot</div>
             <div class="hint">Performs a clean reboot in ~2 seconds.</div>
           </div>
-            <button type="submit">Reboot</button>
+          <button type="submit">Reboot</button>
         </div>
         <div class="out mono" id="out-system"></div>
       </form>
 
       <div class="card">
         <div style="font-weight:700;margin-bottom:6px">Network Info</div>
-        <div class="hint">(Optional: wire this to a status CGI later)</div>
+        <div class="hint">(Optional: wired to a status CGI later)</div>
         <div class="out mono" id="netinfo">
-          IP: <script>document.write((location.host||'').split(':')[0]||'localhost');</script>
+          IP: <span id="lan-ip">resolving…</span>
         </div>
       </div>
     </div>
@@ -211,10 +221,10 @@
 <iframe name="hidden_iframe" style="display:none"></iframe>
 
 <script>
+  // Tab logic
   const tabs=document.querySelectorAll('.tab[data-page]');
   const pages=document.querySelectorAll('.content');
   const title=document.getElementById('page-title');
-
   function show(page){
     pages.forEach(p=>p.hidden=(p.dataset.page!==page));
     tabs.forEach(t=>t.classList.toggle('active',t.dataset.page===page));
@@ -224,13 +234,42 @@
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.page)));
   show((location.hash||'#machine').replace('#',''));
 
-  // keep hidden field in sync
+  // Keep hidden field in sync
   document.querySelectorAll('input[name="type-radio"]').forEach(r=>{
     r.addEventListener('change',e=>{
       const h=document.getElementById('machine-type-hidden');
       if(h) h.value = e.target.value;
     });
   });
+
+  // --- LAN IP-aware Dashboard link ---
+  // If the page is reached via hostname or localhost, ask server for primary LAN IPv4 via CGI.
+  (async () => {
+    const dash = document.getElementById('dash-link');
+    const ipSpan = document.getElementById('lan-ip');
+    const currentHost = (location.host||'').split(':')[0];
+    const reuse = (h) => h && h !== 'localhost' && h !== '127.0.0.1';
+    let targetHost = currentHost;
+
+    if (!reuse(currentHost)) {
+      try {
+        const r = await fetch('/cgi-bin/host_ip.sh', {cache:'no-store'});
+        if (r.ok) {
+          const t = (await r.text()).trim();
+          if (/^\d+\.\d+\.\d+\.\d+$/.test(t)) targetHost = t;
+        }
+      } catch(e) { /* ignore, leave localhost */ }
+    }
+
+    if (ipSpan) ipSpan.textContent = targetHost || 'unknown';
+
+    // Adjust this if your dashboard runs on a port
+    const PORT = ''; // e.g. ':7125'
+    if (dash) {
+      dash.href = `http://${targetHost || 'localhost'}${PORT}/`;
+      dash.title = `Open Dashboard on ${targetHost || 'localhost'}${PORT}`;
+    }
+  })();
 </script>
 </body>
 </html>
