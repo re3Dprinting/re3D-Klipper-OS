@@ -762,7 +762,7 @@
       const pg = t.dataset.page;
       if (pg in COMING_SOON){
         const base = t.textContent.replace(/\s*\(coming soon\)\s*$/,'');
-        t.textContent = COMING_SOON[pg] ? `${base} (coming soon)` : base;
+        t.textContent = COMING_SOON[pg] ? `${base}` : base;
       }
     });
   }
