@@ -11,73 +11,126 @@
 <meta http-equiv="Expires" content="0">
 
 <style>
+  /* ── Style-guide tokens (from the image) ─────────────────────────────────── */
   :root{
-    --bg:#0f1013; --panel:#15171b; --muted:#9aa3b2; --fg:#e9eef5; --brand:#2d6cdf;
-    --ok:#7bd88f; --err:#ff6b6b; --border:#262a31;
+    /* Core palette */
+    --brand:#FFD400;        /* primary yellow */
+    --brand-600:#FFC800;
+    --brand-700:#FFBD00;
+    --brand-800:#FFB300;
+
+    --white:#FFFFFF;
+    --gray-050:#F2F2F2;
+    --gray-100:#E6E6E6;
+    --gray-200:#D9D9D9;
+    --gray-300:#CCCCCC;
+    --gray-400:#BCBEC0;     /* muted text */
+    --gray-800:#393B3E;     /* deep slate */
+    --gray-850:#2B2E33;     /* borders */
+    --gray-900:#212429;     /* panels (outer) */
+    --gray-950:#181B20;     /* panels (inner) */
+    --near-black:#101318;   /* app background */
+    --black:#000000;
+
+    /* App choices */
+    --bg:var(--near-black);
+    --panel:var(--gray-950);
+    --panel-outer:var(--gray-900);
+    --border:var(--gray-850);
+    --fg:var(--gray-050);
+    --muted:var(--gray-400);
+
     --radius:14px; --pad:14px;
+    --focus-ring:0 0 0 2px rgba(255,212,0,.35);
   }
+
+  /* Base */
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0;background:var(--bg);color:var(--fg);
     font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
+    text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
   }
   [hidden]{display:none!important}
 
   .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px}
   .app{display:grid;gap:12px;grid-template-rows:56px 1fr;height:100dvh}
 
+  /* Tabs */
   .tabs{
     position:relative;z-index:10;
     display:flex;align-items:center;gap:8px;
-    padding:6px;background:var(--panel);border:1px solid var(--border);
+    padding:6px;background:var(--panel-outer);border:1px solid var(--border);
     border-radius:var(--radius);
     overflow-x:auto;overflow-y:hidden;
   }
   .tabs > *{flex-shrink:0}
+
   .tab{
-    appearance:none;border:1px solid var(--border);background:#13151a;
+    appearance:none;border:1px solid var(--border);background:var(--gray-900);
     color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer;
-    user-select:none;font-weight:600;letter-spacing:.2px;text-decoration:none;display:inline-block;
+    user-select:none;font-weight:700;letter-spacing:.2px;text-decoration:none;display:inline-block;
+    transition:background .12s ease, border-color .12s ease, box-shadow .12s ease, color .12s ease;
   }
-  .tab.active{background:var(--brand);border-color:#1e50a8}
+  .tab:hover{background:#24272c}
+  .tab:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+  .tab.active{
+    background:var(--brand);border-color:var(--brand-700);color:#000;
+  }
 
   /* right-aligned, separated Dashboard link */
   .tabs .spacer{flex:1}
   .tabs .divider{width:1px;height:32px;background:var(--border);border-radius:1px}
   .tab.cta{
     background:var(--brand);
-    border-color:#1e50a8;
-    color:#fff;
+    border-color:var(--brand-700);
+    color:#000;
     font-size:15px;
     padding:12px 18px;
-    font-weight:800;
-    box-shadow:0 0 0 2px rgba(45,108,223,.25) inset;
+    font-weight:900;
+    box-shadow:0 0 0 2px rgba(255,212,0,.25) inset;
   }
+  .tab.cta:hover{background:var(--brand-600)}
+  .tab.cta:active{background:var(--brand-700)}
+  .tab.cta:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 
+  /* Pages & cards */
   .pages{
-    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    background:var(--panel-outer);border:1px solid var(--border);border-radius:var(--radius);
     padding:14px;display:grid;grid-template-rows:34px 1fr;
   }
-  .page-title{font-size:16px;font-weight:700;color:#dce3ee;display:flex;align-items:center;gap:10px}
+  .page-title{font-size:16px;font-weight:800;color:var(--fg);display:flex;align-items:center;gap:10px}
   .content{margin-top:8px;display:grid;gap:12px;grid-template-columns:repeat(2,1fr);grid-auto-rows:minmax(120px,auto)}
-  .card{border:1px solid var(--border);border-radius:12px;padding:12px;background:#111318;display:grid;gap:10px}
+  .card{
+    border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--panel);display:grid;gap:10px
+  }
   .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
   label{color:var(--muted);font-size:12px}
+
   input,select{
     width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
-    background:#0c0e12;color:var(--fg);
+    background:#0F1216;color:var(--fg);
+    transition:border-color .12s ease, box-shadow .12s ease;
   }
+  input::placeholder{color:#8e949c}
+  input:focus-visible,select:focus-visible{outline:none;border-color:var(--brand-700);box-shadow:var(--focus-ring)}
+
   button{
     border:0;padding:10px 14px;border-radius:10px;background:var(--brand);
-    color:#fff;font-weight:700;cursor:pointer;
+    color:#000;font-weight:900;cursor:pointer;letter-spacing:.2px;
+    transition:transform .06s ease, background .12s ease, box-shadow .12s ease;
   }
+  button:hover{background:var(--brand-600)}
+  button:active{transform:translateY(1px);background:var(--brand-700)}
+  button:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
   .hint{color:var(--muted);font-size:12px}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .span2{grid-column:1/span 2}
   .out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0b0c10;
-    border:1px dashed var(--border);max-height:120px;overflow:auto;font-size:12px;
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:120px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
 
   @media(max-width:980px){
@@ -89,19 +142,22 @@
   /* Machine gallery */
   .machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
   .machine-card{
-    position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;
+    position:relative;border:1px solid var(--border);border-radius:12px;background:#0F1116;
     overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;
-    transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease;
+    transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease, background .12s ease;
   }
-  .machine-card:hover{transform:translateY(-1px)}
+  .machine-card:hover{transform:translateY(-1px);background:#111419}
   /* highlight when its radio is checked */
   .machine-card:has(input[type="radio"]:checked){
-    border-color:#3f6fe0;
-    box-shadow:0 0 0 2px rgba(45,108,223,.35) inset;
+    border-color:var(--brand-700);
+    box-shadow:0 0 0 2px rgba(255,212,0,.35) inset;
   }
-  .machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
-  .machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .machine-card img{width:100%;height:130px;object-fit:cover;background:#0B0D12}
+  .machine-card .title{padding:10px 12px;font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
   .machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
+
+  /* Subtle separators that match the guide’s dark theme */
+  hr{border:0;border-top:1px solid var(--border);opacity:.7}
 </style>
 </head>
 <body>
@@ -124,7 +180,7 @@
     <!-- MACHINE PAGE -->
     <div class="content" data-page="machine">
       <form class="card span2" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
-        <div style="font-weight:700;margin-bottom:6px">Select your machine</div>
+        <div style="font-weight:800;margin-bottom:6px">Select your machine</div>
         <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4">
         <div class="machine-grid" id="machine-grid">
           <label class="machine-card" data-type="Gigabot 4">
@@ -199,7 +255,7 @@
             onsubmit="return confirm('Reboot now?');" id="system-form">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
           <div>
-            <div style="font-weight:700;margin-bottom:6px">Reboot</div>
+            <div style="font-weight:800;margin-bottom:6px">Reboot</div>
             <div class="hint">Performs a clean reboot in ~2 seconds.</div>
           </div>
           <button type="submit">Reboot</button>
@@ -208,7 +264,7 @@
       </form>
 
       <div class="card">
-        <div style="font-weight:700;margin-bottom:6px">Network Info</div>
+        <div style="font-weight:800;margin-bottom:6px">Network Info</div>
         <div class="hint">(Optional: wired to a status CGI later)</div>
         <div class="out mono" id="netinfo">
           IP: <span id="lan-ip">resolving…</span>
@@ -243,7 +299,6 @@
   });
 
   // --- LAN IP-aware Dashboard link ---
-  // If the page is reached via hostname or localhost, ask server for primary LAN IPv4 via CGI.
   (async () => {
     const dash = document.getElementById('dash-link');
     const ipSpan = document.getElementById('lan-ip');
