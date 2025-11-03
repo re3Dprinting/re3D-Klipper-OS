@@ -204,7 +204,7 @@
     <span class="spacer"></span>
     <span class="divider" aria-hidden="true"></span>
     <!-- Default to localhost; JS will swap to LAN IP when possible -->
-    <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Dashboard ↗</a>
+    <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Control Dashboard ↗</a>
   </nav>
 
   <section class="pages">
@@ -703,7 +703,7 @@
   function pagePrettyName(pg){
     const base = {
       machine:'Machine', network:'Network', tuning:'Tuning',
-      shaper:'Input Shaper', calibration:'Calibration Prints',
+      shaper:'Input Shaper', calibration:'Calibration',
       troubleshoot:'Troubleshooting', system:'System'
     }[pg] || (pg.charAt(0).toUpperCase()+pg.slice(1));
 
