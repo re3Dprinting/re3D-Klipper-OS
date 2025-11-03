@@ -147,12 +147,12 @@
     transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease, background .12s ease;
   }
   .machine-card:hover{transform:translateY(-1px);background:#111419}
-  /* highlight when its radio is checked */
+  /* highlight when its radio is checked — fixed stray quote here */
   .machine-card:has(input[type="radio"]:checked){
     border-color:var(--brand-700);
     box-shadow:0 0 0 2px rgba(255,212,0,.35) inset;
   }
-  .machine-card img{width:100%;height:130px;object-fit:cover;background:#0B0D12}
+  .machine-card img{display:block;width:100%;height:130px;object-fit:cover;background:#0B0D12}
   .machine-card .title{padding:10px 12px;font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
   .machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
 
@@ -164,8 +164,7 @@
 <div class="wrap app">
   <nav class="tabs" id="tabbar">
     <button class="tab active" data-page="machine">Machine</button>
-    <button class="tab" data-page="wifi">Wi-Fi</button>
-    <button class="tab" data-page="hostname">Hostname</button>
+    <button class="tab" data-page="network">Network</button>
     <button class="tab" data-page="system">System</button>
 
     <span class="spacer"></span>
@@ -222,9 +221,11 @@
       </form>
     </div>
 
-    <!-- WIFI PAGE -->
-    <div class="content" data-page="wifi" hidden>
-      <form class="card span2" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
+    <!-- NETWORK PAGE (Wi-Fi + Hostname combined) -->
+    <div class="content" data-page="network" hidden>
+      <!-- Wi-Fi card -->
+      <form class="card" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
+        <div style="font-weight:800;margin-bottom:6px">Wi-Fi</div>
         <div class="row">
           <div><label>SSID</label><input name="ssid" placeholder="MyWiFi" required></div>
           <div><label>Password</label><input name="psk" placeholder="••••••••" required></div>
@@ -235,11 +236,10 @@
         </div>
         <div class="out mono" id="out-wifi"></div>
       </form>
-    </div>
 
-    <!-- HOSTNAME PAGE -->
-    <div class="content" data-page="hostname" hidden>
-      <form class="card span2" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
+      <!-- Hostname card -->
+      <form class="card" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
+        <div style="font-weight:800;margin-bottom:6px">Hostname</div>
         <div class="row">
           <div><label>Hostname</label><input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required></div>
           <div style="display:flex;align-items:end"><button type="submit">Set Hostname</button></div>
@@ -281,14 +281,25 @@
   const tabs=document.querySelectorAll('.tab[data-page]');
   const pages=document.querySelectorAll('.content');
   const title=document.getElementById('page-title');
+
+  // Map legacy hashes (#wifi, #hostname) to the new combined page
+  const legacyToNetwork = new Set(['wifi','hostname']);
+
+  function canonicalPage(p){
+    return legacyToNetwork.has(p) ? 'network' : p;
+  }
+
   function show(page){
-    pages.forEach(p=>p.hidden=(p.dataset.page!==page));
-    tabs.forEach(t=>t.classList.toggle('active',t.dataset.page===page));
-    title.textContent=page.charAt(0).toUpperCase()+page.slice(1);
-    history.replaceState(null,'','#'+page);
+    const pg = canonicalPage(page);
+    pages.forEach(p=>p.hidden=(p.dataset.page!==pg));
+    tabs.forEach(t=>t.classList.toggle('active',t.dataset.page===pg));
+    title.textContent=pg.charAt(0).toUpperCase()+pg.slice(1);
+    history.replaceState(null,'','#'+pg);
   }
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.page)));
-  show((location.hash||'#machine').replace('#',''));
+
+  const initial = (location.hash||'#machine').replace('#','');
+  show(initial);
 
   // Keep hidden field in sync
   document.querySelectorAll('input[name="type-radio"]').forEach(r=>{
