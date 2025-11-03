@@ -325,6 +325,30 @@
       dash.title = `Open Dashboard on ${targetHost || 'localhost'}${PORT}`;
     }
   })();
+
+  // --- Minimal addition: keep page, show success inline ---
+  (() => {
+    const form = document.getElementById('form-machine');
+    const out  = document.getElementById('out-machine');
+    if (!form || !out) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault(); // do not navigate away
+      out.textContent = 'Applying…';
+      try {
+        const fd = new FormData(form);
+        const resp = await fetch('/cgi-bin/set_machine_type.sh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(fd)
+        });
+        const text = await resp.text();
+        out.textContent = text.trim() || 'Updated.';
+      } catch (err) {
+        out.textContent = `Error: ${err}`;
+      }
+    });
+  })();
 </script>
 </body>
 </html>
