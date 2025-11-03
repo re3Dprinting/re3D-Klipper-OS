@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate Mainsail navi.json with LAN IP (fallback 127.0.0.1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/update_mainsail_navi.sh
+
+[Install]
+WantedBy=multi-user.target

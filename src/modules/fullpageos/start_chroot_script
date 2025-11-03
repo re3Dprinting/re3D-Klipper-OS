@@ -808,6 +808,7 @@ systemctl enable nginx
 systemctl enable klipper_config.service
 systemctl enable flash_once.service
 systemctl enable klipper-autostart.service
+systemctl enable update-mainsail-navi.service
 
 chmod +x /usr/local/bin/flash_once.sh
 chown pi:pi /home/pi/wait.html
