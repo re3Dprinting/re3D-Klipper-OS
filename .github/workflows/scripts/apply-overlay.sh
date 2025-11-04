@@ -84,16 +84,38 @@ fi
 
 ###############################################################################
 # 6) OWNERSHIP NORMALIZATION
-# everything that should be "pi stuff" → 1000:1000
+# keep /home/pi as pi:pi
 ###############################################################################
-# main home
 if [ -d "${MNT_ROOT}/home/pi" ]; then
   sudo chown -R 1000:1000 "${MNT_ROOT}/home/pi"
 fi
 
-# custompios scripts you ship
-if [ -d "${MNT_ROOT}/opt/custompios" ]; then
-  sudo chown -R 1000:1000 "${MNT_ROOT}/opt/custompios"
+# do not chown -R /opt/custompios because some files must stay root
+
+# fix mixed ownership in /opt/custompios/scripts to what you found works
+SCRIPTS_DIR="${MNT_ROOT}/opt/custompios/scripts"
+if [ -d "$SCRIPTS_DIR" ]; then
+  # files that should be pi:pi
+  for f in enable_gpu start_gui update_lightdm_conf; do
+    if [ -e "$SCRIPTS_DIR/$f" ]; then
+      sudo chown 1000:1000 "$SCRIPTS_DIR/$f"
+      sudo chmod 755 "$SCRIPTS_DIR/$f"
+    fi
+  done
+
+  # files that should be root:root
+  for f in fullscreen get_url refresh reload_fullpageos_txt rotate.sh \
+           run_onepageos safe_refresh setX11vncPass start_chromium_browser; do
+    if [ -e "$SCRIPTS_DIR/$f" ]; then
+      sudo chown root:root "$SCRIPTS_DIR/$f"
+      # rotate.sh was rw-r--r-- in your listing so keep that
+      if [ "$f" = "rotate.sh" ] || [ "$f" = "safe_refresh" ]; then
+        sudo chmod 644 "$SCRIPTS_DIR/$f"
+      else
+        sudo chmod 755 "$SCRIPTS_DIR/$f"
+      fi
+    fi
+  done
 fi
 
 # sometimes printer_data lives here
@@ -101,7 +123,7 @@ if [ -d "${MNT_ROOT}/printer_data" ]; then
   sudo chown -R 1000:1000 "${MNT_ROOT}/printer_data"
 fi
 
-# safety sweep: anything under these trees with uid 1001 → 1000
+# safety sweep for odd uids that should be pi
 for path in \
   "${MNT_ROOT}/home" \
   "${MNT_ROOT}/opt" \
@@ -117,7 +139,7 @@ if [ -f "${MNT_ROOT}/home/pi/printer_data/config/src/get_serial.sh" ]; then
   sudo chmod +x "${MNT_ROOT}/home/pi/printer_data/config/src/get_serial.sh"
 fi
 
-# also make every .sh in that dir executable, to mirror the "big" script's behavior
+# also make every .sh in that dir executable
 if [ -d "${MNT_ROOT}/home/pi/printer_data/config/src" ]; then
   sudo find "${MNT_ROOT}/home/pi/printer_data/config/src" -type f -name '*.sh' -exec chmod +x {} +
 fi

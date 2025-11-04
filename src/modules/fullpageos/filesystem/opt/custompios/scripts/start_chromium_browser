@@ -29,6 +29,7 @@ flags=(
   --disk-cache-size=500000000
   --load-extension=/home/pi/virtual_keyboard
 )
+export DISPLAY=:0
 
 # ---------- One-time splash branch ----------
 if [[ -f "$FIRSTBOOT_FLAG" ]]; then
