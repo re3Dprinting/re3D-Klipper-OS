@@ -15,7 +15,7 @@
     html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial}
     .wrap{height:100%;display:grid;place-items:center;padding:16px}
-    .card{width:min(960px,96vw);min-height:480px;box-sizing:border-box;padding:32px 32px 24px;
+    .card{position:relative; width:min(960px,96vw);min-height:480px;box-sizing:border-box;padding:32px 32px 24px;
       border:1px solid var(--card-border);border-radius:18px;background:var(--card)}
     .row{display:flex;gap:18px;align-items:center;margin:0 0 8px}
     h1{margin:0;font-size:28px}.sub{color:var(--text-sub)}
@@ -43,7 +43,7 @@
 
     /* top-right logo */
     .logo{
-      position:fixed; top:50px; right:50px;
+      position:absolute; top:16px; right:16px;
       width:90px; height:auto;
       opacity:.95;
       filter: drop-shadow(0 1px 2px rgba(0,0,0,.6));
@@ -53,11 +53,12 @@
   </style>
 </head>
 <body>
-  <!-- Logo (place your PNG at /home/pi/logo.png or change the src) -->
-  <img class="logo" src="re3d-logo.png" alt="re:3D logo" />
+  <!-- Logo is placed inside the card so it scrolls with the page -->
 
   <div class="wrap">
     <div class="card">
+        <!-- Logo (place your PNG at /home/pi/logo.png or change the src) -->
+        <img class="logo" src="re3d-logo.png" alt="re:3D logo" />
       <div class="row">
         <div class="spin"></div>
         <div>
