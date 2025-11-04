@@ -1,9 +1,9 @@
 [
   {
     "title": "Machine Configurator",
-    "href": "http://localhost:8080",
+    "href": "http://localhost:8081",
     "position": 90,
-    "icon": "M3 13h2v-2H3v2m4 0h14v-2H7v2m12 6H5a2 2 0 0 1-2-2V5c0-1.11.89-2 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2Z",
+    "icon": "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z",
     "target": "_self"            
   }
 ]

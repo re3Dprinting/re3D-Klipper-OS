@@ -3,71 +3,164 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=1024, initial-scale=1"/>
-<title>Machine Configurator</title>
+<title>Machine Configurator (LAN-aware, /opt/mconfig/www)</title>
+
+<!-- Kill caching while testing -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
 <style>
+  /* ── Style-guide tokens (from the image) ─────────────────────────────────── */
   :root{
-    --bg:#0f1013; --panel:#15171b; --muted:#9aa3b2; --fg:#e9eef5; --brand:#2d6cdf;
-    --ok:#7bd88f; --err:#ff6b6b; --border:#262a31;
+    /* Core palette */
+    --brand:#FFD400;        /* primary yellow */
+    --brand-600:#FFC800;
+    --brand-700:#FFBD00;
+    --brand-800:#FFB300;
+
+    --white:#FFFFFF;
+    --gray-050:#F2F2F2;
+    --gray-100:#E6E6E6;
+    --gray-200:#D9D9D9;
+    --gray-300:#CCCCCC;
+    --gray-400:#BCBEC0;     /* muted text */
+    --gray-800:#393B3E;     /* deep slate */
+    --gray-850:#2B2E33;     /* borders */
+    --gray-900:#212429;     /* panels (outer) */
+    --gray-950:#181B20;     /* panels (inner) */
+    --near-black:#101318;   /* app background */
+    --black:#000000;
+
+    /* App choices */
+    --bg:var(--near-black);
+    --panel:var(--gray-950);
+    --panel-outer:var(--gray-900);
+    --border:var(--gray-850);
+    --fg:var(--gray-050);
+    --muted:var(--gray-400);
+
     --radius:14px; --pad:14px;
+    --focus-ring:0 0 0 2px rgba(255,212,0,.35);
   }
+
+  /* Base */
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0;background:var(--bg);color:var(--fg);
     font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
+    text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
   }
   [hidden]{display:none!important}
 
   .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px}
-  .app{display:grid;gap:12px;grid-template-rows:56px 1fr;height:100dvh}
 
+  /* App stacks tabs + page; stays at the top (no vertical centering) */
+  .app{
+    display:grid;gap:12px;
+    grid-template-rows:56px auto;  /* tabs + auto-growing page container */
+    min-height:100dvh;             /* ensure background covers tall screens */
+    height:auto;
+    align-content:start;            /* <— keep rows at the top */
+  }
+
+  /* Tabs */
   .tabs{
+    position:relative;z-index:10;
     display:flex;align-items:center;gap:8px;
-    padding:6px;background:var(--panel);border:1px solid var(--border);
+    padding:6px;background:var(--panel-outer);border:1px solid var(--border);
     border-radius:var(--radius);
+    overflow-x:auto;overflow-y:hidden;
   }
-  .tab{
-    appearance:none;border:1px solid var(--border);background:#13151a;
-    color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer;
-    user-select:none;font-weight:600;letter-spacing:.2px;text-decoration:none;display:inline-block;
-  }
-  .tab.active{background:var(--brand);border-color:#1e50a8}
+  .tabs > *{flex-shrink:0}
 
-  /* NEW: right-aligned, separated Dashboard button styles */
+  .tab{
+    appearance:none;border:1px solid var(--border);background:var(--gray-900);
+    color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer;
+    user-select:none;font-weight:700;letter-spacing:.2px;text-decoration:none;display:inline-block;
+    transition:background .12s ease, border-color .12s ease, box-shadow .12s ease, color .12s ease, opacity .12s ease, filter .12s ease;
+  }
+  .tab:hover{background:#24272c}
+  .tab:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+  .tab.active{
+    background:var(--brand);border-color:var(--brand-700);color:#000;
+  }
+
+  /* right-aligned, separated Dashboard link */
   .tabs .spacer{flex:1}
   .tabs .divider{width:1px;height:32px;background:var(--border);border-radius:1px}
   .tab.cta{
     background:var(--brand);
-    border-color:#1e50a8;
+    border-color:var(--brand-700);
+    color:#000;
     font-size:15px;
     padding:12px 18px;
-    font-weight:800;
-    box-shadow:0 0 0 2px rgba(45,108,223,.25) inset;
+    font-weight:900;
+    box-shadow:0 0 0 2px rgba(255,212,0,.25) inset;
+  }
+  .tab.cta:hover{background:var(--brand-600)}
+  .tab.cta:active{background:var(--brand-700)}
+  .tab.cta:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
+  /* Pages & cards */
+  .pages{
+    background:var(--panel-outer);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px;display:grid;
+    grid-template-rows:auto auto;  /* title row + content row, both auto-height */
+    min-height:0;
+
+    /* ensure title+content pin to the top of this background card */
+    align-content:start;            /* <— grid tracks at the top within .pages */
+    align-items:start;              /* <— items themselves start at top */
+  }
+  .page-title{font-size:16px;font-weight:800;color:var(--fg);display:flex;align-items:center;gap:10px}
+
+  /* Cards grow by content (not equal-height) */
+  .content{
+    margin-top:8px;display:grid;gap:12px;
+    grid-template-columns:repeat(2,1fr);
+    grid-auto-rows:auto;
+    min-height:0;
+    align-items:start;
+  }
+  .content.single{grid-template-columns:1fr}
+
+  .card{
+    border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--panel);
+    display:grid;gap:10px;grid-auto-rows:auto;
   }
 
-  .pages{
-    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-    padding:14px;display:grid;grid-template-rows:34px 1fr;
-  }
-  .page-title{font-size:16px;font-weight:700;color:#dce3ee;display:flex;align-items:center;gap:10px}
-  .content{margin-top:8px;display:grid;gap:12px;grid-template-columns:repeat(2,1fr);grid-auto-rows:minmax(120px,auto)}
-  .card{border:1px solid var(--border);border-radius:12px;padding:12px;background:#111318;display:grid;gap:10px}
   .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
   label{color:var(--muted);font-size:12px}
+
   input,select{
     width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
-    background:#0c0e12;color:var(--fg);
+    background:#0F1216;color:var(--fg);
+    transition:border-color .12s ease, box-shadow .12s ease;
   }
+  input::placeholder{color:#8e949c}
+  input:focus-visible,select:focus-visible{outline:none;border-color:var(--brand-700);box-shadow:var(--focus-ring)}
+
   button{
     border:0;padding:10px 14px;border-radius:10px;background:var(--brand);
-    color:#fff;font-weight:700;cursor:pointer;
+    color:#000;font-weight:900;cursor:pointer;letter-spacing:.2px;
+    transition:transform .06s ease, background .12s ease, box-shadow .12s ease;
   }
+  button:hover{background:var(--brand-600)}
+  button:active{transform:translateY(1px);background:var(--brand-700)}
+  button:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
   .hint{color:var(--muted);font-size:12px}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .span2{grid-column:1/span 2}
+
+  /* .fill kept neutral so cards size to content */
+  .fill{align-content:start}
+
   .out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0b0c10;
-    border:1px dashed var(--border);max-height:120px;overflow:auto;font-size:12px;
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
 
   @media(max-width:980px){
@@ -79,33 +172,65 @@
   /* Machine gallery */
   .machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
   .machine-card{
-    position:relative;border:1px solid var(--border);border-radius:12px;background:#0f1116;
+    position:relative;border:1px solid var(--border);border-radius:12px;background:#0F1116;
     overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;
-    transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease;
+    transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease, background .12s ease;
   }
-  .machine-card:hover{transform:translateY(-1px)}
-  /* highlight when its radio is checked */
+  .machine-card:hover{transform:translateY(-1px);background:#111419}
   .machine-card:has(input[type="radio"]:checked){
-    border-color:#3f6fe0;
-    box-shadow:0 0 0 2px rgba(45,108,223,.35) inset;
+    border-color:var(--brand-700);
+    box-shadow:0 0 0 2px rgba(255,212,0,.35) inset;
   }
-  .machine-card img{width:100%;height:130px;object-fit:cover;background:#0b0d12}
-  .machine-card .title{padding:10px 12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .machine-card img{display:block;width:100%;height:130px;object-fit:cover;background:#0B0D12}
+  .machine-card .title{padding:10px 12px;font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
   .machine-card input[type=radio]{position:absolute;inset:0;opacity:0;pointer-events:none}
+
+  /* Coming soon overlay */
+  .coming-soon-wrap{position:relative; min-height:0}
+  .coming-soon-overlay{
+    position:absolute; inset:0; border-radius:12px;
+    background:rgba(24,27,32,.75); backdrop-filter:saturate(0.6) blur(1px);
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    color:var(--gray-200); z-index:5; pointer-events:auto;
+    border:1px dashed var(--border);
+  }
+  .coming-soon-overlay .msg{
+    display:grid; gap:8px; max-width:520px; padding:16px;
+  }
+  .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
+  .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
+  .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}
+  hr{border:0;border-top:1px solid var(--border);opacity:.7}
+
+  /* ── Compact styling scoped to the Network page only ─────────────────────── */
+  .content[data-page="network"]{gap:10px}
+  .content[data-page="network"] .card{padding:10px}
+  .content[data-page="network"] .row{gap:6px}
+  .content[data-page="network"] label{font-size:11px}
+  .content[data-page="network"] input,
+  .content[data-page="network"] select{padding:8px 10px}
+  .content[data-page="network"] button{padding:9px 12px}
+  .content[data-page="network"] .hint{font-size:11px; margin-top:2px}
+
+  /* Button rows */
+  .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 </style>
 </head>
 <body>
 <div class="wrap app">
   <nav class="tabs" id="tabbar">
     <button class="tab active" data-page="machine">Machine</button>
-    <button class="tab" data-page="wifi">Wi-Fi</button>
-    <button class="tab" data-page="hostname">Hostname</button>
+    <button class="tab" data-page="network">Network</button>
+    <button class="tab" data-page="tuning">Tuning</button>
+    <button class="tab" data-page="shaper">Input Shaper</button>
+    <button class="tab" data-page="calibration">Calibration</button>
+    <button class="tab" data-page="troubleshoot">Troubleshooting</button>
     <button class="tab" data-page="system">System</button>
 
     <span class="spacer"></span>
     <span class="divider" aria-hidden="true"></span>
-    <!-- NEW: Large, separated Dashboard link (same-window navigation) -->
-    <a class="tab cta" href="http://localhost/" title="Open Dashboard">Dashboard ↗</a>
+    <!-- Default to localhost; JS will swap to LAN IP when possible -->
+    <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Printer Control ↗</a>
   </nav>
 
   <section class="pages">
@@ -114,7 +239,7 @@
     <!-- MACHINE PAGE -->
     <div class="content" data-page="machine">
       <form class="card span2" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
-        <div style="font-weight:700;margin-bottom:6px">Select your machine</div>
+        <div style="font-weight:800;margin-bottom:6px">Select your machine</div>
         <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4">
         <div class="machine-grid" id="machine-grid">
           <label class="machine-card" data-type="Gigabot 4">
@@ -156,31 +281,239 @@
       </form>
     </div>
 
-    <!-- WIFI PAGE -->
-    <div class="content" data-page="wifi" hidden>
-      <form class="card span2" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
+    <!-- NETWORK PAGE (Wi-Fi + Hostname, content-sized cards) -->
+    <div class="content" data-page="network" hidden>
+      <!-- Wi-Fi card -->
+      <form class="card fill" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
+        <div style="font-weight:800;margin-bottom:6px">Wi-Fi</div>
         <div class="row">
           <div><label>SSID</label><input name="ssid" placeholder="MyWiFi" required></div>
           <div><label>Password</label><input name="psk" placeholder="••••••••" required></div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div class="btn-row">
           <button type="submit">Apply Wi-Fi</button>
-          <span class="hint">Runs <span class="mono">/usr/local/bin/wifi.sh &lt;ssid&gt; &lt;psk&gt;</span></span>
         </div>
         <div class="out mono" id="out-wifi"></div>
       </form>
-    </div>
 
-    <!-- HOSTNAME PAGE -->
-    <div class="content" data-page="hostname" hidden>
-      <form class="card span2" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
+      <!-- Hostname card (button below for alignment) -->
+      <form class="card fill" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
+        <div style="font-weight:800;margin-bottom:6px">Hostname</div>
         <div class="row">
-          <div><label>Hostname</label><input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required></div>
-          <div style="display:flex;align-items:end"><button type="submit">Set Hostname</button></div>
+          <div class="span2" style="grid-column:1 / -1">
+            <label>Hostname</label>
+            <input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required>
+          </div>
         </div>
-        <div class="hint">Updates <span class="mono">/etc/hostname</span> and <span class="mono">/etc/hosts</span> immediately.</div>
+        <div class="btn-row">
+          <button type="submit">Set Hostname</button>
+        </div>
         <div class="out mono" id="out-host"></div>
       </form>
+    </div>
+
+    <!-- TUNING PAGE (PID only) -->
+    <div class="content single" data-page="tuning" hidden>
+      <form class="card fill" action="/cgi-bin/pid_tune.sh" method="post" target="hidden_iframe" id="pid-form">
+        <div style="font-weight:800;margin-bottom:6px">PID Tuning</div>
+        <div class="row">
+          <div>
+            <label>Heater</label>
+            <select name="heater" required>
+              <option value="extruder">extruder</option>
+              <option value="heater_bed">heater_bed</option>
+            </select>
+          </div>
+          <div>
+            <label>Target Temp (°C)</label>
+            <input name="target" type="number" min="30" max="300" placeholder="200" required>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Cycles (optional)</label>
+            <input name="cycles" type="number" min="3" max="20" placeholder="5">
+          </div>
+          <div>
+            <label>Save to Config</label>
+            <select name="save">
+              <option value="1">Yes</option>
+              <option value="0" selected>No</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="submit">Start PID Tune</button>
+          <span class="hint">Runs <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
+        </div>
+        <div class="out mono" id="out-pid"></div>
+        <div class="hint">Tip: Preheat close to target for faster convergence.</div>
+      </form>
+    </div>
+
+    <!-- INPUT SHAPER PAGE (blocked by overlay) -->
+    <div class="content" data-page="shaper" hidden>
+      <div class="coming-soon-wrap span2">
+        <div class="blur-under">
+          <form class="card" action="/cgi-bin/input_shaper_measure.sh" method="post" target="hidden_iframe" id="shaper-measure-form">
+            <div style="font-weight:800;margin-bottom:6px">Resonance Test</div>
+            <div class="row">
+              <div>
+                <label>Axis</label>
+                <select name="axis" required>
+                  <option value="x">X</option>
+                  <option value="y">Y</option>
+                </select>
+              </div>
+              <div>
+                <label>Probe (accelerometer)</label>
+                <select name="probe">
+                  <option value="adxl345" selected>ADXL345</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button type="submit" disabled>Start Test</button>
+            </div>
+            <div class="out mono" id="out-shaper-measure"></div>
+          </form>
+
+          <form class="card" action="/cgi-bin/set_input_shaper.sh" method="post" target="hidden_iframe" id="shaper-apply-form">
+            <div style="font-weight:800;margin-bottom:6px">Apply Shaper Settings</div>
+            <div class="row">
+              <div>
+                <label>X Shaper</label>
+                <select name="x_type">
+                  <option value="auto" selected>auto</option>
+                  <option value="mzv">mzv</option>
+                  <option value="ei">ei</option>
+                  <option value="2hump_ei">2hump_ei</option>
+                  <option value="zv">zv</option>
+                  <option value="zvd">zvd</option>
+                  <option value="zvdd">zvdd</option>
+                </select>
+              </div>
+              <div>
+                <label>X Frequency (Hz)</label>
+                <input name="x_freq" type="number" step="0.1" min="1" placeholder="40.0">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Y Shaper</label>
+                <select name="y_type">
+                  <option value="auto" selected>auto</option>
+                  <option value="mzv">mzv</option>
+                  <option value="ei">ei</option>
+                  <option value="2hump_ei">2hump_ei</option>
+                  <option value="zv">zv</option>
+                  <option value="zvd">zvd</option>
+                  <option value="zvdd">zvdd</option>
+                </select>
+              </div>
+              <div>
+                <label>Y Frequency (Hz)</label>
+                <input name="y_freq" type="number" step="0.1" min="1" placeholder="40.0">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Save to Config</label>
+                <select name="save">
+                  <option value="1">Yes</option>
+                  <option value="0" selected>No</option>
+                </select>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button type="submit" disabled>Apply Shaper</button>
+            </div>
+            <div class="out mono" id="out-shaper-apply"></div>
+          </form>
+        </div>
+
+        <div class="coming-soon-overlay">
+          <div class="msg">
+            <strong>Input Shaper — Coming Soon</strong>
+            <div class="sub">You’ll be able to run resonance tests and apply shaper settings here.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALIBRATION PRINTS PAGE (blocked by overlay) -->
+    <div class="content" data-page="calibration" hidden>
+      <div class="coming-soon-wrap span2">
+        <div class="blur-under">
+          <form class="card" action="/cgi-bin/print_temp_tower.sh" method="post" target="hidden_iframe" id="cal-temp-form">
+            <div style="font-weight:800;margin-bottom:6px">Temperature Tower</div>
+            <div class="row">
+              <div><label>Start (°C)</label><input name="start" type="number" min="150" max="300" value="220" required></div>
+              <div><label>Step (°C)</label><input name="step" type="number" min="2" max="15" value="5" required></div>
+            </div>
+            <div class="row">
+              <div><label>Floors</label><input name="floors" type="number" min="4" max="12" value="6"></div>
+              <div>
+                <label>Material</label>
+                <select name="material">
+                  <option>PLA</option><option>PETG</option><option>ABS</option><option>ASA</option>
+                </select>
+              </div>
+            </div>
+            <div class="btn-row"><button type="submit" disabled>Start Tower</button></div>
+            <div class="out mono" id="out-cal-temp"></div>
+          </form>
+
+          <form class="card" action="/cgi-bin/print_flow_cube.sh" method="post" target="hidden_iframe" id="cal-flow-form">
+            <div style="font-weight:800;margin-bottom:6px">Flow Cube (Single Wall)</div>
+            <div class="row">
+              <div><label>Nozzle (mm)</label><input name="nozzle" type="number" step="0.05" min="0.2" max="1.2" value="0.4" required></div>
+              <div><label>Wall Speed (mm/s)</label><input name="speed" type="number" min="10" max="120" value="40"></div>
+            </div>
+            <div class="row">
+              <div><label>Wall Count</label><input name="walls" type="number" min="1" max="3" value="1"></div>
+              <div><label>Size (mm)</label><input name="size" type="number" min="15" max="40" value="20"></div>
+            </div>
+            <div class="btn-row"><button type="submit" disabled>Print Flow Cube</button></div>
+            <div class="out mono" id="out-cal-flow"></div>
+          </form>
+
+          <form class="card" action="/cgi-bin/print_xyz_cube.sh" method="post" target="hidden_iframe" id="cal-xyz-form">
+            <div style="font-weight:800;margin-bottom:6px">XYZ Calibration Cube</div>
+            <div class="row">
+              <div><label>Size (mm)</label><input name="size" type="number" min="15" max="40" value="20"></div>
+              <div><label>Speed (mm/s)</label><input name="speed" type="number" min="20" max="150" value="60"></div>
+            </div>
+            <div class="btn-row"><button type="submit" disabled>Print XYZ Cube</button></div>
+            <div class="out mono" id="out-cal-xyz"></div>
+          </form>
+
+          <form class="card" action="/cgi-bin/print_bed_mesh_pattern.sh" method="post" target="hidden_iframe" id="cal-mesh-form">
+            <div style="font-weight:800;margin-bottom:6px">Bed Mesh Pattern</div>
+            <div class="row">
+              <div><label>Lines</label><input name="lines" type="number" min="5" max="30" value="12"></div>
+              <div><label>Spacing (mm)</label><input name="spacing" type="number" min="10" max="60" value="25"></div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Prime Line</label>
+                <select name="prime"><option value="1" selected>Yes</option><option value="0">No</option></select>
+              </div>
+              <div><label>Temperature (°C)</label><input name="temp" type="number" min="0" max="300" value="0" placeholder="0=skip"></div>
+            </div>
+            <div class="btn-row"><button type="submit" disabled>Print Mesh Pattern</button></div>
+            <div class="out mono" id="out-cal-mesh"></div>
+          </form>
+        </div>
+
+        <div class="coming-soon-overlay">
+          <div class="msg">
+            <strong>Calibration Prints — Coming Soon</strong>
+            <div class="sub">Kick off common calibration prints from here once enabled.</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- SYSTEM PAGE -->
@@ -189,19 +522,19 @@
             onsubmit="return confirm('Reboot now?');" id="system-form">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
           <div>
-            <div style="font-weight:700;margin-bottom:6px">Reboot</div>
+            <div style="font-weight:800;margin-bottom:6px">Reboot</div>
             <div class="hint">Performs a clean reboot in ~2 seconds.</div>
           </div>
-            <button type="submit">Reboot</button>
+          <button type="submit">Reboot</button>
         </div>
         <div class="out mono" id="out-system"></div>
       </form>
 
       <div class="card">
-        <div style="font-weight:700;margin-bottom:6px">Network Info</div>
-        <div class="hint">(Optional: wire this to a status CGI later)</div>
+        <div style="font-weight:800;margin-bottom:6px">Network Info</div>
+        <div class="hint">(Optional: wire to a status CGI later)</div>
         <div class="out mono" id="netinfo">
-          IP: <script>document.write((location.host||'').split(':')[0]||'localhost');</script>
+          IP: <span id="lan-ip">resolving…</span>
         </div>
       </div>
     </div>
@@ -211,26 +544,137 @@
 <iframe name="hidden_iframe" style="display:none"></iframe>
 
 <script>
+  const COMING_SOON = { shaper: true, calibration: true, troubleshoot: true };
+
+  // Tabs
   const tabs=document.querySelectorAll('.tab[data-page]');
   const pages=document.querySelectorAll('.content');
   const title=document.getElementById('page-title');
 
+  const legacyToNetwork = new Set(['wifi','hostname']);
+  const canonicalPage = p => legacyToNetwork.has(p) ? 'network' : p;
+
+  function pagePrettyName(pg){
+    const base = {machine:'Machine',network:'Network',tuning:'Tuning',shaper:'Input Shaper',calibration:'Calibration',troubleshoot:'Troubleshooting',system:'System'}[pg] || (pg[0].toUpperCase()+pg.slice(1));
+    return (pg in COMING_SOON && COMING_SOON[pg]) ? `${base}` : base;
+  }
+
   function show(page){
-    pages.forEach(p=>p.hidden=(p.dataset.page!==page));
-    tabs.forEach(t=>t.classList.toggle('active',t.dataset.page===page));
-    title.textContent=page.charAt(0).toUpperCase()+page.slice(1);
-    history.replaceState(null,'','#'+page);
+    const pg = canonicalPage(page);
+    pages.forEach(p=>p.hidden=(p.dataset.page!==pg));
+    tabs.forEach(t=>t.classList.toggle('active', t.dataset.page===pg));
+    title.textContent = pagePrettyName(pg);
+    history.replaceState(null,'','#'+pg);
   }
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.page)));
-  show((location.hash||'#machine').replace('#',''));
+  const initial = (location.hash||'#machine').replace('#','');
 
-  // keep hidden field in sync
+  function applyComingSoon(){
+    ['shaper','calibration','troubleshoot'].forEach(pg=>{
+      const enabled = (pg in COMING_SOON) ? !COMING_SOON[pg] : true;
+      const pageEl = document.querySelector(`.content[data-page="${pg}"]`);
+      if (!pageEl) return;
+      const overlay = pageEl.querySelector('.coming-soon-overlay');
+      const container = pageEl.querySelector('.coming-soon-wrap');
+      const buttons = pageEl.querySelectorAll('button');
+
+      if (enabled) {
+        if (overlay) overlay.remove();
+        buttons.forEach(b=>b.disabled=false);
+        container?.querySelector('.blur-under')?.classList.remove('blur-under');
+      } else {
+        buttons.forEach(b=>b.disabled=true);
+        if (!overlay && container){
+          const ov=document.createElement('div');
+          ov.className='coming-soon-overlay';
+          ov.innerHTML=`<div class="msg"><strong>${pagePrettyName(pg)}</strong><div class="sub">This section will be available soon.</div></div>`;
+          container.appendChild(ov);
+        }
+      }
+    });
+  }
+
+  applyComingSoon();
+  show(initial);
+
+  // Machine selection sync
   document.querySelectorAll('input[name="type-radio"]').forEach(r=>{
     r.addEventListener('change',e=>{
       const h=document.getElementById('machine-type-hidden');
-      if(h) h.value = e.target.value;
+      if(h) h.value=e.target.value;
     });
   });
+
+  // LAN IP-aware Dashboard link
+  (async () => {
+    const dash=document.getElementById('dash-link');
+    const ipSpan=document.getElementById('lan-ip');
+    const currentHost=(location.host||'').split(':')[0];
+    const reuse=h=>h && h!=='localhost' && h!=='127.0.0.1';
+    let targetHost=currentHost;
+
+    if (!reuse(currentHost)) {
+      try {
+        const r=await fetch('/cgi-bin/host_ip.sh',{cache:'no-store'});
+        if (r.ok) {
+          const t=(await r.text()).trim();
+          if (/^\d+\.\d+\.\d+\.\d+$/.test(t)) targetHost=t;
+        }
+      } catch(e){}
+    }
+
+    if (ipSpan) ipSpan.textContent=targetHost||'unknown';
+    const PORT='';
+    if (dash) {
+      dash.href=`http://${targetHost||'localhost'}${PORT}/`;
+      dash.title=`Open Dashboard on ${targetHost||'localhost'}${PORT}`;
+    }
+  })();
+
+  // AJAX helpers
+  (() => {
+    const form=document.getElementById('form-machine');
+    const out=document.getElementById('out-machine');
+    if (!form || !out) return;
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Applying…';
+      try{
+        const fd=new FormData(form);
+        const resp=await fetch('/cgi-bin/set_machine_type.sh',{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
+        });
+        const text=await resp.text();
+        out.textContent=text.trim()||'Updated.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
+    });
+  })();
+
+  function wireAjaxForm(formId,outId){
+    const f=document.getElementById(formId);
+    const out=document.getElementById(outId);
+    if(!f||!out) return;
+    f.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Running…';
+      try{
+        const fd=new FormData(f);
+        const resp=await fetch(f.action,{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
+        });
+        const text=await resp.text();
+        out.textContent=text.trim()||'Done.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
+    });
+  }
+
+  wireAjaxForm('wifi-form','out-wifi');
+  wireAjaxForm('host-form','out-host');
+  wireAjaxForm('pid-form','out-pid');
 </script>
 </body>
 </html>

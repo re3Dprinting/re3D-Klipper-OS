@@ -1,0 +1,80 @@
+#!/bin/bash
+# Accepts either a numeric combination (1-9) OR a machine name string from the HTML form.
+# Writes /home/pi/printer_data/config/.master.cfg accordingly.
+
+set -euo pipefail
+
+config_file="/home/pi/printer_data/config/.master.cfg"
+
+update_config() {
+    local section=$1
+    local platform_type=$2
+    local board_type=$3
+    local crammer_enabled=$4
+    local heater_bed_enabled=$5
+    local mesh_compensation_enabled=$6
+
+    install -m 0644 /dev/null "$config_file" 2>/dev/null || true
+    cat >"$config_file"<<EOF
+[$section]
+platform_type=$platform_type
+board_type=$board_type
+crammer_enabled=$crammer_enabled
+heater_bed_enabled=$heater_bed_enabled
+mesh_compensation_enabled=$mesh_compensation_enabled
+EOF
+}
+
+set_combination() {
+    local choice=$1
+    case "$choice" in
+        1) update_config "fff" "regular"  "archimajor" "false" "true" "false" ;;
+        2) update_config "fff" "xlt"      "archimajor" "false" "true" "false" ;;
+        3) update_config "fff" "terabot"  "archimajor" "false" "true" "false" ;;
+        4) update_config "fgf" "regular"  "archimajor" "false" "true" "false" ;;
+        5) update_config "fgf" "xlt"      "archimajor" "false" "true" "false" ;;
+        6) update_config "fgf" "terabot"  "archimajor" "false" "true" "false" ;;
+        7) update_config "fgf" "regular"  "archimajor" "true"  "true" "false" ;;
+        8) update_config "fgf" "xlt"      "archimajor" "true"  "true" "false" ;;
+        9) update_config "fgf" "terabot"  "archimajor" "true"  "true" "false" ;;
+        *)
+            echo "Invalid combination number. Please enter 1-9." >&2
+            exit 1
+            ;;
+    esac
+    echo "Configuration updated to combination $choice successfully."
+}
+
+# Map the HTML “type” string to your existing combination numbers.
+# (Uses case-insensitive matching and ignores extra spaces.)
+name_to_choice() {
+    local name=$(echo "$1" | tr -s ' ' | sed 's/^ *//; s/ *$//' )
+    shopt -s nocasematch
+    case "$name" in
+        "Gigabot 4")         echo 1 ;;
+        "Gigabot 4 XLT")     echo 2 ;;
+        "Terabot 4")         echo 3 ;;
+        "GigabotX 2")        echo 4 ;;
+        "GigabotX XLT 2")    echo 5 ;;
+        "TerabotX 2")        echo 6 ;;
+        # (If later you expose 'crammer' in the UI, map to 7–9 here.)
+        *)
+            echo "Unknown machine name: $name" >&2
+            return 1
+            ;;
+    esac
+}
+
+# ---- Entry ----
+if [[ $# -ne 1 ]]; then
+    echo "Usage: $0 <combination_number|machine_name>" >&2
+    exit 1
+fi
+
+arg="$1"
+if [[ "$arg" =~ ^[1-9]$ ]]; then
+    set_combination "$arg"
+else
+    choice="$(name_to_choice "$arg")"
+    set_combination "$choice"
+fi

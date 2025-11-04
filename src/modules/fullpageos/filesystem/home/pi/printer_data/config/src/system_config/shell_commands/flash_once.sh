@@ -150,7 +150,7 @@ sudo -u pi -H bash -lc '
     "$HOME/klippy-env/bin/pip" install -r "$HOME/klipper/scripts/klippy-requirements.txt"
   fi
 '
-
+systemctl enable splash_video.service || true
 
 echo "$(ts) starting klipper"
 jstatus "running" 90 "Starting Klipper"
