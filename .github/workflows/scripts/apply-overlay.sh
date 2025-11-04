@@ -12,6 +12,10 @@ LOOP=""
 
 unmount_all() {
   set +e
+  mountpoint -q "${MNT_ROOT}/dev/pts" && sudo umount -R "${MNT_ROOT}/dev/pts"
+  mountpoint -q "${MNT_ROOT}/dev"     && sudo umount -R "${MNT_ROOT}/dev"
+  mountpoint -q "${MNT_ROOT}/proc"    && sudo umount -R "${MNT_ROOT}/proc"
+  mountpoint -q "${MNT_ROOT}/sys"     && sudo umount -R "${MNT_ROOT}/sys"
   mountpoint -q "${MNT_BOOT}" && sudo umount -R "${MNT_BOOT}"
   mountpoint -q "${MNT_ROOT}" && sudo umount -R "${MNT_ROOT}"
   set -e
@@ -59,7 +63,7 @@ fi
 # 4) apply overlay
 if [ -n "${OVERLAY_DIR}" ]; then
   echo "Applying overlay from: ${OVERLAY_DIR}"
-  # root part
+  # root part (no delete)
   sudo rsync -a --exclude 'boot/' "${OVERLAY_DIR}/" "${MNT_ROOT}/"
 
   # boot part
@@ -78,24 +82,53 @@ if [ ! -d "${MNT_ROOT}/host_cache" ]; then
   sudo chmod 0755 "${MNT_ROOT}/host_cache"
 fi
 
-# 6) **normalize ownership** to match what the big script does
-# everything under /home/pi should belong to pi:pi (1000:1000) on Raspberry Pi OS
+###############################################################################
+# 6) OWNERSHIP NORMALIZATION
+# everything that should be "pi stuff" → 1000:1000
+###############################################################################
+# main home
 if [ -d "${MNT_ROOT}/home/pi" ]; then
   sudo chown -R 1000:1000 "${MNT_ROOT}/home/pi"
 fi
 
-# 7) **fix execute bit** on the script that reload.py calls
+# custompios scripts you ship
+if [ -d "${MNT_ROOT}/opt/custompios" ]; then
+  sudo chown -R 1000:1000 "${MNT_ROOT}/opt/custompios"
+fi
+
+# sometimes printer_data lives here
+if [ -d "${MNT_ROOT}/printer_data" ]; then
+  sudo chown -R 1000:1000 "${MNT_ROOT}/printer_data"
+fi
+
+# safety sweep: anything under these trees with uid 1001 → 1000
+for path in \
+  "${MNT_ROOT}/home" \
+  "${MNT_ROOT}/opt" \
+  "${MNT_ROOT}/printer_data"
+do
+  if [ -d "$path" ]; then
+    sudo find "$path" -xdev -uid 1001 -exec chown 1000:1000 {} +
+  fi
+done
+
+# 7) make key scripts executable (the one that failed in your log)
 if [ -f "${MNT_ROOT}/home/pi/printer_data/config/src/get_serial.sh" ]; then
   sudo chmod +x "${MNT_ROOT}/home/pi/printer_data/config/src/get_serial.sh"
 fi
 
-# (optional) sometimes people also have helper scripts here:
-# sudo chmod +x "${MNT_ROOT}/home/pi/printer_data/config/src/reload.py" || true
+# also make every .sh in that dir executable, to mirror the "big" script's behavior
+if [ -d "${MNT_ROOT}/home/pi/printer_data/config/src" ]; then
+  sudo find "${MNT_ROOT}/home/pi/printer_data/config/src" -type f -name '*.sh' -exec chmod +x {} +
+fi
 
-# 8) flush, unmount, fsck
+###############################################################################
+
+# 8) flush & unmount
 sync
 unmount_all
 
+# 9) fsck after unmount
 if command -v e2fsck >/dev/null 2>&1; then
   echo "Running offline fsck on ${ROOT_PART}"
   sudo e2fsck -f -p "${ROOT_PART}" || true
@@ -103,7 +136,7 @@ else
   echo "Warning: e2fsck not found; skipping offline fsck"
 fi
 
-# 9) detach and write out
+# 10) detach & write out
 sudo losetup -d "${LOOP}"
 LOOP=""
 cp -f "${WORK_IMG}" "${IMG_OUT}"
