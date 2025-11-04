@@ -74,7 +74,7 @@ if [ -n "${OVERLAY_DIR}" ]; then
     sudo sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
     sudo chmod +x "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
     # ensure the GUI startup script is runnable by the pi user
-    sudo chown root:root "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
+    sudo chown 1000:1000 "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
   fi
 
   # boot part
@@ -174,3 +174,14 @@ sudo losetup -d "${LOOP}"
 LOOP=""
 cp -f "${WORK_IMG}" "${IMG_OUT}"
 echo "Wrote overlayed image to: ${IMG_OUT}"
+
+# If flash_once.service exists, create the multi-user symlink so systemd will run it on demand
+if [ -f "${MNT_ROOT}/lib/systemd/system/flash_once.service" ] || [ -f "${MNT_ROOT}/etc/systemd/system/flash_once.service" ]; then
+  echo "Enabling flash_once.service inside image"
+  sudo mkdir -p "${MNT_ROOT}/etc/systemd/system/multi-user.target.wants"
+  if [ -f "${MNT_ROOT}/lib/systemd/system/flash_once.service" ]; then
+    sudo ln -sf /lib/systemd/system/flash_once.service "${MNT_ROOT}/etc/systemd/system/multi-user.target.wants/flash_once.service" || true
+  else
+    sudo ln -sf /etc/systemd/system/flash_once.service "${MNT_ROOT}/etc/systemd/system/multi-user.target.wants/flash_once.service" || true
+  fi
+fi
