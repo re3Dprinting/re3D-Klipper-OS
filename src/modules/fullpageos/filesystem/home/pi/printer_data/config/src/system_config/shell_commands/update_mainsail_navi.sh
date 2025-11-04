@@ -3,7 +3,7 @@ set -euo pipefail
 
 # --- Settings ---
 TITLE="Configurator"
-PORT="${PORT:-8080}"
+PORT="${PORT:-8081}"
 ICON_PATH='M3 13h2v-2H3v2m4 0h14v-2H7v2m12 6H5a2 2 0 0 1-2-2V5c0-1.11.89-2 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2Z'
 POSITION=90
 TARGET="_self"
