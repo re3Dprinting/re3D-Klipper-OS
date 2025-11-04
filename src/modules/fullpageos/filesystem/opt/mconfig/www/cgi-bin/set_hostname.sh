@@ -71,6 +71,8 @@ if [[ -n "${REQUEST_METHOD-}" ]]; then
   printf 'Content-Type: text/plain\r\n\r\n'
 fi
 
+sudo rm -rf /home/pi/.config/chromium/Singleton*
+
 echo "Hostname has been changed to: ${NEW_HOST}"
 echo "Interface will now resolve at: ${NEW_HOST}.local (mDNS)"
 echo "Reboot required for all services to pick up the change."
