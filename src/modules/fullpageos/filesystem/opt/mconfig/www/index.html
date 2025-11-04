@@ -55,7 +55,15 @@
   [hidden]{display:none!important}
 
   .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px}
-  .app{display:grid;gap:12px;grid-template-rows:56px 1fr;height:100dvh}
+
+  /* App stacks tabs + page; stays at the top (no vertical centering) */
+  .app{
+    display:grid;gap:12px;
+    grid-template-rows:56px auto;  /* tabs + auto-growing page container */
+    min-height:100dvh;             /* ensure background covers tall screens */
+    height:auto;
+    align-content:start;            /* <— keep rows at the top */
+  }
 
   /* Tabs */
   .tabs{
@@ -98,19 +106,31 @@
   /* Pages & cards */
   .pages{
     background:var(--panel-outer);border:1px solid var(--border);border-radius:var(--radius);
-    padding:14px;display:grid;grid-template-rows:34px 1fr;min-height:0;
+    padding:14px;display:grid;
+    grid-template-rows:auto auto;  /* title row + content row, both auto-height */
+    min-height:0;
+
+    /* ensure title+content pin to the top of this background card */
+    align-content:start;            /* <— grid tracks at the top within .pages */
+    align-items:start;              /* <— items themselves start at top */
   }
   .page-title{font-size:16px;font-weight:800;color:var(--fg);display:flex;align-items:center;gap:10px}
+
+  /* Cards grow by content (not equal-height) */
   .content{
     margin-top:8px;display:grid;gap:12px;
     grid-template-columns:repeat(2,1fr);
-    grid-auto-rows:minmax(120px,auto);
+    grid-auto-rows:auto;
     min-height:0;
+    align-items:start;
   }
   .content.single{grid-template-columns:1fr}
+
   .card{
-    border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--panel);display:grid;gap:10px
+    border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--panel);
+    display:grid;gap:10px;grid-auto-rows:auto;
   }
+
   .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
   label{color:var(--muted);font-size:12px}
 
@@ -134,7 +154,10 @@
   .hint{color:var(--muted);font-size:12px}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .span2{grid-column:1/span 2}
-  .fill{height:100%; align-content:start}
+
+  /* .fill kept neutral so cards size to content */
+  .fill{align-content:start}
+
   .out{
     margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
     border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
@@ -188,6 +211,9 @@
   .content[data-page="network"] select{padding:8px 10px}
   .content[data-page="network"] button{padding:9px 12px}
   .content[data-page="network"] .hint{font-size:11px; margin-top:2px}
+
+  /* Button rows */
+  .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 </style>
 </head>
 <body>
@@ -255,35 +281,38 @@
       </form>
     </div>
 
-    <!-- NETWORK PAGE (Wi-Fi + Hostname combined, compact) -->
+    <!-- NETWORK PAGE (Wi-Fi + Hostname, content-sized cards) -->
     <div class="content" data-page="network" hidden>
       <!-- Wi-Fi card -->
-      <form class="card" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
+      <form class="card fill" action="/cgi-bin/set_wifi.sh" method="post" target="hidden_iframe" id="wifi-form">
         <div style="font-weight:800;margin-bottom:6px">Wi-Fi</div>
         <div class="row">
           <div><label>SSID</label><input name="ssid" placeholder="MyWiFi" required></div>
           <div><label>Password</label><input name="psk" placeholder="••••••••" required></div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div class="btn-row">
           <button type="submit">Apply Wi-Fi</button>
-          <span class="hint">Runs <span class="mono">/usr/local/bin/wifi.sh &lt;ssid&gt; &lt;psk&gt;</span></span>
         </div>
         <div class="out mono" id="out-wifi"></div>
       </form>
 
-      <!-- Hostname card -->
-      <form class="card" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
+      <!-- Hostname card (button below for alignment) -->
+      <form class="card fill" action="/cgi-bin/set_hostname.sh" method="post" target="hidden_iframe" id="host-form">
         <div style="font-weight:800;margin-bottom:6px">Hostname</div>
         <div class="row">
-          <div><label>Hostname</label><input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required></div>
-          <div style="display:flex;align-items:end;justify-content:flex-end"><button type="submit">Set Hostname</button></div>
+          <div class="span2" style="grid-column:1 / -1">
+            <label>Hostname</label>
+            <input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required>
+          </div>
         </div>
-        <div class="hint">Updates <span class="mono">/etc/hostname</span> and <span class="mono">/etc/hosts</span> immediately.</div>
+        <div class="btn-row">
+          <button type="submit">Set Hostname</button>
+        </div>
         <div class="out mono" id="out-host"></div>
       </form>
     </div>
 
-    <!-- TUNING PAGE (PID only, fills remaining space) -->
+    <!-- TUNING PAGE (PID only) -->
     <div class="content single" data-page="tuning" hidden>
       <form class="card fill" action="/cgi-bin/pid_tune.sh" method="post" target="hidden_iframe" id="pid-form">
         <div style="font-weight:800;margin-bottom:6px">PID Tuning</div>
@@ -318,15 +347,14 @@
           <span class="hint">Runs <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
         </div>
         <div class="out mono" id="out-pid"></div>
-        <div style="margin-top:auto" class="hint">Tip: Preheat close to target for faster convergence.</div>
+        <div class="hint">Tip: Preheat close to target for faster convergence.</div>
       </form>
     </div>
 
-    <!-- INPUT SHAPER PAGE (form visible, but blocked by overlay) -->
+    <!-- INPUT SHAPER PAGE (blocked by overlay) -->
     <div class="content" data-page="shaper" hidden>
       <div class="coming-soon-wrap span2">
         <div class="blur-under">
-          <!-- Measure (resonance test) -->
           <form class="card" action="/cgi-bin/input_shaper_measure.sh" method="post" target="hidden_iframe" id="shaper-measure-form">
             <div style="font-weight:800;margin-bottom:6px">Resonance Test</div>
             <div class="row">
@@ -345,14 +373,12 @@
                 </select>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
+            <div class="btn-row">
               <button type="submit" disabled>Start Test</button>
-              <span class="hint">Will run <span class="mono">SHAPER_CALIBRATE AXIS=&lt;X|Y&gt;</span></span>
             </div>
             <div class="out mono" id="out-shaper-measure"></div>
           </form>
 
-          <!-- Apply shaper -->
           <form class="card" action="/cgi-bin/set_input_shaper.sh" method="post" target="hidden_iframe" id="shaper-apply-form">
             <div style="font-weight:800;margin-bottom:6px">Apply Shaper Settings</div>
             <div class="row">
@@ -400,253 +426,91 @@
                 </select>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
+            <div class="btn-row">
               <button type="submit" disabled>Apply Shaper</button>
-              <span class="hint">Will run <span class="mono">SET_INPUT_SHAPER …</span></span>
             </div>
             <div class="out mono" id="out-shaper-apply"></div>
           </form>
         </div>
 
-        <!-- The overlay that blocks interaction -->
         <div class="coming-soon-overlay">
           <div class="msg">
             <strong>Input Shaper — Coming Soon</strong>
-            <div class="sub">You’ll be able to run resonance tests and apply shaper settings here. For now, use your dashboard tools (e.g., <span class="mono">SHAPER_CALIBRATE</span>) to characterize your axes.</div>
+            <div class="sub">You’ll be able to run resonance tests and apply shaper settings here.</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- CALIBRATION PRINTS PAGE (visible but blocked by overlay) -->
+    <!-- CALIBRATION PRINTS PAGE (blocked by overlay) -->
     <div class="content" data-page="calibration" hidden>
       <div class="coming-soon-wrap span2">
         <div class="blur-under">
-          <!-- Temp Tower -->
           <form class="card" action="/cgi-bin/print_temp_tower.sh" method="post" target="hidden_iframe" id="cal-temp-form">
             <div style="font-weight:800;margin-bottom:6px">Temperature Tower</div>
             <div class="row">
-              <div>
-                <label>Start (°C)</label>
-                <input name="start" type="number" min="150" max="300" value="220" required>
-              </div>
-              <div>
-                <label>Step (°C)</label>
-                <input name="step" type="number" min="2" max="15" value="5" required>
-              </div>
+              <div><label>Start (°C)</label><input name="start" type="number" min="150" max="300" value="220" required></div>
+              <div><label>Step (°C)</label><input name="step" type="number" min="2" max="15" value="5" required></div>
             </div>
             <div class="row">
-              <div>
-                <label>Floors</label>
-                <input name="floors" type="number" min="4" max="12" value="6">
-              </div>
+              <div><label>Floors</label><input name="floors" type="number" min="4" max="12" value="6"></div>
               <div>
                 <label>Material</label>
                 <select name="material">
-                  <option>PLA</option>
-                  <option>PETG</option>
-                  <option>ABS</option>
-                  <option>ASA</option>
+                  <option>PLA</option><option>PETG</option><option>ABS</option><option>ASA</option>
                 </select>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Start Tower</button>
-              <span class="hint">Generates/loads a tower G-code and starts printing.</span>
-            </div>
+            <div class="btn-row"><button type="submit" disabled>Start Tower</button></div>
             <div class="out mono" id="out-cal-temp"></div>
           </form>
 
-          <!-- Flow Cube (single wall) -->
           <form class="card" action="/cgi-bin/print_flow_cube.sh" method="post" target="hidden_iframe" id="cal-flow-form">
             <div style="font-weight:800;margin-bottom:6px">Flow Cube (Single Wall)</div>
             <div class="row">
-              <div>
-                <label>Nozzle (mm)</label>
-                <input name="nozzle" type="number" step="0.05" min="0.2" max="1.2" value="0.4" required>
-              </div>
-              <div>
-                <label>Wall Speed (mm/s)</label>
-                <input name="speed" type="number" min="10" max="120" value="40">
-              </div>
+              <div><label>Nozzle (mm)</label><input name="nozzle" type="number" step="0.05" min="0.2" max="1.2" value="0.4" required></div>
+              <div><label>Wall Speed (mm/s)</label><input name="speed" type="number" min="10" max="120" value="40"></div>
             </div>
             <div class="row">
-              <div>
-                <label>Wall Count</label>
-                <input name="walls" type="number" min="1" max="3" value="1">
-              </div>
-              <div>
-                <label>Size (mm)</label>
-                <input name="size" type="number" min="15" max="40" value="20">
-              </div>
+              <div><label>Wall Count</label><input name="walls" type="number" min="1" max="3" value="1"></div>
+              <div><label>Size (mm)</label><input name="size" type="number" min="15" max="40" value="20"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Print Flow Cube</button>
-              <span class="hint">Use calipers on wall thickness for flow tuning.</span>
-            </div>
+            <div class="btn-row"><button type="submit" disabled>Print Flow Cube</button></div>
             <div class="out mono" id="out-cal-flow"></div>
           </form>
 
-          <!-- XYZ Calibration Cube -->
           <form class="card" action="/cgi-bin/print_xyz_cube.sh" method="post" target="hidden_iframe" id="cal-xyz-form">
             <div style="font-weight:800;margin-bottom:6px">XYZ Calibration Cube</div>
             <div class="row">
-              <div>
-                <label>Size (mm)</label>
-                <input name="size" type="number" min="15" max="40" value="20">
-              </div>
-              <div>
-                <label>Speed (mm/s)</label>
-                <input name="speed" type="number" min="20" max="150" value="60">
-              </div>
+              <div><label>Size (mm)</label><input name="size" type="number" min="15" max="40" value="20"></div>
+              <div><label>Speed (mm/s)</label><input name="speed" type="number" min="20" max="150" value="60"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Print XYZ Cube</button>
-              <span class="hint">Measure X/Y/Z for steps/mm or scale validation.</span>
-            </div>
+            <div class="btn-row"><button type="submit" disabled>Print XYZ Cube</button></div>
             <div class="out mono" id="out-cal-xyz"></div>
           </form>
 
-          <!-- Bed Mesh Pattern -->
           <form class="card" action="/cgi-bin/print_bed_mesh_pattern.sh" method="post" target="hidden_iframe" id="cal-mesh-form">
             <div style="font-weight:800;margin-bottom:6px">Bed Mesh Pattern</div>
             <div class="row">
-              <div>
-                <label>Lines</label>
-                <input name="lines" type="number" min="5" max="30" value="12">
-              </div>
-              <div>
-                <label>Spacing (mm)</label>
-                <input name="spacing" type="number" min="10" max="60" value="25">
-              </div>
+              <div><label>Lines</label><input name="lines" type="number" min="5" max="30" value="12"></div>
+              <div><label>Spacing (mm)</label><input name="spacing" type="number" min="10" max="60" value="25"></div>
             </div>
             <div class="row">
               <div>
                 <label>Prime Line</label>
-                <select name="prime">
-                  <option value="1" selected>Yes</option>
-                  <option value="0">No</option>
-                </select>
+                <select name="prime"><option value="1" selected>Yes</option><option value="0">No</option></select>
               </div>
-              <div>
-                <label>Temperature (°C)</label>
-                <input name="temp" type="number" min="0" max="300" value="0" placeholder="0=skip">
-              </div>
+              <div><label>Temperature (°C)</label><input name="temp" type="number" min="0" max="300" value="0" placeholder="0=skip"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Print Mesh Pattern</button>
-              <span class="hint">Great for verifying first-layer consistency.</span>
-            </div>
+            <div class="btn-row"><button type="submit" disabled>Print Mesh Pattern</button></div>
             <div class="out mono" id="out-cal-mesh"></div>
           </form>
         </div>
 
-        <!-- The overlay that blocks interaction -->
         <div class="coming-soon-overlay">
           <div class="msg">
             <strong>Calibration Prints — Coming Soon</strong>
-            <div class="sub">Kick off common calibration prints from here once enabled. In the meantime, you can run these from your dashboard’s macros or upload prepared G-code.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TROUBLESHOOTING PAGE (visible but blocked by overlay) -->
-    <div class="content" data-page="troubleshoot" hidden>
-      <div class="coming-soon-wrap span2">
-        <div class="blur-under">
-          <!-- Logs -->
-          <form class="card" action="/cgi-bin/tail_log.sh" method="post" target="hidden_iframe" id="logs-form">
-            <div style="font-weight:800;margin-bottom:6px">Logs</div>
-            <div class="row">
-              <div>
-                <label>File</label>
-                <select name="file">
-                  <option value="klippy.log" selected>klippy.log</option>
-                  <option value="moonraker.log">moonraker.log</option>
-                  <option value="mainsail.log">mainsail.log</option>
-                  <option value="dmesg">dmesg</option>
-                  <option value="journalctl -u klipper">journalctl -u klipper</option>
-                </select>
-              </div>
-              <div>
-                <label>Lines</label>
-                <input name="lines" type="number" min="50" max="5000" value="400">
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Tail</button>
-              <button type="button" disabled>Download Bundle</button>
-            </div>
-            <div class="hint">Tails the selected log; download bundles via <span class="mono">/cgi-bin/collect_support_bundle.sh</span>.</div>
-            <div class="out mono" id="out-logs"></div>
-          </form>
-
-          <!-- Services -->
-          <form class="card" action="/cgi-bin/service_action.sh" method="post" target="hidden_iframe" id="svc-form">
-            <div style="font-weight:800;margin-bottom:6px">Services</div>
-            <div class="row">
-              <div>
-                <label>Service</label>
-                <select name="service">
-                  <option value="klipper" selected>klipper</option>
-                  <option value="moonraker">moonraker</option>
-                  <option value="crowsnest">crowsnest</option>
-                  <option value="mainsail">mainsail</option>
-                </select>
-              </div>
-              <div>
-                <label>Action</label>
-                <select name="action">
-                  <option value="status" selected>status</option>
-                  <option value="restart">restart</option>
-                  <option value="start">start</option>
-                  <option value="stop">stop</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Run</button>
-              <button type="button" disabled>Quick Diagnostics</button>
-            </div>
-            <div class="hint">Calls <span class="mono">systemctl &lt;action&gt; &lt;service&gt;</span> or runs <span class="mono">/cgi-bin/diagnostics.sh</span>.</div>
-            <div class="out mono" id="out-svc"></div>
-          </form>
-
-          <!-- Maintenance -->
-          <form class="card span2" action="/cgi-bin/maintenance.sh" method="post" target="hidden_iframe" id="maint-form">
-            <div style="font-weight:800;margin-bottom:6px">Maintenance</div>
-            <div class="row">
-              <div>
-                <label>Action</label>
-                <select name="maint_action">
-                  <option value="clear_temp">Clear tmp/objs</option>
-                  <option value="reset_usb">Reset USB bus</option>
-                  <option value="m112">Emergency Stop (M112)</option>
-                  <option value="reload_config">RESTART / RELOAD_CONFIG</option>
-                </select>
-              </div>
-              <div>
-                <label>Confirm</label>
-                <select name="confirm">
-                  <option value="no" selected>No</option>
-                  <option value="yes">Yes</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <button type="submit" disabled>Execute</button>
-              <span class="hint">Dangerous actions require <span class="mono">Confirm=Yes</span>.</span>
-            </div>
-            <div class="out mono" id="out-maint"></div>
-          </form>
-        </div>
-
-        <!-- The overlay that blocks interaction -->
-        <div class="coming-soon-overlay">
-          <div class="msg">
-            <strong>Troubleshooting — Coming Soon</strong>
-            <div class="sub">Quick tools for logs, services, and diagnostics will live here. Until then, use your dashboard or CLI for support tasks.</div>
+            <div class="sub">Kick off common calibration prints from here once enabled.</div>
           </div>
         </div>
       </div>
@@ -668,7 +532,7 @@
 
       <div class="card">
         <div style="font-weight:800;margin-bottom:6px">Network Info</div>
-        <div class="hint">(Optional: wired to a status CGI later)</div>
+        <div class="hint">(Optional: wire to a status CGI later)</div>
         <div class="out mono" id="netinfo">
           IP: <span id="lan-ip">resolving…</span>
         </div>
@@ -680,89 +544,52 @@
 <iframe name="hidden_iframe" style="display:none"></iframe>
 
 <script>
-  // === Simple feature toggle ================================
-  // Toggle Coming Soon per tab (true = show overlay / disabled, false = enabled)
-  const COMING_SOON = {
-    shaper: true,
-    calibration: true,
-    troubleshoot: true
-  };
+  const COMING_SOON = { shaper: true, calibration: true, troubleshoot: true };
 
-  // Tab logic
+  // Tabs
   const tabs=document.querySelectorAll('.tab[data-page]');
   const pages=document.querySelectorAll('.content');
   const title=document.getElementById('page-title');
 
-  // Map legacy hashes (#wifi, #hostname) to the new combined page
   const legacyToNetwork = new Set(['wifi','hostname']);
-
-  function canonicalPage(p){
-    return legacyToNetwork.has(p) ? 'network' : p;
-  }
+  const canonicalPage = p => legacyToNetwork.has(p) ? 'network' : p;
 
   function pagePrettyName(pg){
-    const base = {
-      machine:'Machine', network:'Network', tuning:'Tuning',
-      shaper:'Input Shaper', calibration:'Calibration',
-      troubleshoot:'Troubleshooting', system:'System'
-    }[pg] || (pg.charAt(0).toUpperCase()+pg.slice(1));
-
-    // Append (coming soon) only if that page is still gated
-    if (pg in COMING_SOON && COMING_SOON[pg]) {
-      return `${base}`;
-    }
-    return base;
+    const base = {machine:'Machine',network:'Network',tuning:'Tuning',shaper:'Input Shaper',calibration:'Calibration',troubleshoot:'Troubleshooting',system:'System'}[pg] || (pg[0].toUpperCase()+pg.slice(1));
+    return (pg in COMING_SOON && COMING_SOON[pg]) ? `${base}` : base;
   }
 
   function show(page){
     const pg = canonicalPage(page);
     pages.forEach(p=>p.hidden=(p.dataset.page!==pg));
-    tabs.forEach(t=>{
-      const isActive = t.dataset.page===pg;
-      t.classList.toggle('active', isActive);
-    });
+    tabs.forEach(t=>t.classList.toggle('active', t.dataset.page===pg));
     title.textContent = pagePrettyName(pg);
     history.replaceState(null,'','#'+pg);
   }
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.page)));
-
   const initial = (location.hash||'#machine').replace('#','');
 
-  // Apply coming-soon gating (remove overlay + enable controls if disabled)
   function applyComingSoon(){
     ['shaper','calibration','troubleshoot'].forEach(pg=>{
-      const enabled = (pg in COMING_SOON) ? !COMING_SOON[pg] : true; // default enabled if missing
+      const enabled = (pg in COMING_SOON) ? !COMING_SOON[pg] : true;
       const pageEl = document.querySelector(`.content[data-page="${pg}"]`);
       if (!pageEl) return;
-
       const overlay = pageEl.querySelector('.coming-soon-overlay');
       const container = pageEl.querySelector('.coming-soon-wrap');
       const buttons = pageEl.querySelectorAll('button');
 
       if (enabled) {
-        // Hide overlay and enable buttons
         if (overlay) overlay.remove();
-        buttons.forEach(b=>b.disabled = false);
-        // Also un-dim the blurred content
+        buttons.forEach(b=>b.disabled=false);
         container?.querySelector('.blur-under')?.classList.remove('blur-under');
       } else {
-        // Ensure overlay exists and buttons are disabled
-        buttons.forEach(b=>b.disabled = true);
+        buttons.forEach(b=>b.disabled=true);
         if (!overlay && container){
-          const ov = document.createElement('div');
-          ov.className = 'coming-soon-overlay';
-          ov.innerHTML = `<div class="msg"><strong>${pagePrettyName(pg)}</strong><div class="sub">This section will be available soon.</div></div>`;
+          const ov=document.createElement('div');
+          ov.className='coming-soon-overlay';
+          ov.innerHTML=`<div class="msg"><strong>${pagePrettyName(pg)}</strong><div class="sub">This section will be available soon.</div></div>`;
           container.appendChild(ov);
         }
-      }
-    });
-
-    // Update tab labels to reflect "(coming soon)" state
-    tabs.forEach(t=>{
-      const pg = t.dataset.page;
-      if (pg in COMING_SOON){
-        const base = t.textContent.replace(/\s*\(coming soon\)\s*$/,'');
-        t.textContent = COMING_SOON[pg] ? `${base}` : base;
       }
     });
   }
@@ -770,94 +597,84 @@
   applyComingSoon();
   show(initial);
 
-  // Keep hidden field in sync (Machine selection)
+  // Machine selection sync
   document.querySelectorAll('input[name="type-radio"]').forEach(r=>{
     r.addEventListener('change',e=>{
       const h=document.getElementById('machine-type-hidden');
-      if(h) h.value = e.target.value;
+      if(h) h.value=e.target.value;
     });
   });
 
-  // --- LAN IP-aware Dashboard link ---
+  // LAN IP-aware Dashboard link
   (async () => {
-    const dash = document.getElementById('dash-link');
-    const ipSpan = document.getElementById('lan-ip');
-    const currentHost = (location.host||'').split(':')[0];
-    const reuse = (h) => h && h !== 'localhost' && h !== '127.0.0.1';
-    let targetHost = currentHost;
+    const dash=document.getElementById('dash-link');
+    const ipSpan=document.getElementById('lan-ip');
+    const currentHost=(location.host||'').split(':')[0];
+    const reuse=h=>h && h!=='localhost' && h!=='127.0.0.1';
+    let targetHost=currentHost;
 
     if (!reuse(currentHost)) {
       try {
-        const r = await fetch('/cgi-bin/host_ip.sh', {cache:'no-store'});
+        const r=await fetch('/cgi-bin/host_ip.sh',{cache:'no-store'});
         if (r.ok) {
-          const t = (await r.text()).trim();
-          if (/^\d+\.\d+\.\d+\.\d+$/.test(t)) targetHost = t;
+          const t=(await r.text()).trim();
+          if (/^\d+\.\d+\.\d+\.\d+$/.test(t)) targetHost=t;
         }
-      } catch(e) { /* ignore, leave localhost */ }
+      } catch(e){}
     }
 
-    if (ipSpan) ipSpan.textContent = targetHost || 'unknown';
-
-    // Adjust this if your dashboard runs on a port
-    const PORT = ''; // e.g. ':7125'
+    if (ipSpan) ipSpan.textContent=targetHost||'unknown';
+    const PORT='';
     if (dash) {
-      dash.href = `http://${targetHost || 'localhost'}${PORT}/`;
-      dash.title = `Open Dashboard on ${targetHost || 'localhost'}${PORT}`;
+      dash.href=`http://${targetHost||'localhost'}${PORT}/`;
+      dash.title=`Open Dashboard on ${targetHost||'localhost'}${PORT}`;
     }
   })();
 
-  // --- Machine form: keep page, show success inline ---
+  // AJAX helpers
   (() => {
-    const form = document.getElementById('form-machine');
-    const out  = document.getElementById('out-machine');
+    const form=document.getElementById('form-machine');
+    const out=document.getElementById('out-machine');
     if (!form || !out) return;
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault(); // do not navigate away
-      out.textContent = 'Applying…';
-      try {
-        const fd = new FormData(form);
-        const resp = await fetch('/cgi-bin/set_machine_type.sh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams(fd)
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Applying…';
+      try{
+        const fd=new FormData(form);
+        const resp=await fetch('/cgi-bin/set_machine_type.sh',{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
         });
-        const text = await resp.text();
-        out.textContent = text.trim() || 'Updated.';
-      } catch (err) {
-        out.textContent = `Error: ${err}`;
-      }
+        const text=await resp.text();
+        out.textContent=text.trim()||'Updated.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
     });
   })();
 
-  // --- Small helper to wire AJAX-y posts for other forms ---
-  function wireAjaxForm(formId, outId){
-    const f = document.getElementById(formId);
-    const out = document.getElementById(outId);
-    if(!f || !out) return;
+  function wireAjaxForm(formId,outId){
+    const f=document.getElementById(formId);
+    const out=document.getElementById(outId);
+    if(!f||!out) return;
     f.addEventListener('submit', async (e)=>{
       e.preventDefault();
-      out.textContent = 'Running…';
+      out.textContent='Running…';
       try{
-        const fd = new FormData(f);
-        const resp = await fetch(f.action, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams(fd)
+        const fd=new FormData(f);
+        const resp=await fetch(f.action,{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
         });
-        const text = await resp.text();
-        out.textContent = text.trim() || 'Done.';
-      }catch(err){
-        out.textContent = `Error: ${err}`;
-      }
+        const text=await resp.text();
+        out.textContent=text.trim()||'Done.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
     });
   }
 
   wireAjaxForm('wifi-form','out-wifi');
   wireAjaxForm('host-form','out-host');
   wireAjaxForm('pid-form','out-pid');
-
-  // (The calibration and troubleshooting forms may be enabled/disabled by COMING_SOON)
 </script>
 </body>
 </html>
