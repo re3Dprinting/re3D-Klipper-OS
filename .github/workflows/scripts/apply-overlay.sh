@@ -66,6 +66,17 @@ if [ -n "${OVERLAY_DIR}" ]; then
   # root part (no delete)
   sudo rsync -a --exclude 'boot/' "${OVERLAY_DIR}/" "${MNT_ROOT}/"
 
+  # If the overlay provides a run_onepageos template that contains a placeholder
+  # (%BROWSER_START_SCRIPT%), substitute the actual browser start script path
+  # so the GUI startup loop will call /opt/custompios/scripts/start_chromium_browser.
+  if [ -f "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" ]; then
+    echo "Patching run_onepageos inside image to point to start_chromium_browser"
+    sudo sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
+    sudo chmod +x "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
+    # ensure the GUI startup script is runnable by the pi user
+    sudo chown root:root "${MNT_ROOT}/opt/custompios/scripts/run_onepageos" || true
+  fi
+
   # boot part
   if [ -d "${OVERLAY_DIR}/boot" ] && mountpoint -q "${MNT_BOOT}"; then
     echo "Applying boot overlay from: ${OVERLAY_DIR}/boot -> p1"
