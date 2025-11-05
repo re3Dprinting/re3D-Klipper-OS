@@ -1,5 +1,5 @@
 # re:3D Klipper OS
-### **Not yet ready for production. Currently in beta.**
+### **Almost ready for production. Currently in beta.**
 
 ### **This will replace the [klipper_config](https://github.com/re3Dprinting/klipper_config) repository.**
 
