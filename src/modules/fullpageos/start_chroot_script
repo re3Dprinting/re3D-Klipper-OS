@@ -7,14 +7,105 @@
 set -x
 set -e
 
+# --- Build Timing Setup ---
+BUILD_TIMING_LOG="/tmp/build_timing.log"
+echo "" > "$BUILD_TIMING_LOG"
+step_start() { STEP_NAME="$1"; STEP_TIME=$(date +%s); }
+step_end() { local end_time=$(date +%s); local elapsed=$((end_time-STEP_TIME)); echo "$STEP_NAME: ${elapsed}s" >> "$BUILD_TIMING_LOG"; }
+
 source /common.sh
 
+echo "=== Checking for host cache ==="
+ls -lah /host_cache || echo "No /host_cache found"
+
+apt-get install -y rsync
+set -e
+CACHE_ROOT="/host_cache"
+USER_HOME="/home/${BASE_USER}"
+
+seed_dir () {
+  local src="$1"     # e.g. /host_cache/klipper
+  local dst="$2"     # e.g. /home/pi/klipper
+  local owner="${BASE_USER}:${BASE_USER}"
+
+  if [ -d "$src" ]; then
+    echo "Seeding cache: $src -> $dst"
+    mkdir -p "$dst"
+    rsync -a --delete "$src/" "$dst/"
+    chown -R "$owner" "$dst"
+  else
+    echo "No cache found for $dst"
+  fi
+}
+
+step_start "Unpack Filesystem"
 unpack /filesystem/home/pi /home/"${BASE_USER}" "${BASE_USER}"
 unpack /filesystem/opt /opt
 unpack /filesystem/boot /"${BASE_BOOT_MOUNT_PATH}"
 unpack /filesystem/root_init /
+unpack /filesystem/host_cache /host_cache
+step_end
 
 apt-get update
+install -d -m 1777 /tmp && chown root:root /tmp
+
+# Seed Klipper / Moonraker / Crowsnest and their venvs if present (after unpack so /host_cache exists)
+step_start "Seed host_cache into chroot"
+seed_dir "${CACHE_ROOT}/klipper"        "${USER_HOME}/klipper"
+seed_dir "${CACHE_ROOT}/klippy-env"     "${USER_HOME}/klippy-env"
+seed_dir "${CACHE_ROOT}/moonraker"      "${USER_HOME}/moonraker"
+seed_dir "${CACHE_ROOT}/moonraker-env"  "${USER_HOME}/moonraker-env"
+seed_dir "${CACHE_ROOT}/crowsnest"      "${USER_HOME}/crowsnest"
+
+# If present, restore prebuilt Crowsnest binaries BEFORE deleting /host_cache
+CROWSNEST_PREINSTALLED=0
+BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
+if [ -x "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
+  echo "CROWSNEST FAST-PATH: installing prebuilt binaries from cache"
+  install -Dm0755 "${BIN_SRC}/ustreamer"       /usr/local/bin/ustreamer
+  install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer
+  [ -x "${BIN_SRC}/crowsnest" ] && install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest
+  [ -f "${BIN_SRC}/crowsnest.service" ] && install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service
+  systemctl daemon-reload || true
+  systemctl enable crowsnest || true
+  CROWSNEST_PREINSTALLED=1
+fi
+
+# Reclaim space BEFORE pip installs
+rm -rf "${CACHE_ROOT}" || true
+apt-get clean
+# NOTE: do NOT purge /var/lib/apt/lists/* here or you'll need to apt-get update again
+df -h / || true
+
+# If we seeded venvs, make sure wheels are up-to-date with requirements
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  if [ -w /tmp ]; then
+    export TMPDIR=/tmp
+  else
+    mkdir -p "$HOME/.tmp"; chmod 700 "$HOME/.tmp"; export TMPDIR="$HOME/.tmp"
+  fi
+
+  df -h / || true
+  df -h "$TMPDIR" || true
+
+  if [ -d "$HOME/klippy-env" ] && [ -d "$HOME/klipper" ]; then
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    source "$HOME/klippy-env/bin/activate"
+    pip install -U pip setuptools wheel --no-cache-dir
+    [ -f "$HOME/klipper/scripts/klippy-requirements.txt" ] && \
+      pip install -r "$HOME/klipper/scripts/klippy-requirements.txt" --no-cache-dir
+  fi
+
+  if [ -d "$HOME/moonraker-env" ] && [ -d "$HOME/moonraker" ]; then
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    source "$HOME/moonraker-env/bin/activate"
+    pip install -U pip setuptools wheel --no-cache-dir
+    [ -f "$HOME/moonraker/scripts/moonraker-requirements.txt" ] && \
+      pip install -r "$HOME/moonraker/scripts/moonraker-requirements.txt" --no-cache-dir
+  fi
+'
+
 
 # Keep the image lean
 echo 'APT::Install-Recommends "0"; APT::Install-Suggests "0";' >/etc/apt/apt.conf.d/99norecommends
@@ -42,18 +133,23 @@ remove_extra=$(remove_if_installed scratch squeak-plugins-scratch squeak-vm pyth
 apt-get remove -y --purge  $remove_extra
 apt-get autoremove -y
 
+step_start "Base Package Install"
 # apt-get tools
 apt-get -y --force-yes install git screen checkinstall avahi-daemon libavahi-compat-libdnssd1 xterm xdotool vim expect feh pulseaudio
+step_end
 
 if [ "$FULLPAGEOS_INCLUDE_CHROMIUM" == "yes" ]
 then
+    step_start "Chromium Install"
     apt-get install -y --force-yes chromium-browser
     sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' /opt/custompios/scripts/run_onepageos
+    step_end
 fi
 
 # Install web stack (optional lighttpd)
 if [ "$FULLPAGEOS_INCLUDE_LIGHTTPD" == "yes" ]
 then
+    step_start "Lighttpd/Web Stack Setup"
     apt-get install -y lighttpd php-common php-cgi php
     lighty-enable-mod fastcgi-php
     chown -R www-data:www-data /var/www/html
@@ -78,6 +174,7 @@ then
         fi
     popd
     echo "enabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
+    step_end
 else
     echo "disabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
 fi
@@ -163,8 +260,6 @@ apt-get install -y --no-install-recommends \
   avrdude gcc-avr binutils-avr avr-libc stm32flash dfu-util \
   libnewlib-arm-none-eabi gcc-arm-none-eabi binutils-arm-none-eabi \
   libusb-1.0-0-dev libusb-1.0-0 ca-certificates unzip curl vlc
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 ###############################################################################
 ### Mainsail Manual Setup (Klipper + Moonraker + NGINX + Mainsail static) #####
@@ -172,36 +267,104 @@ rm -rf /var/lib/apt/lists/*
 ###############################################################################
 
 # 0) Base packages required by the guide (git, unzip already present above)
-apt-get update
 apt-get install -y git unzip
 
 # Moonraker additional deps (Bookworm set)
+apt-get update
 apt-get install -y \
   libopenjp2-7 python3-libgpiod curl libcurl4-openssl-dev libssl-dev \
   liblmdb-dev libsodium-dev zlib1g-dev libjpeg-dev packagekit wireless-tools \
   python3-git
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 # 1) Create the directory structure (NO config/)
 sudo -u "${BASE_USER}" bash -lc 'mkdir -p ~/printer_data/{logs,gcodes,systemd,comms}'
 
 # 2) Clone Klipper and create its venv
+step_start "Klipper Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
+  # Only clone if not seeded from cache
   if [ ! -d "$HOME/klipper/.git" ]; then
-    git clone https://github.com/Klipper3d/klipper
+    echo "Cloning Klipper (no cache)..."
+    git clone --depth 1 https://github.com/Klipper3d/klipper
   else
+    echo "Klipper already present (from cache or previous run)"
     cd klipper && git fetch --all -p && git reset --hard origin/master
   fi
   cd ~
-  if [ ! -d "$HOME/klippy-env" ]; then
+  # Only create venv if not seeded from cache
+  if [ ! -d "$HOME/klippy-env/bin" ]; then
+    echo "Creating klippy-env (no cache)..."
     virtualenv -p python3 ./klippy-env
+    ./klippy-env/bin/pip install -r ./klipper/scripts/klippy-requirements.txt
+    # Write hash on first creation
+    REQS_HASH=$(md5sum ./klipper/scripts/klippy-requirements.txt | cut -d" " -f1)
+    echo "$REQS_HASH" > "$HOME/klippy-env/.requirements-hash"
+  else
+    echo "klippy-env already present (from cache)"
+    # Only reinstall requirements if they changed
+    REQS_FILE="./klipper/scripts/klippy-requirements.txt"
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    HASH_FILE="$HOME/klippy-env/.requirements-hash"
+    if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
+      echo "Requirements changed, updating packages..."
+      ./klippy-env/bin/pip install -r "$REQS_FILE"
+      echo "$REQS_HASH" > "$HASH_FILE"
+    else
+      echo "Requirements unchanged, skipping pip install"
+    fi
   fi
-  ./klippy-env/bin/pip install -r ./klipper/scripts/klippy-requirements.txt
 '
+step_end
+# 2.5) Drop a fixed Klipper .config for firmware builds
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  KLIPPER_DIR="$HOME/klipper"
+  CONFIG_PATH="$KLIPPER_DIR/.config"
 
+  # Ensure dir exists (it should from the clone above, but be idempotent)
+  mkdir -p "$KLIPPER_DIR"
+
+  # Write as the user (avoid host/chroot redirection issues)
+  cat <<'"'EOF'"' | tee "$CONFIG_PATH" >/dev/null
+# Klipper firmware config: Atmel SAM3/SAM4 -> SAM3X8E, USB CDC
+CONFIG_LOW_LEVEL_OPTIONS=y
+CONFIG_MACH_ATSAM=y
+CONFIG_BOARD_DIRECTORY="atsam"
+CONFIG_MCU="sam3x8e"
+CONFIG_CLOCK_REF_12M=y
+CONFIG_USBSERIAL=y
+EOF
+
+  chmod 0644 "$CONFIG_PATH"
+'
+# 2.6) Non-interactive Kconfig defaults, then (optionally) build firmware
+step_start "Klipper Firmware Build"
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  cd ~/klipper
+
+  # Fill in any missing options from defaults (no TUI prompts)
+  make olddefconfig
+
+  # Only rebuild if .config changed or out/ is missing
+  CONFIG_HASH=$(md5sum .config | cut -d" " -f1)
+  HASH_FILE="out/.config-hash"
+  
+  if [ ! -f "out/klipper.bin" ] || [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$CONFIG_HASH" ]; then
+    echo "Config changed or firmware missing, rebuilding..."
+    make clean
+    make -j"$(nproc)"
+    mkdir -p out
+    echo "$CONFIG_HASH" > "$HASH_FILE"
+  else
+    echo "Firmware already built with current config, skipping"
+  fi
+
+  ls -l out || true
+'
+step_end
 
 # 3) Klipper systemd unit and env
 cat >/etc/systemd/system/klipper.service <<EOF
@@ -232,12 +395,16 @@ systemctl enable klipper.service
 
 
 # 4) Moonraker - manual install (no installer script)
+step_start "Moonraker Clone & Venv"
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
+  # Only clone if not seeded from cache
   if [ ! -d "$HOME/moonraker/.git" ]; then
-    git clone https://github.com/Arksine/moonraker.git
+    echo "Cloning Moonraker (no cache)..."
+    git clone --depth 1 https://github.com/Arksine/moonraker.git
   else
+    echo "Moonraker already present (from cache)"
     cd moonraker && git fetch --all -p && git reset --hard origin/master
   fi
 
@@ -245,12 +412,32 @@ sudo -u "${BASE_USER}" bash -lc '
   mkdir -p ~/printer_data/{logs,systemd,comms,gcodes}
 
   # Create Moonraker venv and install requirements
-  if [ ! -d "$HOME/moonraker-env" ]; then
+  if [ ! -d "$HOME/moonraker-env/bin" ]; then
+    echo "Creating moonraker-env (no cache)..."
     python3 -m venv ~/moonraker-env
+    ~/moonraker-env/bin/pip install --upgrade pip wheel
+    REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
+    ~/moonraker-env/bin/pip install -r "$REQS_FILE"
+    # Write hash on first creation
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    echo "$REQS_HASH" > "$HOME/moonraker-env/.requirements-hash"
+  else
+    echo "moonraker-env already present (from cache)"
+    # Only reinstall requirements if they changed
+    REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    HASH_FILE="$HOME/moonraker-env/.requirements-hash"
+    if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
+      echo "Requirements changed, updating packages..."
+      ~/moonraker-env/bin/pip install --upgrade pip wheel
+      ~/moonraker-env/bin/pip install -r "$REQS_FILE"
+      echo "$REQS_HASH" > "$HASH_FILE"
+    else
+      echo "Requirements unchanged, skipping pip install"
+    fi
   fi
-  ~/moonraker-env/bin/pip install --upgrade pip wheel
-  ~/moonraker-env/bin/pip install -r ~/moonraker/scripts/moonraker-requirements.txt
 '
+step_end
 
 # --- Make manual install equivalent to the official installer ---
 
@@ -293,12 +480,13 @@ EOF
 # --- Moonraker PolicyKit wiring (non-interactive, chroot-safe) ---
 
 # 1) Ensure polkit and dbus are installed (the agent will run on first boot)
-apt-get update
+step_start "PolicyKit/DBus Install"
 apt-get install -y --no-install-recommends policykit-1 dbus
 
 # 2) Create the policy group and add your user
 getent group moonraker-admin >/dev/null 2>&1 || groupadd --system moonraker-admin
 usermod -aG moonraker-admin "${BASE_USER}"
+step_end
 
 # 3) Install the Moonraker polkit rule (from the repo if present; otherwise write a minimal rule)
 RULE_DST="/etc/polkit-1/rules.d/50-moonraker.rules"
@@ -350,7 +538,7 @@ systemctl daemon-reload || true
 ###############################################################################
 
 # Install USB FS helpers and the automounter package
-apt-get update
+step_start "USB Automount Setup"
 apt-get install -y --no-install-recommends exfatprogs ntfs-3g ca-certificates wget
 update-ca-certificates || true
 
@@ -376,6 +564,7 @@ EOF
 sed -i "s|REPLACE_USER|${BASE_USER}|g" /etc/tmpfiles.d/usb-drive.conf
 # (systemd-tmpfiles may or may not be active in chroot, but it's safe to call)
 systemd-tmpfiles --create /etc/tmpfiles.d/usb-drive.conf || true
+step_end
 
 
 ###############################################################################
@@ -383,15 +572,15 @@ systemd-tmpfiles --create /etc/tmpfiles.d/usb-drive.conf || true
 ###############################################################################
 
 # 0) Ensure ffmpeg for rendering (required by timelapse)
-apt-get update
+step_start "Timelapse Plugin Setup"
 apt-get install -y --no-install-recommends ffmpeg
 
 # 1) Clone the plugin repo into the user's home
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
-  if [ ! -d "$HOME/moonraker-timelapse/.git" ]; then
-    git clone https://github.com/mainsail-crew/moonraker-timelapse.git
+    if [ ! -d "$HOME/moonraker-timelapse/.git" ]; then
+      git clone --depth 1 https://github.com/mainsail-crew/moonraker-timelapse.git
   else
     cd moonraker-timelapse && git fetch --all -p && git reset --hard origin/main
   fi
@@ -421,6 +610,7 @@ sudo -u "${BASE_USER}" bash -lc 'install -D -m 0644 \
 systemctl daemon-reload || true
 systemctl enable moonraker || true
 systemctl enable nginx || true
+step_end
 
 
 # 5) Run initial printer setup (guarded; optional)
@@ -431,7 +621,7 @@ sudo -u "${BASE_USER}" bash -lc '
 '
 
 # 8) NGINX as reverse proxy + static hosting for Mainsail
-apt-get update
+step_start "NGINX Install & Config"
 apt-get install -y nginx
 # upstreams
 cat >/etc/nginx/conf.d/upstreams.conf <<'EOF'
@@ -520,9 +710,15 @@ systemctl restart nginx
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~/mainsail
-  wget -q -O mainsail.zip https://github.com/mainsail-crew/mainsail/releases/latest/download/mainsail.zip
-  unzip -o mainsail.zip
-  rm -f mainsail.zip
+  # Only download if index.html is missing (skip if Mainsail already present)
+  if [ ! -f "index.html" ]; then
+    echo "Downloading Mainsail..."
+    wget -q -O mainsail.zip https://github.com/mainsail-crew/mainsail/releases/latest/download/mainsail.zip
+    unzip -o mainsail.zip
+    rm -f mainsail.zip
+  else
+    echo "Mainsail already present, skipping download"
+  fi
 '
 
 # 10) Bookworm permission tweak: allow nginx (www-data) to traverse home
@@ -535,6 +731,7 @@ sudo -u "${BASE_USER}" bash -lc '
     python3 ~/printer_data/config/src/reload.py || true
   fi
 '
+step_end
 
 ###############################################################################
 ### End Mainsail Manual Setup                                                ###
@@ -599,11 +796,11 @@ if [ -x "/home/${BASE_USER}/moonraker-env/bin/pip" ]; then
 fi
 
 # --- Clone virtual_keyboard into /home/pi/virtual_keyboard ---
-apt-get update
+step_start "Virtual Keyboard Clone"
 sudo -u pi bash -lc '
   set -e
   if [ ! -d "$HOME/virtual_keyboard/.git" ]; then
-    git clone https://github.com/re3Dprinting/virtual_keyboard.git ~/virtual_keyboard
+     git clone --depth 1 https://github.com/re3Dprinting/virtual_keyboard.git ~/virtual_keyboard
   else
     cd ~/virtual_keyboard && git fetch --all -p && git reset --hard origin/HEAD
   fi
@@ -618,22 +815,49 @@ awk '1;/^\/\/ ---------- icon handling/{print "\
 })();\n"}' \
 /home/pi/virtual_keyboard/background.js > /home/pi/virtual_keyboard/background.js.tmp \
 && mv /home/pi/virtual_keyboard/background.js.tmp /home/pi/virtual_keyboard/background.js
+step_end
 
 
 # --- Minimal Crowsnest unattended install (no .config) ---
 
+# --- Crowsnest binary cache restore (accept either binary; best-effort)
+BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
+CROWSNEST_PREINSTALLED=0
+if [ -d "${BIN_SRC}" ]; then
+  echo "CROWSNEST FAST-PATH: checking cached crowsnest binaries"
+  if [ -f "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/ustreamer" ]; then
+    echo "Installing cached ustreamer"
+    install -Dm0755 "${BIN_SRC}/ustreamer" /usr/local/bin/ustreamer || true
+    CROWSNEST_PREINSTALLED=1
+  fi
+  if [ -f "${BIN_SRC}/camera-streamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
+    echo "Installing cached camera-streamer"
+    install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer || true
+    CROWSNEST_PREINSTALLED=1
+  fi
+  if [ -f "${BIN_SRC}/crowsnest" ] && [ -x "${BIN_SRC}/crowsnest" ]; then
+    install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest || true
+    CROWSNEST_PREINSTALLED=1
+  fi
+  if [ -f "${BIN_SRC}/crowsnest.service" ]; then
+    install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service || true
+    command -v systemctl >/dev/null && systemctl daemon-reload || true
+    command -v systemctl >/dev/null && systemctl enable crowsnest || true
+  fi
+fi
+
+step_start "Crowsnest Clone & Install"
 set -xe
 export DEBIAN_FRONTEND=noninteractive
 BASE_USER="pi"
 REPO="https://github.com/mainsail-crew/crowsnest.git"
 
-apt-get update
 apt-get install -y --no-install-recommends git ca-certificates
 
 # Clone/update
 install -d -o "$BASE_USER" -g "$BASE_USER" "/home/$BASE_USER"
 if [ ! -d "/home/$BASE_USER/crowsnest/.git" ]; then
-  runuser -u "$BASE_USER" -- git clone "$REPO" "/home/$BASE_USER/crowsnest"
+  runuser -u "$BASE_USER" -- git clone --depth 1 "$REPO" "/home/$BASE_USER/crowsnest"
 else
   runuser -u "$BASE_USER" -- bash -lc '
     cd ~/crowsnest
@@ -643,54 +867,97 @@ else
   '
 fi
 
-# Pick pkg list (RPi vs generic) and install deps Crowsnest expects
-if grep -qiE "raspbian|raspberry pi os" /etc/os-release 2>/dev/null; then
-  INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-rpi.sh"
-else
-  INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-generic.sh"
+# Only install heavy deps if we are going to build:
+if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
+  if grep -qiE "raspbian|raspberry pi os" /etc/os-release 2>/dev/null; then
+    INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-rpi.sh"
+  else
+    INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-generic.sh"
+  fi
+  # Derive and print the package list; fail clearly or fallback to explicit deps
+  set -e
+  PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"")
+  echo "Crowsnest PKGLIST: $PKGLIST"
+  if [ -z "$PKGLIST" ]; then
+    echo "WARNING: PKGLIST from $INSTALL_SCRIPT is empty; falling back to explicit camera-streamer deps"
+    PKGLIST="libcamera-dev libdrm-dev libevent-dev libjpeg-dev libturbojpeg0-dev libv4l-dev meson ninja-build pkg-config cmake libavcodec-dev libavformat-dev libavutil-dev libswscale-dev"
+  fi
+  apt-get update
+  apt-get install -y $PKGLIST
 fi
-PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"")
-read -ra PKGARRAY <<< "$PKGLIST"
-apt-get install -y "${PKGARRAY[@]}"
 
-# Runtime dirs
-install -d -o "$BASE_USER" -g "$BASE_USER" \
-  "/home/$BASE_USER/printer_data/config" \
-  "/home/$BASE_USER/printer_data/logs" \
-  "/home/$BASE_USER/printer_data/systemd"
+# Only run make/install when building (best-effort; don't fail if artifacts missing)
+if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
+  INSTALL_STAMP="/home/$BASE_USER/crowsnest/.installed-stamp"
+  CURRENT_COMMIT=$(cd "/home/$BASE_USER/crowsnest" && git rev-parse HEAD 2>/dev/null || echo "none")
+  if [ ! -f "$INSTALL_STAMP" ] || [ "$(cat "$INSTALL_STAMP" 2>/dev/null)" != "$CURRENT_COMMIT" ]; then
+    echo "Installing/updating Crowsnest (best-effort)..."
+    pushd "/home/$BASE_USER/crowsnest" >/dev/null
 
-# Unattended install with your overrides (run as ROOT so apt works;
-# set HOME to the user's home so files land under /home/pi)
-export CROWSNEST_UNATTENDED=1
-export CROWSNEST_ADD_CROWSNEST_MOONRAKER=0
-export BASE_USER="pi"
-export CROWSNEST_USTREAMER_REPO_SHIP="https://github.com/pikvm/ustreamer.git"
-export CROWSNEST_USTREAMER_REPO_BRANCH="v6.36"
-export CROWSNEST_CAMERA_STREAMER_REPO_SHIP="https://github.com/mryel00/camera-streamer.git"
-export CROWSNEST_CAMERA_STREAMER_REPO_BRANCH="main"
-export CROWSNEST_CONFIG_PATH="/home/pi/printer_data/config"
-export CROWSNEST_LOG_PATH="/home/pi/printer_data/logs"
-export CROWSNEST_ENV_PATH="/home/pi/printer_data/systemd"
+    # Try to build targets only if a Makefile exists; ignore errors
+    if [ -f Makefile ]; then
+      echo "Attempting to build crowsnest targets (make -k ustreamer camera-streamer)"
+      HOME="/home/$BASE_USER" make -k ustreamer camera-streamer || true
+    else
+      echo "No Makefile found in crowsnest; skipping make"
+    fi
 
-pushd "/home/$BASE_USER/crowsnest" >/dev/null
-HOME="/home/$BASE_USER" make install
-popd >/dev/null
+    # ustreamer: install if a real executable file was produced, otherwise try apt package non-fatally
+    if [ -f "bin/ustreamer" ] && [ -x "bin/ustreamer" ]; then
+      echo "Installing built ustreamer"
+      install -Dm0755 bin/ustreamer /usr/local/bin/ustreamer || true
+    else
+      echo "No built ustreamer file found. Trying apt package (non-fatal)"
+      apt-get update || true
+      apt-get install -y ustreamer || true
+    fi
 
-# Enable on first boot (safe in chroot)
-if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true; fi
-mkdir -p /etc/systemd/system/multi-user.target.wants
-[ -e /lib/systemd/system/crowsnest.service ] && ln -sf /lib/systemd/system/crowsnest.service /etc/systemd/system/multi-user.target.wants/crowsnest.service || true
+    # camera-streamer: install only if a real executable file exists
+    if [ -f "bin/camera-streamer" ] && [ -x "bin/camera-streamer" ]; then
+      echo "Installing built camera-streamer"
+      install -Dm0755 bin/camera-streamer /usr/local/bin/camera-streamer || true
+    else
+      echo "No built camera-streamer found; skipping."
+    fi
+
+    # crowsnest wrapper binary
+    if [ -f "bin/crowsnest" ] && [ -x "bin/crowsnest" ]; then
+      echo "Installing crowsnest binary"
+      install -Dm0755 bin/crowsnest /usr/local/bin/crowsnest || true
+    fi
+
+    # Install unit file if present in repo (common locations)
+    if [ -f "packages/debian/crowsnest.service" ]; then
+      install -Dm0644 packages/debian/crowsnest.service /lib/systemd/system/crowsnest.service || true
+      command -v systemctl >/dev/null && systemctl daemon-reload || true
+      command -v systemctl >/dev/null && systemctl enable crowsnest || true
+    elif [ -f "crowsnest.service" ]; then
+      install -Dm0644 crowsnest.service /lib/systemd/system/crowsnest.service || true
+      command -v systemctl >/dev/null && systemctl daemon-reload || true
+      command -v systemctl >/dev/null && systemctl enable crowsnest || true
+    fi
+
+    popd >/dev/null
+    echo "$CURRENT_COMMIT" > "$INSTALL_STAMP"
+  else
+    echo "Crowsnest already installed at current commit, skipping build/install"
+  fi
+else
+  echo "Crowsnest binaries restored from cache, skipping build/install"
+fi
+step_end
 
 
 ###############################################################################
 # Beacon3D – beacon_klipper (run after Klipper + klippy-env are created)
 ###############################################################################
+step_start "Beacon3D Clone & Install"
 # Clone/update as pi
 sudo -u "${BASE_USER}" bash -lc '
   set -e
   cd ~
   if [ ! -d "$HOME/beacon_klipper/.git" ]; then
-    git clone https://github.com/beacon3d/beacon_klipper.git
+     git clone --depth 1 https://github.com/beacon3d/beacon_klipper.git
   else
     cd beacon_klipper && git fetch --all -p && \
       (git rev-parse --verify origin/main >/dev/null 2>&1 && git reset --hard origin/main || git reset --hard origin/master)
@@ -733,11 +1000,14 @@ sudo -u "${BASE_USER}" bash -lc '
 '
 apt-get update
 apt-get install -y --no-install-recommends libopenblas-dev
+step_end
+
 
 
 ###############################################################################
 # Copy custom shell commands into /usr/local/bin (if any)
 ###############################################################################
+step_start "Custom Shell Commands Copy"
 SRC="/home/${BASE_USER}/printer_data/config/src/system_config/shell_commands"
 DST="/usr/local/bin"
 
@@ -755,11 +1025,13 @@ if [ -d "$SRC" ]; then
 else
   echo "NOTE: $SRC not found; skipping shell command install."
 fi
+step_end
 
 ###############################################################################
 # G-Code Shell Command (fetch from KIAUH v6 path)
 ###############################################################################
 
+step_start "G-Code Shell Command Fetch"
 set -e
 
 KLIPPER_DIR="/home/${BASE_USER}/klipper"
@@ -790,6 +1062,8 @@ else
   echo "WARN: could not fetch gcode_shell_command.py from known URLs; skipping copy."
   rm -f "${EXTRA_DST}.tmp" 2>/dev/null || true
 fi
+step_end
+
 
 ###############################################################################
 # Minimal: install /usr/lib/cgi-bin/host_ip.sh (no web server changes)
@@ -827,11 +1101,13 @@ ln -sf /etc/systemd/system/klippy-ensure-chelper.service \
   /etc/systemd/system/klipper.service.wants/klippy-ensure-chelper.service
 
 # 3) (Optional) If Klipper might already be running on first boot, ensure the service reloads.
-systemctl daemon-reload || true
+
+# Reload systemd units where available (safe in chroot)
+command -v systemctl >/dev/null && systemctl daemon-reload || true
 # Do NOT restart Klipper here in the chroot; it will pick up the module on first boot.
-sudo chmod +x /home/${BASE_USER}/printer_data/config/src/get_serial.sh || true
-# 5) Ensure nginx starts on first boot
-systemctl enable nginx
+[ -f "/home/${BASE_USER}/printer_data/config/src/get_serial.sh" ] && sudo chmod +x /home/${BASE_USER}/printer_data/config/src/get_serial.sh || true
+# 5) Ensure services start on first boot (guarded; systemctl may not be available in chroot)
+command -v systemctl >/dev/null && systemctl enable nginx || true
 #systemctl enable splash_video.service
 systemctl enable klipper_config.service
 systemctl enable flash_once.service
@@ -840,6 +1116,12 @@ systemctl enable update-mainsail-navi.service
 
 chmod +x /usr/local/bin/flash_once.sh
 chown pi:pi /home/pi/wait.html
+command -v systemctl >/dev/null && systemctl enable klipper_config.service || true
+command -v systemctl >/dev/null && systemctl enable flash_once.service || true
+command -v systemctl >/dev/null && systemctl enable klipper-autostart.service || true
+
+[ -f /usr/local/bin/flash_once.sh ] && chmod +x /usr/local/bin/flash_once.sh || true
+[ -f /home/pi/wait.html ] && chown pi:pi /home/pi/wait.html || true
 
 touch /etc/firstboot-splash
 
@@ -847,6 +1129,23 @@ touch /etc/firstboot-splash
 echo "server time.nist.gov" >> /etc/ntp.conf
 echo "server ntp.ubuntu.com" >> /etc/ntp.conf
 
+# Remove host cache now that all seeding/install steps are complete
+rm -rf "${CACHE_ROOT}" || true
+
 # cleanup
 apt-get clean
 apt-get autoremove -y
+# Remove package lists to reduce image size
+rm -rf /var/lib/apt/lists/*
+
+# --- Build Profiling: Print Timing Logs ---
+echo ""
+echo "==== Build Step Timing Profile ===="
+if [ -f "$BUILD_TIMING_LOG" ]; then
+  cat "$BUILD_TIMING_LOG"
+  total_time=$(awk '{sum += $NF} END {print sum}' "$BUILD_TIMING_LOG" 2>/dev/null || echo "0")
+  echo "Total Build Time: ${total_time}s"
+else
+  echo "(No timing logs collected.)"
+fi
+echo "===================================="
