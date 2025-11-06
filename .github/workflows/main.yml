@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CACHE_VER: v1
+      CACHE_NS: main
     steps:
       - name: Update apt
         run: sudo apt-get update
@@ -32,10 +33,13 @@ jobs:
         run: |
           FILE=repository/src/modules/fullpageos/start_chroot_script
           H=$( [ -f "$FILE" ] && sha256sum "$FILE" | cut -d' ' -f1 || echo none )
-          echo "KLIPPER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-klipper-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          echo "MOONRAKER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          echo "CROWSNEST_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-${H}-${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          echo "CROWSNEST_BIN_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+          # Authoritative keys for this workflow
+          echo "KLIPPER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-klipper-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
+          echo "MOONRAKER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
+          echo "CROWSNEST_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
+          echo "CROWSNEST_BIN_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
+
       - name: Download Raspbian Image
         run: cd repository/src/image && wget -q -c --trust-server-names 'https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz'
       - name: Update CustomPiOS Paths
@@ -114,99 +118,41 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
-          # Clean up any previous mounts
           sudo umount -R extracted 2>/dev/null || true
           sudo losetup -D 2>/dev/null || true
-
           mkdir -p extracted
-
           IMAGE_FILE="$(ls repository/src/workspace/*.img | head -n1)"
-          echo "Image file: $IMAGE_FILE"
-
-          # Attach loop with partition scanning (-P creates /dev/loopXp1, /dev/loopXp2)
           LOOPDEV="$(sudo losetup -fP --show "$IMAGE_FILE")"
-          echo "Loop device: $LOOPDEV"
-
-          # Ensure we always clean up
           cleanup() {
             set +e
             sudo umount -R extracted 2>/dev/null || true
             sudo losetup -d "$LOOPDEV" 2>/dev/null || true
           }
           trap cleanup EXIT
-
-          # Rootfs is p2 on Raspberry Pi OS images
           ROOT_PART="${LOOPDEV}p2"
-          if [ ! -b "$ROOT_PART" ]; then
-            echo "Did not find ${LOOPDEV}p2; available:"
-            ls -l ${LOOPDEV}*
-            exit 1
-          fi
-
-          echo "Mounting root partition: $ROOT_PART"
-          sudo mount -o ro "$ROOT_PART" extracted
-
-          echo "=== Listing /home/pi in mounted image ==="
-          ls -lah extracted/home/pi || true
-
-          echo "=== Klipper directory ==="
-          ls -lah extracted/home/pi/klipper || true
-
-          echo "=== Klipper out/ directory (firmware) ==="
-          ls -lah extracted/home/pi/klipper/out || true
-
-          echo "=== Moonraker directory ==="
-          ls -lah extracted/home/pi/moonraker || true
-
-          echo "=== Crowsnest directory ==="
-          ls -lah extracted/home/pi/crowsnest || true
-
-          echo "=== Crowsnest bin/ directory ==="
-          ls -lah extracted/home/pi/crowsnest/bin || true
-
-          echo "=== Crowsnest build/ directory ==="
-          ls -lah extracted/home/pi/crowsnest/build || true
-
-          echo "=== Copying build outputs to runner ==="
+          sudo mount -o ro "$ROOT_PART" extracted || true
           sudo cp -r extracted/home/pi/klipper        "$HOME/klipper"        || true
           sudo cp -r extracted/home/pi/moonraker      "$HOME/moonraker"      || true
           sudo cp -r extracted/home/pi/crowsnest      "$HOME/crowsnest"      || true
-
-          echo "=== Fixing permissions ==="
-          sudo chown -R runner:docker "$HOME/klipper"        || true
-          sudo chown -R runner:docker "$HOME/moonraker"      || true
-          sudo chown -R runner:docker "$HOME/crowsnest"      || true
-
-          # Extract Crowsnest binaries from image
           sudo mkdir -p "$HOME/crowsnest-binaries"
           sudo cp -f extracted/usr/local/bin/ustreamer       "$HOME/crowsnest-binaries/ustreamer"       2>/dev/null || true
           sudo cp -f extracted/usr/local/bin/camera-streamer "$HOME/crowsnest-binaries/camera-streamer" 2>/dev/null || true
           sudo cp -f extracted/usr/local/bin/crowsnest       "$HOME/crowsnest-binaries/crowsnest"       2>/dev/null || true
           sudo cp -f extracted/lib/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
           sudo cp -f extracted/etc/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
-          sudo chown -R runner:docker "$HOME/crowsnest-binaries" || true
+          sudo chown -R runner:docker "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" "$HOME/crowsnest-binaries" || true
 
-          echo "=== Verifying copied directories ==="
-          ls -lah "$HOME/klipper" || true
-          ls -lah "$HOME/crowsnest" || true
-          du -sh "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" || true
       - name: Free space before caching
         run: |
           set -euxo pipefail
-          # prune repos so caches are small
           for d in klipper moonraker crowsnest; do
             if [ -d "$HOME/$d/.git" ]; then
               git -C "$HOME/$d" gc --prune=now --aggressive || true
               git -C "$HOME/$d" repack -a -d --depth=1 --window=1 || true
             fi
           done
-
-          # show sizes we’re about to cache
           du -sh "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" 2>/dev/null || true
           du -sh "$HOME/crowsnest-binaries" 2>/dev/null || true
-
-          # delete big unneeded stuff BEFORE cache-save (keeps tar from OOM-ing)
           sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb || true
           sudo rm -rf /usr/share/dotnet /opt/ghc || true
           [ -n "${AGENT_TOOLSDIRECTORY:-}" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
@@ -234,6 +180,7 @@ jobs:
           path: |
             ~/crowsnest
           key: ${{ steps.keys.outputs.CROWSNEST_KEY }}
+
       - name: Save Crowsnest binary cache
         if: steps.crowsnest-bin-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -243,8 +190,10 @@ jobs:
 
       - name: Cleanup
         run: sudo rm -rf repository CustomPiOS extracted || true
+
       - name: Zip Output
         run: pigz -1 build.img
+
       - uses: actions/upload-artifact@v4
         with:
           name: build.img.gz
