@@ -214,6 +214,34 @@
 
   /* Button rows */
   .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+
+  /* ── Modal (reboot required) ─────────────────────────────────────────────── */
+  .modal-wrap{
+    position:fixed; inset:0; display:grid; place-items:center;
+    background:rgba(0,0,0,.45); backdrop-filter:saturate(.8) blur(2px);
+    z-index:999;
+  }
+  .modal{
+    width:min(520px, calc(100vw - 32px));
+    background:var(--panel-outer);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:0 10px 40px rgba(0,0,0,.45);
+    display:grid; gap:12px; padding:14px;
+  }
+  .modal h3{
+    margin:0; font-size:16px; font-weight:900; color:var(--fg);
+  }
+  .modal p{
+    margin:0; color:var(--muted); font-size:13px; line-height:1.45;
+  }
+  .modal .actions{
+    display:flex; gap:8px; justify-content:flex-end; margin-top:4px;
+  }
+  .btn-ghost{
+    background:transparent; color:var(--fg); border:1px solid var(--border);
+  }
+  .btn-ghost:hover{background:#24272c}
 </style>
 </head>
 <body>
@@ -541,7 +569,21 @@
   </section>
 </div>
 
+<!-- Hidden target for legacy forms -->
 <iframe name="hidden_iframe" style="display:none"></iframe>
+
+<!-- Reboot Required Modal -->
+<div class="modal-wrap" id="reboot-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reboot-title">
+    <h3 id="reboot-title">Reboot required</h3>
+    <p>Machine type was updated. A reboot is required for changes to take effect.</p>
+    <div class="actions">
+      <button class="btn-ghost" id="reboot-cancel" type="button">Cancel</button>
+      <button id="reboot-now" type="button">Reboot now</button>
+    </div>
+    <div class="hint mono" id="reboot-status"></div>
+  </div>
+</div>
 
 <script>
   const COMING_SOON = { shaper: true, calibration: true, troubleshoot: true };
@@ -631,6 +673,49 @@
     }
   })();
 
+  /* ── Reboot-required modal helpers ─────────────────────────────────────── */
+  const modal = document.getElementById('reboot-modal');
+  const rebootNowBtn = document.getElementById('reboot-now');
+  const rebootCancelBtn = document.getElementById('reboot-cancel');
+  const rebootStatus = document.getElementById('reboot-status');
+
+  function openRebootModal(){
+    modal.hidden = false;
+    rebootStatus.textContent = '';
+    // Trap simple focus
+    rebootNowBtn.focus();
+    document.addEventListener('keydown',escCloser);
+  }
+  function closeRebootModal(){
+    modal.hidden = true;
+    document.removeEventListener('keydown',escCloser);
+  }
+  function escCloser(e){
+    if(e.key === 'Escape'){ closeRebootModal(); }
+  }
+  rebootCancelBtn.addEventListener('click', closeRebootModal);
+
+  rebootNowBtn.addEventListener('click', async ()=>{
+    rebootNowBtn.disabled = true;
+    rebootCancelBtn.disabled = true;
+    rebootStatus.textContent = 'Rebooting…';
+    try{
+      const r = await fetch('/cgi-bin/reboot.sh', { method:'POST' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      rebootStatus.textContent = 'Reboot command sent.';
+      // Optionally show a lightweight spinner / message; page will drop when system reboots
+    }catch(err){
+      rebootStatus.textContent = `Failed to reboot: ${err}`;
+      rebootNowBtn.disabled = false;
+      rebootCancelBtn.disabled = false;
+    }
+  });
+
+  // Close modal if backdrop is clicked (but not when clicking inside the card)
+  modal.addEventListener('click', (e)=>{
+    if (e.target === modal) closeRebootModal();
+  });
+
   // AJAX helpers
   (() => {
     const form=document.getElementById('form-machine');
@@ -648,7 +733,11 @@
         });
         const text=await resp.text();
         out.textContent=text.trim()||'Updated.';
-      }catch(err){ out.textContent=`Error: ${err}`; }
+        // On success (HTTP 200), show reboot-required modal
+        if (resp.ok) openRebootModal();
+      }catch(err){
+        out.textContent=`Error: ${err}`;
+      }
     });
   })();
 
