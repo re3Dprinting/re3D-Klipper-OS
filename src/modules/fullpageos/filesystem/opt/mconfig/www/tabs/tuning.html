@@ -1,109 +1,153 @@
-<!-- Tuning (PID) tab -->
+<!-- Tuning (PID) — heater map + target only -->
 <style>
   .out{
     margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
-    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+    border:1px dashed var(--border);max-height:220px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
-  .coming-soon-wrap{position:relative}
-  .coming-soon-overlay{
-    position:absolute; inset:0; border-radius:12px;
-    background:rgba(24,27,32,.75); backdrop-filter:saturate(0.6) blur(1px);
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    color:var(--gray-200); z-index:5; pointer-events:auto;
-    border:1px dashed var(--border);
-  }
-  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:16px}
-  .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
-  .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
-  .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}
+  .grid{display:grid;gap:12px;grid-template-columns:1fr}
+  .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+  @media(max-width:980px){ .row{grid-template-columns:1fr} }
+  .btn-ghost{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+  .btn-ghost:hover{background:#24272c}
+  .subhint{color:var(--muted);font-size:12px;margin-top:4px}
 </style>
 
 <div class="content single">
-  <div class="coming-soon-wrap span2">
-    <div class="blur-under">
-      <form class="card" action="/cgi-bin/pid_tune.sh" method="post" id="pid-form">
-        <div style="font-weight:800;margin-bottom:6px">PID Tuning</div>
-        <div class="row">
-          <div>
-            <label>Heater</label>
-            <select name="heater" required>
-              <option value="extruder">extruder</option>
-              <option value="heater_bed">heater_bed</option>
-            </select>
-          </div>
-          <div>
-            <label>Target Temp (°C)</label>
-            <input name="target" type="number" min="30" max="300" placeholder="200" required>
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label>Cycles (optional)</label>
-            <input name="cycles" type="number" min="3" max="20" placeholder="5">
-          </div>
-          <div>
-            <label>Save to Config</label>
-            <select name="save">
-              <option value="1">Yes</option>
-              <option value="0" selected>No</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <button type="submit" disabled>Start PID Tune</button>
-          <span class="hint">Runs <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
-        </div>
-        <div class="out mono" id="out-pid"></div>
-        <div class="hint">Tip: Preheat close to target for faster convergence.</div>
-      </form>
-    </div>
-    <div class="coming-soon-overlay" id="overlay">
-      <div class="msg">
-        <strong>Tuning — Coming Soon</strong>
-        <div class="sub">You’ll be able to run PID tuning here once enabled.</div>
+  <form class="card grid" id="pid-form">
+    <div style="font-weight:800;margin-bottom:2px">PID Tuning</div>
+
+    <div class="row">
+      <div>
+        <label>Heater</label>
+        <select name="heater" id="heater" required>
+          <option value="extruder">extruder</option>
+          <option value="extruder1">extruder1</option>
+          <option value="extruder2">extruder2</option>
+          <option value="heater_bed">heater_bed</option>
+        </select>
+        <div id="heater-hint" class="subhint">FFF: left • FGF: bottom</div>
+      </div>
+      <div>
+        <label>Target Temp (°C)</label>
+        <input name="target" type="number" min="30" max="300" placeholder="200" required>
       </div>
     </div>
-  </div>
+
+    <div class="btn-row" style="justify-content:flex-start">
+      <button type="submit" id="pid-go">Start PID Tune</button>
+      <button type="button" id="pid-stop" class="btn-ghost" title="Attempt to abort current script">Abort</button>
+      <span class="hint">Sends <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span> via Moonraker.</span>
+    </div>
+
+    <div class="out mono" id="out-pid" aria-live="polite"></div>
+  </form>
 </div>
 
 <script>
 (() => {
-  // Toggle availability here (per-tab control)
-  const ENABLED = false; // set true to remove overlay & enable buttons
+  // ==== Moonraker endpoints ====
+  const host = location.hostname || 'localhost';
+  const DEFAULT_MOONRAKER = `http://${host}:7125`;
+  const MOONRAKER_URL = (localStorage.getItem('moonrakerUrl') || DEFAULT_MOONRAKER).replace(/\/+$/,'');
+  const DIRECT_ENDPOINT = `${MOONRAKER_URL}/printer/gcode/script`; // POST JSON {"script":"..."}
+  const PROXY_ENDPOINT  = `/cgi-bin/mr_gcode.sh`;                  // optional same-origin CGI fallback
 
-  function wireAjaxForm(formId,outId){
-    const f=document.getElementById(formId);
-    const out=document.getElementById(outId);
-    if(!f||!out) return;
-    f.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      out.textContent='Running…';
-      try{
-        const fd=new FormData(f);
-        const resp=await fetch(f.action,{
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(fd)
-        });
-        const text=await resp.text();
-        out.textContent=text.trim()||'Done.';
-      }catch(err){ out.textContent=`Error: ${err}`; }
+  // ==== Heater mapping hint (UI-only) ====
+  const HEATER_HINTS = {
+    extruder:   'FFF: left • FGF: bottom',
+    extruder1:  'FFF: right • FGF: middle',
+    extruder2:  'FGF: top',
+    heater_bed: 'Build plate heater'
+  };
+  const heaterSel  = document.getElementById('heater');
+  const heaterHint = document.getElementById('heater-hint');
+  function updateHeaterHint(){
+    const v = heaterSel.value;
+    heaterHint.textContent = HEATER_HINTS[v] || '';
+  }
+  heaterSel.addEventListener('change', updateHeaterHint);
+  updateHeaterHint();
+
+  // ==== DOM ====
+  const out = document.getElementById('out-pid');
+  const goBtn = document.getElementById('pid-go');
+  const stopBtn = document.getElementById('pid-stop');
+  const form = document.getElementById('pid-form');
+
+  function log(msg){ out.textContent += (out.textContent ? '\n' : '') + msg; out.scrollTop = out.scrollHeight; }
+  function setBusy(b){ goBtn.disabled = b; stopBtn.disabled = !b; }
+
+  function buildScript(fd){
+    const heater = fd.get('heater');
+    const target = Number(fd.get('target'));
+    return `PID_CALIBRATE HEATER=${heater} TARGET=${target}`;
+  }
+
+  async function postGcodeDirect(script){
+    const r = await fetch(DIRECT_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ script })
     });
+    if (!r.ok) throw new Error(`Moonraker HTTP ${r.status}`);
+    return (await r.text()) || 'ok';
   }
 
-  // Apply "coming soon" state
-  const overlay = document.getElementById('overlay');
-  const wrap = overlay?.parentElement;
-  const buttons = wrap?.querySelectorAll('button') || [];
-  if (ENABLED){
-    overlay?.remove();
-    buttons.forEach(b=>b.disabled=false);
-    const blur = wrap.querySelector('.blur-under');
-    blur && blur.classList.remove('blur-under');
-  }else{
-    buttons.forEach(b=>b.disabled=true);
+  async function postGcodeViaProxy(script){
+    const r = await fetch(PROXY_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({ script })
+    });
+    if (!r.ok) throw new Error(`Proxy HTTP ${r.status}`);
+    return (await r.text()) || 'ok';
   }
 
-  wireAjaxForm('pid-form','out-pid');
+  async function sendScript(script){
+    try{
+      log(`→ Sending to Moonraker @ ${DIRECT_ENDPOINT}`);
+      const res = await postGcodeDirect(script);
+      log(`← Moonraker response: ${res}`);
+    }catch(err){
+      log(`! Direct call failed (${err.message}). Trying proxy…`);
+      const res2 = await postGcodeViaProxy(script);
+      log(`← Proxy/Moonraker response: ${res2}`);
+    }
+  }
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    out.textContent = '';
+    setBusy(true);
+    try{
+      const fd = new FormData(form);
+      const script = buildScript(fd);
+      log('Script:\n  ' + script);
+      await sendScript(script);
+      log('✓ Submitted. PID calibration will run until complete.');
+    }catch(err){
+      log('✗ Error: ' + err);
+    }finally{
+      setBusy(false);
+    }
+  });
+
+  // Abort: prefer CANCEL_PRINT; if that fails, try M112.
+  stopBtn.addEventListener('click', async ()=>{
+    setBusy(true);
+    try{
+      await sendScript('CANCEL_PRINT');
+      log('Requested CANCEL_PRINT.');
+    }catch(err){
+      try{
+        await sendScript('M112');
+        log('Sent M112 (Emergency Stop).');
+      }catch(err2){
+        log('Abort failed: ' + err2);
+      }
+    }finally{
+      setBusy(false);
+    }
+  });
 })();
 </script>
