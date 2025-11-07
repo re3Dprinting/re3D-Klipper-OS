@@ -44,7 +44,7 @@ Every new commit an image is created, streamlining development and removing the 
 9. Select "Edit Settings".
 10. Select and choose a hostname: This will be the display name and a connection method for your printer. This can also be changed in the configurator.
 11. Set a username and password. The username MUST be pi. The password can be anything, and is only used for command line access. Note that if support is needed we will require that password. It is not recommended to use a sensitive password and we can not recover this password if forgotten. A default password that can be used is: raspberry.
-12. (Optional) - You can configure wireless LAN if you expect to use the WIFI capabilities. Enter the network SSID and password, and set the country.
+12. (Optional) - You can configure wireless LAN if you expect to use the WIFI capabilities. Enter the network SSID and password, and set the country. This can also be done in the configurator. 
 
 <img width="892" height="474" alt="image" src="https://github.com/user-attachments/assets/d46b5891-973a-43d5-bf1b-c0e874ca6e37" />
 
