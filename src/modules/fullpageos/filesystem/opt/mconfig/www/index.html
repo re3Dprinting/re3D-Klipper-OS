@@ -177,6 +177,7 @@
     transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease, background .12s ease;
   }
   .machine-card:hover{transform:translateY(-1px);background:#111419}
+  /* FIXED: removed stray quote so CSS parses correctly */
   .machine-card:has(input[type="radio"]:checked){
     border-color:var(--brand-700);
     box-shadow:0 0 0 2px rgba(255,212,0,.35) inset;
@@ -348,43 +349,53 @@
       </form>
     </div>
 
-    <!-- TUNING PAGE (PID only) -->
+    <!-- TUNING PAGE (PID only) — BLOCKED BY OVERLAY -->
     <div class="content single" data-page="tuning" hidden>
-      <form class="card fill" action="/cgi-bin/pid_tune.sh" method="post" target="hidden_iframe" id="pid-form">
-        <div style="font-weight:800;margin-bottom:6px">PID Tuning</div>
-        <div class="row">
-          <div>
-            <label>Heater</label>
-            <select name="heater" required>
-              <option value="extruder">extruder</option>
-              <option value="heater_bed">heater_bed</option>
-            </select>
-          </div>
-          <div>
-            <label>Target Temp (°C)</label>
-            <input name="target" type="number" min="30" max="300" placeholder="200" required>
+      <div class="coming-soon-wrap span2">
+        <div class="blur-under">
+          <form class="card fill" action="/cgi-bin/pid_tune.sh" method="post" target="hidden_iframe" id="pid-form">
+            <div style="font-weight:800;margin-bottom:6px">PID Tuning</div>
+            <div class="row">
+              <div>
+                <label>Heater</label>
+                <select name="heater" required>
+                  <option value="extruder">extruder</option>
+                  <option value="heater_bed">heater_bed</option>
+                </select>
+              </div>
+              <div>
+                <label>Target Temp (°C)</label>
+                <input name="target" type="number" min="30" max="300" placeholder="200" required>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Cycles (optional)</label>
+                <input name="cycles" type="number" min="3" max="20" placeholder="5">
+              </div>
+              <div>
+                <label>Save to Config</label>
+                <select name="save">
+                  <option value="1">Yes</option>
+                  <option value="0" selected>No</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <button type="submit" disabled>Start PID Tune</button>
+              <span class="hint">Runs <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
+            </div>
+            <div class="out mono" id="out-pid"></div>
+            <div class="hint">Tip: Preheat close to target for faster convergence.</div>
+          </form>
+        </div>
+        <div class="coming-soon-overlay">
+          <div class="msg">
+            <strong>Tuning — Coming Soon</strong>
+            <div class="sub">You’ll be able to run PID tuning here once enabled.</div>
           </div>
         </div>
-        <div class="row">
-          <div>
-            <label>Cycles (optional)</label>
-            <input name="cycles" type="number" min="3" max="20" placeholder="5">
-          </div>
-          <div>
-            <label>Save to Config</label>
-            <select name="save">
-              <option value="1">Yes</option>
-              <option value="0" selected>No</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <button type="submit">Start PID Tune</button>
-          <span class="hint">Runs <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
-        </div>
-        <div class="out mono" id="out-pid"></div>
-        <div class="hint">Tip: Preheat close to target for faster convergence.</div>
-      </form>
+      </div>
     </div>
 
     <!-- INPUT SHAPER PAGE (blocked by overlay) -->
@@ -614,7 +625,8 @@
 </div>
 
 <script>
-  const COMING_SOON = { shaper: true, calibration: true, troubleshoot: false };
+  // Toggle availability here:
+  const COMING_SOON = { tuning: true, shaper: true, calibration: true, troubleshoot: false };
 
   // Tabs
   const tabs=document.querySelectorAll('.tab[data-page]');
@@ -639,8 +651,9 @@
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.page)));
   const initial = (location.hash||'#machine').replace('#','');
 
+  // Keep this simple and explicit (add 'tuning' to the list)
   function applyComingSoon(){
-    ['shaper','calibration','troubleshoot'].forEach(pg=>{
+    ['tuning','shaper','calibration','troubleshoot'].forEach(pg=>{
       const enabled = (pg in COMING_SOON) ? !COMING_SOON[pg] : true;
       const pageEl = document.querySelector(`.content[data-page="${pg}"]`);
       if (!pageEl) return;
@@ -651,13 +664,15 @@
       if (enabled) {
         if (overlay) overlay.remove();
         buttons.forEach(b=>b.disabled=false);
-        container?.querySelector('.blur-under')?.classList.remove('blur-under');
+        // if we previously blurred, unblur
+        const blurBox = pageEl.querySelector('.blur-under');
+        if (blurBox) blurBox.classList.remove('blur-under');
       } else {
         buttons.forEach(b=>b.disabled=true);
         if (!overlay && container){
           const ov=document.createElement('div');
           ov.className='coming-soon-overlay';
-          ov.innerHTML=`<div class="msg"><strong>${pagePrettyName(pg)}</strong><div class="sub">This section will be available soon.</div></div>`;
+          ov.innerHTML=`<div class="msg"><strong>${pagePrettyName(pg)} — Coming Soon</strong><div class="sub">This section will be available soon.</div></div>`;
           container.appendChild(ov);
         }
       }
@@ -710,7 +725,6 @@
   function openRebootModal(){
     modal.hidden = false;
     rebootStatus.textContent = '';
-    // Trap simple focus
     rebootNowBtn.focus();
     document.addEventListener('keydown',escCloser);
   }
@@ -731,7 +745,6 @@
       const r = await fetch('/cgi-bin/reboot.sh', { method:'POST' });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       rebootStatus.textContent = 'Reboot command sent.';
-      // Optionally show a lightweight spinner / message; page will drop when system reboots
     }catch(err){
       rebootStatus.textContent = `Failed to reboot: ${err}`;
       rebootNowBtn.disabled = false;
@@ -761,7 +774,6 @@
         });
         const text=await resp.text();
         out.textContent=text.trim()||'Updated.';
-        // On success (HTTP 200), show reboot-required modal
         if (resp.ok) openRebootModal();
       }catch(err){
         out.textContent=`Error: ${err}`;
