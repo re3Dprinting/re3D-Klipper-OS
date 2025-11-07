@@ -1,0 +1,66 @@
+<style>
+  .out{
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+  }
+  /* Compact network spacing */
+  .net-wrap{display:grid;gap:12px}
+  .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+</style>
+
+<div class="content" data-page="network">
+  <!-- Wi-Fi card -->
+  <form class="card" action="/cgi-bin/set_wifi.sh" method="post" id="wifi-form">
+    <div style="font-weight:800;margin-bottom:6px">Wi-Fi</div>
+    <div class="row">
+      <div><label>SSID</label><input name="ssid" placeholder="MyWiFi" required></div>
+      <div><label>Password</label><input name="psk" placeholder="••••••••" required></div>
+    </div>
+    <div class="btn-row">
+      <button type="submit">Apply Wi-Fi</button>
+    </div>
+    <div class="out mono" id="out-wifi"></div>
+  </form>
+
+  <!-- Hostname card -->
+  <form class="card" action="/cgi-bin/set_hostname.sh" method="post" id="host-form">
+    <div style="font-weight:800;margin-bottom:6px">Hostname</div>
+    <div class="row">
+      <div class="span2" style="grid-column:1 / -1">
+        <label>Hostname</label>
+        <input name="hostname" placeholder="printer-01" pattern="[A-Za-z0-9\-]{1,63}" required>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button type="submit">Set Hostname</button>
+    </div>
+    <div class="out mono" id="out-host"></div>
+    <div class="hint">A reboot may be required for mDNS (<span class="mono">.local</span>) to update.</div>
+  </form>
+</div>
+
+<script>
+(() => {
+  function wireAjaxForm(formId,outId){
+    const f=document.getElementById(formId);
+    const out=document.getElementById(outId);
+    if(!f||!out) return;
+    f.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Running…';
+      try{
+        const fd=new FormData(f);
+        const resp=await fetch(f.action,{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
+        });
+        const text=await resp.text();
+        out.textContent=text.trim()||'Done.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
+    });
+  }
+  wireAjaxForm('wifi-form','out-wifi');
+  wireAjaxForm('host-form','out-host');
+})();
+</script>

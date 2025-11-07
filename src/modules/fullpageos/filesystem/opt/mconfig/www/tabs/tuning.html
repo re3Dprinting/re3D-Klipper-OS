@@ -1,0 +1,109 @@
+<!-- Tuning (PID) tab -->
+<style>
+  .out{
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+  }
+  .coming-soon-wrap{position:relative}
+  .coming-soon-overlay{
+    position:absolute; inset:0; border-radius:12px;
+    background:rgba(24,27,32,.75); backdrop-filter:saturate(0.6) blur(1px);
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    color:var(--gray-200); z-index:5; pointer-events:auto;
+    border:1px dashed var(--border);
+  }
+  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:16px}
+  .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
+  .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
+  .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}
+</style>
+
+<div class="content single">
+  <div class="coming-soon-wrap span2">
+    <div class="blur-under">
+      <form class="card" action="/cgi-bin/pid_tune.sh" method="post" id="pid-form">
+        <div style="font-weight:800;margin-bottom:6px">PID Tuning</div>
+        <div class="row">
+          <div>
+            <label>Heater</label>
+            <select name="heater" required>
+              <option value="extruder">extruder</option>
+              <option value="heater_bed">heater_bed</option>
+            </select>
+          </div>
+          <div>
+            <label>Target Temp (°C)</label>
+            <input name="target" type="number" min="30" max="300" placeholder="200" required>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Cycles (optional)</label>
+            <input name="cycles" type="number" min="3" max="20" placeholder="5">
+          </div>
+          <div>
+            <label>Save to Config</label>
+            <select name="save">
+              <option value="1">Yes</option>
+              <option value="0" selected>No</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="submit" disabled>Start PID Tune</button>
+          <span class="hint">Runs <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
+        </div>
+        <div class="out mono" id="out-pid"></div>
+        <div class="hint">Tip: Preheat close to target for faster convergence.</div>
+      </form>
+    </div>
+    <div class="coming-soon-overlay" id="overlay">
+      <div class="msg">
+        <strong>Tuning — Coming Soon</strong>
+        <div class="sub">You’ll be able to run PID tuning here once enabled.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Toggle availability here (per-tab control)
+  const ENABLED = false; // set true to remove overlay & enable buttons
+
+  function wireAjaxForm(formId,outId){
+    const f=document.getElementById(formId);
+    const out=document.getElementById(outId);
+    if(!f||!out) return;
+    f.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Running…';
+      try{
+        const fd=new FormData(f);
+        const resp=await fetch(f.action,{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
+        });
+        const text=await resp.text();
+        out.textContent=text.trim()||'Done.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
+    });
+  }
+
+  // Apply "coming soon" state
+  const overlay = document.getElementById('overlay');
+  const wrap = overlay?.parentElement;
+  const buttons = wrap?.querySelectorAll('button') || [];
+  if (ENABLED){
+    overlay?.remove();
+    buttons.forEach(b=>b.disabled=false);
+    const blur = wrap.querySelector('.blur-under');
+    blur && blur.classList.remove('blur-under');
+  }else{
+    buttons.forEach(b=>b.disabled=true);
+  }
+
+  wireAjaxForm('pid-form','out-pid');
+})();
+</script>

@@ -1,0 +1,59 @@
+<style>
+  .out{
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+  }
+</style>
+
+<div class="content">
+  <form class="card" action="/cgi-bin/reboot.sh" method="post" id="system-form">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-weight:800;margin-bottom:6px">Reboot</div>
+        <div class="hint">Performs a clean reboot in ~2 seconds.</div>
+      </div>
+      <button type="submit">Reboot</button>
+    </div>
+    <div class="out mono" id="out-system"></div>
+  </form>
+
+  <div class="card">
+    <div style="font-weight:800;margin-bottom:6px">Network Info</div>
+    <div class="hint">(Optional: wire to a status CGI later)</div>
+    <div class="out mono" id="netinfo">IP: <span id="lan-ip">resolving…</span></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Confirm and POST reboot
+  const form = document.getElementById('system-form');
+  const out  = document.getElementById('out-system');
+  if (form && out){
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if(!confirm('Reboot now?')) return;
+      out.textContent = 'Rebooting…';
+      try{
+        const r = await fetch('/cgi-bin/reboot.sh',{method:'POST'});
+        const t = await r.text();
+        out.textContent = (t||'Reboot command sent.').trim();
+      }catch(err){ out.textContent = 'Error: '+err; }
+    });
+  }
+
+  // Try to resolve LAN IP (same CGI as used by index)
+  (async ()=>{
+    const ipSpan = document.getElementById('lan-ip');
+    try{
+      const r=await fetch('/cgi-bin/host_ip.sh',{cache:'no-store'});
+      if (r.ok){
+        const t=(await r.text()).trim();
+        ipSpan.textContent = t || 'unknown';
+      }else{
+        ipSpan.textContent = 'unknown';
+      }
+    }catch{ ipSpan.textContent = 'unknown'; }
+  })();
+})();
+</script>

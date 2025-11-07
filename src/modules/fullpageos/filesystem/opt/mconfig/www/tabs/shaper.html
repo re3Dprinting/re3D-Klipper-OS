@@ -1,0 +1,148 @@
+<!-- Input Shaper tab -->
+<style>
+  .out{
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+  }
+  .coming-soon-wrap{position:relative}
+  .coming-soon-overlay{
+    position:absolute; inset:0; border-radius:12px;
+    background:rgba(24,27,32,.75); backdrop-filter:saturate(0.6) blur(1px);
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    color:var(--gray-200); z-index:5; pointer-events:auto;
+    border:1px dashed var(--border);
+  }
+  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:16px}
+  .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
+  .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
+  .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}
+  .grid2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+  @media(max-width:980px){.grid2{grid-template-columns:1fr}}
+</style>
+
+<div class="content">
+  <div class="coming-soon-wrap span2">
+    <div class="blur-under grid2">
+      <form class="card" action="/cgi-bin/input_shaper_measure.sh" method="post" id="shaper-measure-form">
+        <div style="font-weight:800;margin-bottom:6px">Resonance Test</div>
+        <div class="row">
+          <div>
+            <label>Axis</label>
+            <select name="axis" required>
+              <option value="x">X</option>
+              <option value="y">Y</option>
+            </select>
+          </div>
+          <div>
+            <label>Probe (accelerometer)</label>
+            <select name="probe">
+              <option value="adxl345" selected>ADXL345</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row"><button type="submit" disabled>Start Test</button></div>
+        <div class="out mono" id="out-shaper-measure"></div>
+      </form>
+
+      <form class="card" action="/cgi-bin/set_input_shaper.sh" method="post" id="shaper-apply-form">
+        <div style="font-weight:800;margin-bottom:6px">Apply Shaper Settings</div>
+        <div class="row">
+          <div>
+            <label>X Shaper</label>
+            <select name="x_type">
+              <option value="auto" selected>auto</option>
+              <option value="mzv">mzv</option>
+              <option value="ei">ei</option>
+              <option value="2hump_ei">2hump_ei</option>
+              <option value="zv">zv</option>
+              <option value="zvd">zvd</option>
+              <option value="zvdd">zvdd</option>
+            </select>
+          </div>
+          <div>
+            <label>X Frequency (Hz)</label>
+            <input name="x_freq" type="number" step="0.1" min="1" placeholder="40.0">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Y Shaper</label>
+            <select name="y_type">
+              <option value="auto" selected>auto</option>
+              <option value="mzv">mzv</option>
+              <option value="ei">ei</option>
+              <option value="2hump_ei">2hump_ei</option>
+              <option value="zv">zv</option>
+              <option value="zvd">zvd</option>
+              <option value="zvdd">zvdd</option>
+            </select>
+          </div>
+          <div>
+            <label>Y Frequency (Hz)</label>
+            <input name="y_freq" type="number" step="0.1" min="1" placeholder="40.0">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Save to Config</label>
+            <select name="save">
+              <option value="1">Yes</option>
+              <option value="0" selected>No</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row"><button type="submit" disabled>Apply Shaper</button></div>
+        <div class="out mono" id="out-shaper-apply"></div>
+      </form>
+    </div>
+
+    <div class="coming-soon-overlay" id="overlay">
+      <div class="msg">
+        <strong>Input Shaper — Coming Soon</strong>
+        <div class="sub">You’ll be able to run resonance tests and apply shaper settings here.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const ENABLED = false; // set true to remove overlay & enable buttons
+
+  function wireAjaxForm(formId,outId){
+    const f=document.getElementById(formId);
+    const out=document.getElementById(outId);
+    if(!f||!out) return;
+    f.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Running…';
+      try{
+        const fd=new FormData(f);
+        const resp=await fetch(f.action,{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
+        });
+        const text=await resp.text();
+        out.textContent=text.trim()||'Done.';
+      }catch(err){ out.textContent=`Error: ${err}`; }
+    });
+  }
+
+  const overlay = document.getElementById('overlay');
+  const wrap = overlay?.parentElement;
+  const buttons = wrap?.querySelectorAll('button') || [];
+  if (ENABLED){
+    overlay?.remove();
+    buttons.forEach(b=>b.disabled=false);
+    const blur = wrap.querySelector('.blur-under');
+    blur && blur.classList.remove('blur-under');
+  }else{
+    buttons.forEach(b=>b.disabled=true);
+  }
+
+  wireAjaxForm('shaper-measure-form','out-shaper-measure');
+  wireAjaxForm('shaper-apply-form','out-shaper-apply');
+})();
+</script>

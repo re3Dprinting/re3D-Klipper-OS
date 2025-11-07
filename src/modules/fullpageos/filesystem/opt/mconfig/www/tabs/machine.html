@@ -1,0 +1,202 @@
+<!-- Machine tab: self-contained HTML + CSS + JS -->
+<style>
+  .machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)}
+  .machine-card{
+    position:relative;border:1px solid var(--border);border-radius:12px;background:#0F1116;
+    overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;
+    transition:transform .06s ease,border-color .06s ease,box-shadow .06s ease, background .12s ease;
+  }
+  .machine-card:hover{transform:translateY(-1px);background:#111419}
+
+  /* FIXED: removed stray ']' and add class fallback */
+  .machine-card:has(input[type="radio"]:checked),
+  .machine-card.selected{
+    border-color:var(--brand-700);
+    box-shadow:0 0 0 2px rgba(255,212,0,.35) inset;
+  }
+
+  .machine-card img{display:block;width:100%;height:130px;object-fit:cover;background:#0B0D12}
+  .machine-card .title{padding:10px 12px;font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
+
+  /* We keep the input clickable, but hide it visually. Do NOT disable pointer-events on the input. */
+  .machine-card input[type=radio]{
+    position:absolute;inset:0;opacity:0; /* click-through via label still works */
+  }
+
+  .out{
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+  }
+
+  /* Modal */
+  .modal-wrap{
+    position:fixed; inset:0; display:grid; place-items:center;
+    background:rgba(0,0,0,.45); backdrop-filter:saturate(.8) blur(2px); z-index:999;
+  }
+  .modal{
+    width:min(520px, calc(100vw - 32px));
+    background:var(--panel-outer);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:0 10px 40px rgba(0,0,0,.45);
+    display:grid; gap:12px; padding:14px;
+  }
+  .modal h3{margin:0; font-size:16px; font-weight:900; color:var(--fg);}
+  .modal p{margin:0; color:var(--muted); font-size:13px; line-height:1.45;}
+  .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:4px;}
+  .btn-ghost{background:transparent; color:var(--fg); border:1px solid var(--border);}
+  .btn-ghost:hover{background:#24272c}
+</style>
+
+<div class="content single">
+  <form class="card" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
+    <div style="font-weight:800;margin-bottom:6px">Select your machine</div>
+    <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4">
+    <div class="machine-grid" id="machine-grid">
+      <label class="machine-card" data-type="Gigabot 4">
+        <input type="radio" name="type-radio" value="Gigabot 4" checked>
+        <img src="/img/gigabot-4.png" alt="Gigabot 4">
+        <div class="title">Gigabot 4</div>
+      </label>
+      <label class="machine-card" data-type="Gigabot 4 XLT">
+        <input type="radio" name="type-radio" value="Gigabot 4 XLT">
+        <img src="/img/gigabot-4-xlt.png" alt="Gigabot 4 XLT">
+        <div class="title">Gigabot 4 XLT</div>
+      </label>
+      <label class="machine-card" data-type="Terabot 4">
+        <input type="radio" name="type-radio" value="Terabot 4">
+        <img src="/img/terabot-4.png" alt="Terabot 4">
+        <div class="title">Terabot 4</div>
+      </label>
+      <label class="machine-card" data-type="GigabotX 2">
+        <input type="radio" name="type-radio" value="GigabotX 2">
+        <img src="/img/gigabotx-2.png" alt="GigabotX 2">
+        <div class="title">GigabotX 2</div>
+      </label>
+      <label class="machine-card" data-type="GigabotX XLT 2">
+        <input type="radio" name="type-radio" value="GigabotX XLT 2">
+        <img src="/img/gigabotx-2-xlt.png" alt="GigabotX XLT 2">
+        <div class="title">GigabotX XLT 2</div>
+      </label>
+      <label class="machine-card" data-type="TerabotX 2">
+        <input type="radio" name="type-radio" value="TerabotX 2">
+        <img src="/img/terabotx-2.png" alt="TerabotX 2">
+        <div class="title">TerabotX 2</div>
+      </label>
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:10px">
+      <button type="submit">Set Machine</button>
+    </div>
+    <div class="hint">Posts <span class="mono">type=&lt;selection&gt;</span> to <span class="mono">/cgi-bin/set_machine_type.sh</span>.</div>
+    <div class="out mono" id="out-machine"></div>
+  </form>
+</div>
+
+<!-- Reboot Required Modal -->
+<div class="modal-wrap" id="reboot-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reboot-title">
+    <h3 id="reboot-title">Reboot required</h3>
+    <p>Machine type was updated. A reboot is required for changes to take effect.</p>
+    <div class="actions">
+      <button class="btn-ghost" id="reboot-cancel" type="button">Cancel</button>
+      <button id="reboot-now" type="button">Reboot now</button>
+    </div>
+    <div class="hint mono" id="reboot-status"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cards = Array.from(document.querySelectorAll('.machine-card'));
+  const radios = Array.from(document.querySelectorAll('input[name="type-radio"]'));
+  const hidden = document.getElementById('machine-type-hidden');
+
+  // JS fallback selection so it works even without :has()
+  function applySelectedClasses(){
+    cards.forEach(card => card.classList.remove('selected'));
+    const checked = radios.find(r => r.checked);
+    if (checked){
+      const card = checked.closest('.machine-card');
+      card && card.classList.add('selected');
+      if (hidden) hidden.value = checked.value;
+    }
+  }
+
+  // Initialize selection state on load
+  applySelectedClasses();
+
+  // Click anywhere on a card to select its radio
+  cards.forEach(card => {
+    card.addEventListener('click', (e) => {
+      const r = card.querySelector('input[type="radio"]');
+      if (r && !r.checked){
+        r.checked = true;      // ensure checked state flips
+        r.dispatchEvent(new Event('change', {bubbles:true}));
+      }
+    });
+  });
+
+  // Keep hidden input synced
+  radios.forEach(r=>{
+    r.addEventListener('change', () => {
+      applySelectedClasses();
+    });
+  });
+
+  // Modal helpers
+  const modal = document.getElementById('reboot-modal');
+  const rebootNowBtn = document.getElementById('reboot-now');
+  const rebootCancelBtn = document.getElementById('reboot-cancel');
+  const rebootStatus = document.getElementById('reboot-status');
+
+  function openRebootModal(){
+    modal.hidden = false;
+    rebootStatus.textContent = '';
+    rebootNowBtn.focus();
+    document.addEventListener('keydown',escCloser);
+  }
+  function closeRebootModal(){
+    modal.hidden = true;
+    document.removeEventListener('keydown',escCloser);
+  }
+  function escCloser(e){ if(e.key === 'Escape'){ closeRebootModal(); } }
+  rebootCancelBtn.addEventListener('click', closeRebootModal);
+  modal.addEventListener('click', (e)=>{ if (e.target === modal) closeRebootModal(); });
+
+  rebootNowBtn.addEventListener('click', async ()=>{
+    rebootNowBtn.disabled = true;
+    rebootCancelBtn.disabled = true;
+    rebootStatus.textContent = 'Rebooting…';
+    try{
+      const r = await fetch('/cgi-bin/reboot.sh', { method:'POST' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      rebootStatus.textContent = 'Reboot command sent.';
+    }catch(err){
+      rebootStatus.textContent = `Failed to reboot: ${err}`;
+      rebootNowBtn.disabled = false;
+      rebootCancelBtn.disabled = false;
+    }
+  });
+
+  // AJAX submit
+  const form=document.getElementById('form-machine');
+  const out=document.getElementById('out-machine');
+  if(form && out){
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      out.textContent='Applying…';
+      try{
+        const fd=new FormData(form);
+        const resp=await fetch('/cgi-bin/set_machine_type.sh',{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(fd)
+        });
+        const text=await resp.text();
+        out.textContent=text.trim()||'Updated.';
+        if (resp.ok) openRebootModal();
+      }catch(err){ out.textContent=`Error: ${err}`; }
+    });
+  }
+})();
+</script>
