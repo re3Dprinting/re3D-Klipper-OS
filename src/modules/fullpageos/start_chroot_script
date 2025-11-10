@@ -820,30 +820,44 @@ step_end
 
 
 # --- Minimal Crowsnest unattended install (no .config) ---
+# Use: CROWSNEST_FORCE_BUILD=1 to skip cache & force rebuild
+# Example (in your chroot step):  CROWSNEST_FORCE_BUILD=1 bash /path/to/this.sh
+
+# Optional: lightweight fallbacks if your build env doesn't define these
+command -v step_start >/dev/null 2>&1 || step_start(){ echo "==> $*"; }
+command -v step_end   >/dev/null 2>&1 || step_end(){ echo "==> done"; }
+
+# Optional override to skip cache and force a rebuild
+: "${CROWSNEST_FORCE_BUILD:=1}"
 
 # --- Crowsnest binary cache restore (accept either binary; best-effort)
 BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
 CROWSNEST_PREINSTALLED=0
-if [ -d "${BIN_SRC}" ]; then
-  echo "CROWSNEST FAST-PATH: checking cached crowsnest binaries"
-  if [ -f "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/ustreamer" ]; then
-    echo "Installing cached ustreamer"
-    install -Dm0755 "${BIN_SRC}/ustreamer" /usr/local/bin/ustreamer || true
-    CROWSNEST_PREINSTALLED=1
-  fi
-  if [ -f "${BIN_SRC}/camera-streamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
-    echo "Installing cached camera-streamer"
-    install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer || true
-    CROWSNEST_PREINSTALLED=1
-  fi
-  if [ -f "${BIN_SRC}/crowsnest" ] && [ -x "${BIN_SRC}/crowsnest" ]; then
-    install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest || true
-    CROWSNEST_PREINSTALLED=1
-  fi
-  if [ -f "${BIN_SRC}/crowsnest.service" ]; then
-    install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service || true
-    command -v systemctl >/dev/null && systemctl daemon-reload || true
-    command -v systemctl >/dev/null && systemctl enable crowsnest || true
+
+if [ "${CROWSNEST_FORCE_BUILD}" -eq 1 ]; then
+  echo "CROWSNEST: FORCE BUILD enabled — skipping cached binaries"
+else
+  if [ -d "${BIN_SRC}" ]; then
+    echo "CROWSNEST FAST-PATH: checking cached crowsnest binaries"
+    if [ -f "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/ustreamer" ]; then
+      echo "Installing cached ustreamer"
+      install -Dm0755 "${BIN_SRC}/ustreamer" /usr/local/bin/ustreamer || true
+      CROWSNEST_PREINSTALLED=1
+    fi
+    if [ -f "${BIN_SRC}/camera-streamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
+      echo "Installing cached camera-streamer"
+      install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer || true
+      CROWSNEST_PREINSTALLED=1
+    fi
+    if [ -f "${BIN_SRC}/crowsnest" ] && [ -x "${BIN_SRC}/crowsnest" ]; then
+      install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest || true
+      CROWSNEST_PREINSTALLED=1
+    fi
+    if [ -f "${BIN_SRC}/crowsnest.service" ]; then
+      install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service || true
+      command -v systemctl >/dev/null && systemctl daemon-reload || true
+      command -v systemctl >/dev/null && systemctl enable crowsnest || true
+    fi
   fi
 fi
 
@@ -853,10 +867,13 @@ export DEBIAN_FRONTEND=noninteractive
 BASE_USER="pi"
 REPO="https://github.com/mainsail-crew/crowsnest.git"
 
+apt-get update
 apt-get install -y --no-install-recommends git ca-certificates
 
-# Clone/update
+# Ensure home exists/owned (common in chroots)
 install -d -o "$BASE_USER" -g "$BASE_USER" "/home/$BASE_USER"
+
+# Clone/update
 if [ ! -d "/home/$BASE_USER/crowsnest/.git" ]; then
   runuser -u "$BASE_USER" -- git clone --depth 1 "$REPO" "/home/$BASE_USER/crowsnest"
 else
@@ -875,9 +892,9 @@ if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
   else
     INSTALL_SCRIPT="/home/$BASE_USER/crowsnest/tools/libs/pkglist-generic.sh"
   fi
-  # Derive and print the package list; fail clearly or fallback to explicit deps
+
   set -e
-  PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"")
+  PKGLIST=$(bash -lc "source '$INSTALL_SCRIPT'; echo \"\$PKGLIST\"") || PKGLIST=""
   echo "Crowsnest PKGLIST: $PKGLIST"
   if [ -z "$PKGLIST" ]; then
     echo "WARNING: PKGLIST from $INSTALL_SCRIPT is empty; falling back to explicit camera-streamer deps"
@@ -888,11 +905,15 @@ if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
 fi
 
 # Only run make/install when building (best-effort; don't fail if artifacts missing)
+INSTALL_STAMP="/home/$BASE_USER/crowsnest/.installed-stamp"
+CURRENT_COMMIT=$(cd "/home/$BASE_USER/crowsnest" && git rev-parse HEAD 2>/dev/null || echo "none")
+
 if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
-  INSTALL_STAMP="/home/$BASE_USER/crowsnest/.installed-stamp"
-  CURRENT_COMMIT=$(cd "/home/$BASE_USER/crowsnest" && git rev-parse HEAD 2>/dev/null || echo "none")
-  if [ ! -f "$INSTALL_STAMP" ] || [ "$(cat "$INSTALL_STAMP" 2>/dev/null)" != "$CURRENT_COMMIT" ]; then
-    echo "Installing/updating Crowsnest (best-effort)..."
+  if [ "${CROWSNEST_FORCE_BUILD}" -eq 1 ] || \
+     [ ! -f "$INSTALL_STAMP" ] || \
+     [ "$(cat "$INSTALL_STAMP" 2>/dev/null)" != "$CURRENT_COMMIT" ]; then
+
+    echo "Installing/updating Crowsnest (build path)..."
     pushd "/home/$BASE_USER/crowsnest" >/dev/null
 
     # Try to build targets only if a Makefile exists; ignore errors
@@ -946,7 +967,9 @@ if [ "${CROWSNEST_PREINSTALLED}" -ne 1 ]; then
 else
   echo "Crowsnest binaries restored from cache, skipping build/install"
 fi
+
 step_end
+
 
 
 ###############################################################################
