@@ -1,32 +1,72 @@
+<!-- tabs/system.html -->
 <style>
-  .out{
+  /* Scoped to this tab only; uses your global tokens */
+  .sys-out{
     margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
     border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
+  .sys-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+  .sys-card{display:flex;flex-direction:column;gap:10px}
 </style>
 
-<div class="content">
-  <form class="card" action="/cgi-bin/reboot.sh" method="post" id="system-form">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<div class="content" style="display:grid;gap:12px">
+  <!-- Reboot -->
+  <form class="card sys-card" action="/cgi-bin/reboot.sh" method="post" id="system-form">
+    <div class="sys-row">
       <div>
         <div style="font-weight:800;margin-bottom:6px">Reboot</div>
         <div class="hint">Performs a clean reboot in ~2 seconds.</div>
       </div>
       <button type="submit">Reboot</button>
     </div>
-    <div class="out mono" id="out-system"></div>
+    <div class="sys-out mono" id="out-system"></div>
   </form>
 
-  <div class="card">
+  <!-- Network Info -->
+  <div class="card sys-card">
     <div style="font-weight:800;margin-bottom:6px">Network Info</div>
-    <div class="hint">(Optional: wire to a status CGI later)</div>
-    <div class="out mono" id="netinfo">IP: <span id="lan-ip">resolving…</span></div>
+    <div class="hint"></div>
+    <div class="sys-out mono" id="netinfo">IP: <span id="lan-ip">resolving…</span></div>
+  </div>
+
+  <!-- Print History -->
+  <div class="card sys-card">
+    <div style="font-weight:800;margin-bottom:6px">Print History</div>
+    <div class="hint">
+      Save/restore Moonraker’s print-history database.<br/>
+      • <b>Save</b>: copies <code>~/printer_data/database/moonraker-sql.db</code> → <code>/media/usb0/moonraker-sql.db</code>.<br/>
+      • <b>Restore</b>: replaces the live DB with <code>/media/usb0/moonraker-sql.db</code> (current DB is auto-backed up).
+    </div>
+
+    <!-- Save to USB -->
+    <form class="sys-card" action="/cgi-bin/save_history.sh" method="post" id="save-history-form">
+      <div class="sys-row">
+        <div>
+          <div style="font-weight:600;margin-bottom:4px">Save history to USB</div>
+          <div class="hint">USB must be mounted at <code>/media/usb0</code>.</div>
+        </div>
+        <button type="submit">Save to USB</button>
+      </div>
+      <div class="sys-out mono" id="out-save"></div>
+    </form>
+
+    <!-- Restore from USB -->
+    <form class="sys-card" action="/cgi-bin/restore_history.sh" method="post" id="restore-history-form">
+      <div class="sys-row">
+        <div>
+          <div style="font-weight:600;margin-bottom:4px">Restore history from USB</div>
+          <div class="hint">Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, then restarts Moonraker.</div>
+        </div>
+        <button type="submit">Restore from USB</button>
+      </div>
+      <div class="sys-out mono" id="out-restore"></div>
+    </form>
   </div>
 </div>
 
 <script>
 (() => {
-  // Confirm and POST reboot
+  // Reboot
   const form = document.getElementById('system-form');
   const out  = document.getElementById('out-system');
   if (form && out){
@@ -42,7 +82,38 @@
     });
   }
 
-  // Try to resolve LAN IP (same CGI as used by index)
+  // Save history to USB
+  const saveForm = document.getElementById('save-history-form');
+  const outSave  = document.getElementById('out-save');
+  if (saveForm && outSave){
+    saveForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      outSave.textContent = 'Saving to /media/usb0…';
+      try{
+        const r = await fetch('/cgi-bin/save_history.sh',{method:'POST', cache:'no-store'});
+        const t = await r.text();
+        outSave.textContent = (t||'Done.').trim();
+      }catch(err){ outSave.textContent = 'Error: '+err; }
+    });
+  }
+
+  // Restore history from USB
+  const restoreForm = document.getElementById('restore-history-form');
+  const outRestore  = document.getElementById('out-restore');
+  if (restoreForm && outRestore){
+    restoreForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if(!confirm('Restore from /media/usb0/moonraker-sql.db and restart Moonraker? This will overwrite the current DB.')) return;
+      outRestore.textContent = 'Restoring from /media/usb0…';
+      try{
+        const r = await fetch('/cgi-bin/restore_history.sh',{method:'POST', cache:'no-store'});
+        const t = await r.text();
+        outRestore.textContent = (t||'Done.').trim();
+      }catch(err){ outRestore.textContent = 'Error: '+err; }
+    });
+  }
+
+  // LAN IP
   (async ()=>{
     const ipSpan = document.getElementById('lan-ip');
     try{
