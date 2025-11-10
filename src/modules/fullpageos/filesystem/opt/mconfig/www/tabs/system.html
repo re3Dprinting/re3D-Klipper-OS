@@ -3,10 +3,15 @@
   /* Scoped to this tab only; uses your global tokens */
   .sys-out{
     margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
-    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
+    border:1px dashed var(--border);max-height:220px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
   .sys-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
   .sys-card{display:flex;flex-direction:column;gap:10px}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 10px}
+  .chip{display:inline-block;padding:2px 6px;border:1px solid var(--border);border-radius:8px;margin:2px 4px 2px 0}
+  .iface{font-weight:600;color:var(--gray-100)}
+  .dim{color:var(--gray-300)}
 </style>
 
 <div class="content" style="display:grid;gap:12px">
@@ -25,8 +30,13 @@
   <!-- Network Info -->
   <div class="card sys-card">
     <div style="font-weight:800;margin-bottom:6px">Network Info</div>
-    <div class="hint"></div>
-    <div class="sys-out mono" id="netinfo">IP: <span id="lan-ip">resolving…</span></div>
+    <div class="hint">Hostname, IPv4 addresses, and MAC per interface.</div>
+    <div class="sys-out mono" id="netinfo">
+      <div class="kv">
+        <div class="dim">Hostname</div><div id="ni-host">resolving…</div>
+      </div>
+      <div id="ni-ifs" style="margin-top:8px"></div>
+    </div>
   </div>
 
   <!-- Print History -->
@@ -113,18 +123,53 @@
     });
   }
 
-  // LAN IP
+  // ---- Network Info (hostname + per-interface IPv4 + MAC)
+  const hostSpan = document.getElementById('ni-host');
+  const ifsDiv   = document.getElementById('ni-ifs');
+
+  function renderInterfaces(arr){
+    ifsDiv.innerHTML = '';
+    if (!arr || !arr.length){
+      ifsDiv.textContent = 'No active interfaces.';
+      return;
+    }
+    arr.forEach(({if:ifname, mac, ipv4, state})=>{
+      const wrap = document.createElement('div');
+      wrap.style.marginBottom = '8px';
+      const ips = (ipv4 && ipv4.length) ? ipv4.map(ip=>`<span class="chip">${ip}</span>`).join(' ') : '<span class="dim">—</span>';
+      const macChip = mac ? `<span class="chip">${mac}</span>` : '<span class="dim">—</span>';
+      wrap.innerHTML = `
+        <div class="iface">${ifname} <span class="dim">(${state||'unknown'})</span></div>
+        <div>IPv4: ${ips}</div>
+        <div>MAC: ${macChip}</div>
+      `;
+      ifsDiv.appendChild(wrap);
+    });
+  }
+
   (async ()=>{
-    const ipSpan = document.getElementById('lan-ip');
     try{
-      const r=await fetch('/cgi-bin/host_ip.sh',{cache:'no-store'});
+      // Prefer the richer JSON endpoint if available
+      const r = await fetch('/cgi-bin/net_info.sh', {cache:'no-store'});
       if (r.ok){
-        const t=(await r.text()).trim();
-        ipSpan.textContent = t || 'unknown';
-      }else{
-        ipSpan.textContent = 'unknown';
+        const j = await r.json();
+        hostSpan.textContent = j.hostname || 'unknown';
+        renderInterfaces(j.interfaces || []);
+        return;
       }
-    }catch{ ipSpan.textContent = 'unknown'; }
+      throw new Error('net_info.sh not available');
+    }catch(_){
+      // Fallback: legacy single-IP CGI (host_ip.sh)
+      try{
+        const r2 = await fetch('/cgi-bin/host_ip.sh', {cache:'no-store'});
+        const t  = r2.ok ? (await r2.text()).trim() : '';
+        hostSpan.textContent = '(unknown)';
+        renderInterfaces([{if:'lan', mac:'', ipv4: t? [t]: [], state:'up'}]);
+      }catch{
+        hostSpan.textContent = 'unknown';
+        renderInterfaces([]);
+      }
+    }
   })();
 })();
 </script>
