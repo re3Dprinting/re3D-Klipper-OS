@@ -1,68 +1,143 @@
 #!/bin/bash
-# Safely restore Moonraker DB from /media/usb0/moonraker-sql.db*
-# - Picks the newest file matching moonraker-sql.db*
-# - Verifies it's SQLite (if tools present) and sane size
-# - Stops moonraker, backups current DB, atomic replace, restart
-
 set -euo pipefail
+
 echo "Content-Type: text/plain"
-echo
+echo ""
 
-PRINTER_USER="pi"
-PRINTER_HOME="/home/${PRINTER_USER}"
-USB_DIR="/media/usb0"
-DST_DIR="${PRINTER_HOME}/printer_data/database"
-DST_DB="${DST_DIR}/moonraker-sql.db"
-CFG_DIR="${PRINTER_HOME}/printer_data/config"
-GCODE_DIR="${PRINTER_HOME}/printer_data/gcodes"
-TS=$(date +"%Y%m%d-%H%M%S")
-BAK_DB="${DST_DIR}/moonraker-sql.db.bak-${TS}"
-TMP_DB="${DST_DIR}/.moonraker-sql.db.new-${TS}"
+# --- Fixed paths ---
+BASE="/home/pi"
+PD="$BASE/printer_data"
+GCODES="$PD/gcodes"
+DB="$PD/database/moonraker-sql.db"
+USB="/media/usb0"
 
-# Destination path sanity
-[ -d "${DST_DIR}" ] || { echo "Error: ${DST_DIR} does not exist."; exit 1; }
-[ -d "${CFG_DIR}" ] || { echo "Error: Guard: ${CFG_DIR} missing."; exit 1; }
-[ -d "${GCODE_DIR}" ] || { echo "Error: Guard: ${GCODE_DIR} missing."; exit 1; }
+BUNDLE=""
+SRC=""
+NAME=""
 
-# Find newest candidate on USB
-if ! findmnt -rn "${USB_DIR}" >/dev/null; then
-  echo "Error: ${USB_DIR} is not a mounted filesystem."; exit 1
+# ---------- parse args (GET or POST) ----------
+decode() { printf '%s' "$1" | sed 's/+/ /g;s/%/\\x/g' | xargs -0 printf '%b' 2>/dev/null || true; }
+parse_kv () {
+  local kv="$1" k="${kv%%=*}" v="${kv#*=}"
+  v="$(decode "$v")"
+  case "$k" in
+    bundle) BUNDLE="$v" ;;
+    src)    SRC="$v" ;;
+    name)   NAME="$v" ;;
+  esac
+}
+if [ -n "${QUERY_STRING:-}" ]; then
+  for kv in ${QUERY_STRING//&/ }; do parse_kv "$kv"; done
 fi
-CANDIDATE=$(ls -1t "${USB_DIR}"/moonraker-sql.db* 2>/dev/null | head -n1 || true)
-[ -n "${CANDIDATE}" ] || { echo "Error: No moonraker-sql.db* found on ${USB_DIR}."; exit 1; }
-
-# Size sanity (10KB..200MB)
-SZ=$(stat -c%s "${CANDIDATE}")
-if [ "${SZ}" -lt 10000 ] || [ "${SZ}" -gt 200000000 ]; then
-  echo "Error: Candidate size ${SZ} looks wrong. Refusing."; exit 1
-fi
-
-# File(1) & sqlite3 checks if available
-if command -v file >/dev/null 2>&1; then
-  file "${CANDIDATE}" | grep -qi sqlite || { echo "Error: Not an SQLite file."; exit 1; }
-fi
-if command -v sqlite3 >/dev/null 2>&1; then
-  sqlite3 "${CANDIDATE}" 'PRAGMA integrity_check;' | grep -q '^ok$' || { echo "Error: SQLite integrity_check failed."; exit 1; }
+if [ "${REQUEST_METHOD:-}" = "POST" ]; then
+  read -r BODY || true
+  for kv in ${BODY//&/ }; do parse_kv "$kv"; done
 fi
 
-# Stop moonraker
-sudo systemctl stop moonraker || true
+# ---------- helpers ----------
+pick_newest_any () {
+  # newest *.tgz in the given dir
+  ls -1t "$1"/*.tgz 2>/dev/null | head -n1
+}
+list_candidates () {
+  ls -1t "$1"/*.tgz 2>/dev/null || true
+}
 
-# Backup current DB (if present)
-if [ -f "${DST_DB}" ]; then
-  sudo cp -f -- "${DST_DB}" "${BAK_DB}"
-  echo "Backed up existing DB → ${BAK_DB}"
+# If only name= was provided, assume /media/usb0/<name>[.tgz]
+if [ -z "$BUNDLE" ] && [ -n "$NAME" ]; then
+  case "$NAME" in
+    *.tgz) BUNDLE="$USB/$NAME" ;;
+    *)      BUNDLE="$USB/$NAME.tgz" ;;
+  esac
 fi
 
-# Copy to temp, set perms, fsync, atomic move
-sudo cp -f -- "${CANDIDATE}" "${TMP_DB}"
-sudo chown "${PRINTER_USER}:${PRINTER_USER}" "${TMP_DB}"
-sudo chmod 600 "${TMP_DB}"
-command -v sync >/dev/null 2>&1 && sudo sync -f "${TMP_DB}" 2>/dev/null || true
-sudo mv -f -- "${TMP_DB}" "${DST_DB}"
-command -v sync >/dev/null 2>&1 && sudo sync || true
+# Default to src=usb if nothing specified
+if [ -z "$BUNDLE" ] && [ -z "$SRC" ]; then
+  SRC="usb"
+fi
 
-# Start moonraker
-sudo systemctl start moonraker
+# Resolve src=usb|home
+if [ -z "$BUNDLE" ]; then
+  case "$SRC" in
+    usb)
+      if [ ! -d "$USB" ] || ! mount | grep -q " on ${USB} "; then
+        echo "ERROR: USB at $USB not mounted or not present."; exit 1
+      fi
+      cand_count=$(list_candidates "$USB" | wc -l | tr -d ' ')
+      echo "USB: found ${cand_count} candidate bundle(s)."
+      BUNDLE="$(pick_newest_any "$USB")"
+      ;;
+    home)
+      cand_count=$(list_candidates "$BASE" | wc -l | tr -d ' ')
+      echo "HOME: found ${cand_count} candidate bundle(s)."
+      BUNDLE="$(pick_newest_any "$BASE")"
+      ;;
+  esac
+fi
 
-echo "OK: Restored ${CANDIDATE} → ${DST_DB} (size=${SZ}) and restarted Moonraker."
+if [ -z "$BUNDLE" ] || [ ! -f "$BUNDLE" ]; then
+  echo "ERROR: Bundle not found."
+  echo "Use one of:"
+  echo "  • /cgi-bin/restore_history.sh?src=usb            (auto-pick newest on /media/usb0)"
+  echo "  • /cgi-bin/restore_history.sh?bundle=/full/path.tgz"
+  echo "  • /cgi-bin/restore_history.sh?name=mybundle[.tgz]  (assumes /media/usb0)"
+  exit 1
+fi
+
+echo "Using bundle: $BUNDLE"
+
+# ---------- unpack ----------
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+echo "Unpacking..."
+tar -xzf "$BUNDLE" -C "$tmpdir"
+
+# quick structure check
+if [ ! -d "$tmpdir/printer_data" ]; then
+  echo "ERROR: Bundle missing printer_data/ root"; exit 1
+fi
+[ -d "$tmpdir/printer_data/gcodes" ] || echo "NOTE: No gcodes/ in bundle."
+
+# ---------- restore G-codes (merge; no delete) ----------
+if [ -d "$tmpdir/printer_data/gcodes" ]; then
+  echo "Restoring G-code files → $GCODES ..."
+  mkdir -p "$GCODES"
+  before_count="$(find "$GCODES" -type f 2>/dev/null | wc -l || echo 0)"
+  bundle_count="$(find "$tmpdir/printer_data/gcodes" -type f | wc -l)"
+  rsync -a "$tmpdir/printer_data/gcodes/" "$GCODES/"
+  chown -R pi:pi "$GCODES" || true
+  after_count="$(find "$GCODES" -type f 2>/dev/null | wc -l || echo 0)"
+  echo "G-codes merged (bundle=$bundle_count, before=$before_count, after=$after_count)."
+fi
+
+# ---------- restore DB (safe swap with backup) ----------
+if [ -f "$tmpdir/printer_data/database/moonraker-sql.db" ]; then
+  echo "Restoring Moonraker DB…"
+  mkdir -p "$(dirname "$DB")"
+
+  was_active=0
+  if systemctl is-active --quiet moonraker; then
+    was_active=1
+    echo "Stopping Moonraker..."
+    systemctl stop moonraker || true
+  fi
+
+  if [ -f "$DB" ]; then
+    ts="$(date +%Y%m%d-%H%M%S)"
+    cp -a "$DB" "$DB.bak.$ts"
+    echo "Backed up current DB → $DB.bak.$ts"
+  fi
+
+  cp -a "$tmpdir/printer_data/database/moonraker-sql.db" "$DB"
+  chown pi:pi "$DB" || true
+
+  if [ "$was_active" -eq 1 ]; then
+    echo "Starting Moonraker..."
+    systemctl start moonraker || true
+  fi
+  echo "DB restored."
+else
+  echo "NOTE: No moonraker-sql.db in bundle."
+fi
+
+echo "OK: Restore complete from $BUNDLE"

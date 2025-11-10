@@ -43,9 +43,8 @@
   <div class="card sys-card">
     <div style="font-weight:800;margin-bottom:6px">Print History</div>
     <div class="hint">
-      Save/restore Moonraker’s print-history database.<br/>
-      • <b>Save</b>: copies <code>~/printer_data/database/moonraker-sql.db</code> → <code>/media/usb0/moonraker-sql.db</code>.<br/>
-      • <b>Restore</b>: replaces the live DB with <code>/media/usb0/moonraker-sql.db</code> (current DB is auto-backed up).
+      Save/restore Moonraker’s print-history database and gcode files.<br/>
+
     </div>
 
     <!-- Save to USB -->
@@ -53,7 +52,7 @@
       <div class="sys-row">
         <div>
           <div style="font-weight:600;margin-bottom:4px">Save history to USB</div>
-          <div class="hint">USB must be mounted at <code>/media/usb0</code>.</div>
+          <div class="hint">Saves file bundle to USB drive.</div>
         </div>
         <button type="submit">Save to USB</button>
       </div>
@@ -65,7 +64,7 @@
       <div class="sys-row">
         <div>
           <div style="font-weight:600;margin-bottom:4px">Restore history from USB</div>
-          <div class="hint">Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, then restarts Moonraker.</div>
+          <div class="hint">Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, adds files, then restarts Moonraker.</div>
         </div>
         <button type="submit">Restore from USB</button>
       </div>
