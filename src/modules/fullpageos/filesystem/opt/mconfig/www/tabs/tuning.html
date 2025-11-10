@@ -1,8 +1,8 @@
-<!-- Tuning (PID) — heater map + target only -->
+<!-- Tuning (PID) — live status/temps + result parse (no temp spam in log) -->
 <style>
   .out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
-    border:1px dashed var(--border);max-height:220px;overflow:auto;font-size:12px;color:var(--gray-200)
+    margin-top:8px;padding:10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:240px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
   .grid{display:grid;gap:12px;grid-template-columns:1fr}
   .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
@@ -10,6 +10,17 @@
   .btn-ghost{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
   .btn-ghost:hover{background:#24272c}
   .subhint{color:var(--muted);font-size:12px;margin-top:4px}
+  .live{
+    display:grid;gap:8px;grid-template-columns:repeat(3,1fr);
+    padding:10px;border:1px solid var(--border);border-radius:10px;background:#0F1216
+  }
+  .live .k{color:var(--muted);font-size:12px}
+  .live .v{font-weight:800}
+  .status-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pill{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:#11151b}
+  .ok{background:#10331c;border-color:#174d27}
+  .warn{background:#3a1a11;border-color:#5c2a1b}
+  .copy-row{display:flex;gap:8px;align-items:center}
 </style>
 
 <div class="content single">
@@ -33,119 +44,323 @@
       </div>
     </div>
 
+    <div class="status-line">
+      <span class="pill" id="ws-pill" title="WebSocket status">WS: …</span>
+      <span class="pill" id="run-pill">Idle</span>
+      <span class="pill" id="timer-pill" title="Elapsed during active run">00:00</span>
+    </div>
+
+    <div class="live" aria-live="polite">
+      <div><div class="k">Current</div><div class="v" id="live-temp">—</div></div>
+      <div><div class="k">Target</div><div class="v" id="live-target">—</div></div>
+      <div><div class="k">Power</div><div class="v" id="live-power">—</div></div>
+    </div>
+
     <div class="btn-row" style="justify-content:flex-start">
       <button type="submit" id="pid-go">Start PID Tune</button>
       <button type="button" id="pid-stop" class="btn-ghost" title="Attempt to abort current script">Abort</button>
-      <span class="hint">Sends <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span> via Moonraker.</span>
+      <span class="hint">Sends <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
     </div>
 
     <div class="out mono" id="out-pid" aria-live="polite"></div>
+
+    <div class="card" id="result-card" style="display:none">
+      <div style="font-weight:800;margin-bottom:6px">PID Result</div>
+      <div class="row">
+        <div><label>kP</label><input id="res-kp" readonly></div>
+        <div><label>kI</label><input id="res-ki" readonly></div>
+      </div>
+      <div class="row">
+        <div><label>kD</label><input id="res-kd" readonly></div>
+        <div class="copy-row" style="margin-top:24px">
+          <button type="button" id="copy-pid" class="btn-ghost">Copy as config snippet</button>
+          <span class="hint" id="copy-hint"></span>
+        </div>
+      </div>
+      <div class="hint">Values parsed from Klipper’s console when PID_CALIBRATE finishes.</div>
+    </div>
   </form>
 </div>
 
 <script>
 (() => {
-  // ==== Moonraker endpoints ====
+  /* ========= Moonraker endpoints ========= */
   const host = location.hostname || 'localhost';
   const DEFAULT_MOONRAKER = `http://${host}:7125`;
-  const MOONRAKER_URL = (localStorage.getItem('moonrakerUrl') || DEFAULT_MOONRAKER).replace(/\/+$/,'');
-  const DIRECT_ENDPOINT = `${MOONRAKER_URL}/printer/gcode/script`; // POST JSON {"script":"..."}
-  const PROXY_ENDPOINT  = `/cgi-bin/mr_gcode.sh`;                  // optional same-origin CGI fallback
+  const MR = (localStorage.getItem('moonrakerUrl') || DEFAULT_MOONRAKER).replace(/\/+$/,'');
+  const DIRECT_GCODE = `${MR}/printer/gcode/script`;        // POST JSON {"script":"..."}
+  const QUERY_OBJS   = `${MR}/printer/objects/query`;       // POST JSON {"objects":{"extruder":["temperature","target","power"],...}}
+  const PROXY_GCODE  = `/cgi-bin/mr_gcode.sh`;              // optional same-origin CGI fallback
+  const WS_URL       = `ws://${(new URL(MR)).host}/websocket`;
 
-  // ==== Heater mapping hint (UI-only) ====
+  /* ========= UI refs ========= */
+  const out = document.getElementById('out-pid');
+  const goBtn = document.getElementById('pid-go');
+  const stopBtn = document.getElementById('pid-stop');
+  const form = document.getElementById('pid-form');
+  const heaterSel  = document.getElementById('heater');
+  const heaterHint = document.getElementById('heater-hint');
+  const wsPill = document.getElementById('ws-pill');
+  const runPill = document.getElementById('run-pill');
+  const timerPill = document.getElementById('timer-pill');
+  const liveTemp = document.getElementById('live-temp');
+  const liveTarget = document.getElementById('live-target');
+  const livePower = document.getElementById('live-power');
+  const resCard = document.getElementById('result-card');
+  const resKp = document.getElementById('res-kp');
+  const resKi = document.getElementById('res-ki');
+  const resKd = document.getElementById('res-kd');
+  const copyBtn = document.getElementById('copy-pid');
+  const copyHint = document.getElementById('copy-hint');
+
   const HEATER_HINTS = {
     extruder:   'FFF: left • FGF: bottom',
     extruder1:  'FFF: right • FGF: middle',
     extruder2:  'FGF: top',
     heater_bed: 'Build plate heater'
   };
-  const heaterSel  = document.getElementById('heater');
-  const heaterHint = document.getElementById('heater-hint');
-  function updateHeaterHint(){
-    const v = heaterSel.value;
-    heaterHint.textContent = HEATER_HINTS[v] || '';
+  function updateHeaterHint(){ heaterHint.textContent = HEATER_HINTS[heaterSel.value] || ''; }
+  heaterSel.addEventListener('change', updateHeaterHint); updateHeaterHint();
+
+  /* ========= State ========= */
+  let ws, wsConnected = false;
+  let tuningActive = false;
+  let startTs = 0;
+  let tmr;
+
+  const latest = {
+    extruder:   {temperature:null,target:null,power:null},
+    extruder1:  {temperature:null,target:null,power:null},
+    extruder2:  {temperature:null,target:null,power:null},
+    heater_bed: {temperature:null,target:null,power:null},
+  };
+
+  /* ========= Logging with spam filter ========= */
+  const MAX_LOG_LINES = 300;
+  function shouldDrop(line){
+    // Drop typical temp spam (B:, T:, T0:, T1:, etc., with " /" target tokens), and "Stats:" lines.
+    if (/^\s*(?:Stats:|B:|T\d?:|T:)\s*/i.test(line) && /\/\s*\d+(\.\d+)?/.test(line)) return true;
+    // Also drop repeated bare temp reports mid-line like " B:21.4 /0.0 T0:20.7 /200.0 ..."
+    if (/(?:^|\s)(?:B:|T\d?:|T:)\s*\d+(\.\d+)?\s*\/\s*\d+(\.\d+)?/i.test(line)) return true;
+    return false;
   }
-  heaterSel.addEventListener('change', updateHeaterHint);
-  updateHeaterHint();
+  function log(msg, {force=false}={}){
+    if (!force && shouldDrop(msg)) return;
+    const lines = (out.textContent ? out.textContent.split('\n') : []);
+    lines.push(msg);
+    if (lines.length > MAX_LOG_LINES) lines.splice(0, lines.length - MAX_LOG_LINES);
+    out.textContent = lines.join('\n');
+    out.scrollTop = out.scrollHeight;
+  }
 
-  // ==== DOM ====
-  const out = document.getElementById('out-pid');
-  const goBtn = document.getElementById('pid-go');
-  const stopBtn = document.getElementById('pid-stop');
-  const form = document.getElementById('pid-form');
-
-  function log(msg){ out.textContent += (out.textContent ? '\n' : '') + msg; out.scrollTop = out.scrollHeight; }
   function setBusy(b){ goBtn.disabled = b; stopBtn.disabled = !b; }
+  function setRunState(state){ runPill.textContent = state; runPill.className = 'pill ' + (state==='Running'?'ok':state==='Idle'?'':'warn'); }
 
-  function buildScript(fd){
-    const heater = fd.get('heater');
-    const target = Number(fd.get('target'));
-    return `PID_CALIBRATE HEATER=${heater} TARGET=${target}`;
+  function renderLive(){
+    const h = heaterSel.value;
+    const d = latest[h] || {};
+    liveTemp.textContent = (d.temperature!=null) ? `${d.temperature.toFixed(1)}°C` : '—';
+    liveTarget.textContent = (d.target!=null) ? `${d.target.toFixed(0)}°C` : '—';
+    livePower.textContent = (d.power!=null) ? `${Math.round(d.power*100)}%` : '—';
   }
 
+  function startTimer(){
+    clearInterval(tmr);
+    startTs = Date.now();
+    tmr = setInterval(()=>{
+      if (!tuningActive){timerPill.textContent='00:00'; return;}
+      const s = Math.floor((Date.now()-startTs)/1000);
+      const mm = String(Math.floor(s/60)).padStart(2,'0');
+      const ss = String(s%60).padStart(2,'0');
+      timerPill.textContent = `${mm}:${ss}`;
+    }, 500);
+  }
+  function stopTimer(){ clearInterval(tmr); }
+
+  /* ========= WebSocket subscription ========= */
+  function wsSend(obj){ try{ ws?.send(JSON.stringify(obj)); }catch{} }
+
+  function openWs(){
+    try{ ws = new WebSocket(WS_URL); }catch(e){ setWsState(false); return; }
+    ws.onopen = () => {
+      setWsState(true);
+      wsSend({
+        jsonrpc: "2.0",
+        method: "printer.objects.subscribe",
+        params: { objects: {
+          extruder:   ["temperature","target","power"],
+          extruder1:  ["temperature","target","power"],
+          extruder2:  ["temperature","target","power"],
+          heater_bed: ["temperature","target","power"],
+        }},
+        id: 42
+      });
+    };
+    ws.onclose = () => { setWsState(false); setTimeout(openWs, 1500); };
+    ws.onerror = () => {};
+    ws.onmessage = (ev) => {
+      let data; try{ data = JSON.parse(ev.data); }catch{return;}
+      if (data?.method === 'notify_status_update' && data.params && data.params[0]){
+        const p = data.params[0];
+        for (const k of ['extruder','extruder1','extruder2','heater_bed']){
+          if (p[k]){
+            const d = p[k];
+            if (typeof d.temperature === 'number') latest[k].temperature = d.temperature;
+            if (typeof d.target      === 'number') latest[k].target      = d.target;
+            if (typeof d.power       === 'number') latest[k].power       = d.power;
+          }
+        }
+        renderLive();
+      }
+      if (data?.method === 'notify_gcode_response' && data.params && data.params[0]){
+        const line = String(data.params[0]);
+        // Only log if not a temp spam line
+        log(line);
+        // PID constants parsing
+        const m1 = line.match(/kP:\s*([\d.]+)\s*,\s*kI:\s*([\d.]+)\s*,\s*kD:\s*([\d.]+)/i);
+        const m2 = line.match(/pid_Kp\s*=\s*([\d.]+)\s+pid_Ki\s*=\s*([\d.]+)\s+pid_Kd\s*=\s*([\d.]+)/i);
+        if (m1 || m2){
+          const kp = parseFloat((m1?.[1]||m2?.[1])||'');
+          const ki = parseFloat((m1?.[2]||m2?.[2])||'');
+          const kd = parseFloat((m1?.[3]||m2?.[3])||'');
+          showResult(kp,ki,kd);
+          setRunState('Idle'); tuningActive = false; stopTimer();
+        }
+        if (/PID_CALIBRATE finished/i.test(line)){ setRunState('Idle'); tuningActive = false; stopTimer(); }
+        if (/PID_CALIBRATE aborted|error|fail/i.test(line)){ setRunState('Aborted'); tuningActive = false; stopTimer(); }
+      }
+    };
+  }
+  function setWsState(ok){ wsConnected = !!ok; wsPill.textContent = 'WS: ' + (ok?'connected':'offline'); wsPill.className = 'pill ' + (ok?'ok':'warn'); }
+  openWs();
+
+  /* ========= HTTP polling fallback (WS offline) ========= */
+  async function pollOnce(){
+    try{
+      const r = await fetch(QUERY_OBJS, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ objects: {
+          extruder:   ["temperature","target","power"],
+          extruder1:  ["temperature","target","power"],
+          extruder2:  ["temperature","target","power"],
+          heater_bed: ["temperature","target","power"],
+        }})
+      });
+      if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      const s = j?.result?.status || {};
+      for (const k of Object.keys(latest)){
+        if (s[k]){
+          const d = s[k];
+          if (typeof d.temperature === 'number') latest[k].temperature = d.temperature;
+          if (typeof d.target      === 'number') latest[k].target      = d.target;
+          if (typeof d.power       === 'number') latest[k].power       = d.power;
+        }
+      }
+      renderLive();
+    }catch{}
+  }
+  setInterval(()=>{ if (!wsConnected && tuningActive) pollOnce(); }, 1000);
+
+  /* ========= G-code send helpers ========= */
   async function postGcodeDirect(script){
-    const r = await fetch(DIRECT_ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+    const r = await fetch(DIRECT_GCODE, {
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ script })
     });
     if (!r.ok) throw new Error(`Moonraker HTTP ${r.status}`);
     return (await r.text()) || 'ok';
   }
-
   async function postGcodeViaProxy(script){
-    const r = await fetch(PROXY_ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    const r = await fetch(PROXY_GCODE, {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body: new URLSearchParams({ script })
     });
     if (!r.ok) throw new Error(`Proxy HTTP ${r.status}`);
     return (await r.text()) || 'ok';
   }
-
-  async function sendScript(script){
+  async function sendScript(script, friendly){
     try{
-      log(`→ Sending to Moonraker @ ${DIRECT_ENDPOINT}`);
+      log(`→ ${friendly}`, {force:true});
       const res = await postGcodeDirect(script);
-      log(`← Moonraker response: ${res}`);
+      log(`← Moonraker: ${res}`, {force:true});
     }catch(err){
-      log(`! Direct call failed (${err.message}). Trying proxy…`);
+      log(`! Direct failed (${err.message}); trying proxy…`, {force:true});
       const res2 = await postGcodeViaProxy(script);
-      log(`← Proxy/Moonraker response: ${res2}`);
+      log(`← Proxy/Moonraker: ${res2}`, {force:true});
     }
   }
 
+  function buildScript(fd){
+    const heater = fd.get('heater');
+    const target = Number(fd.get('target'));
+    return { script: `PID_CALIBRATE HEATER=${heater} TARGET=${target}`, heater, target };
+  }
+
+  /* ========= Results UI ========= */
+  function showResult(kp,ki,kd){
+    resKp.value = isFinite(kp)? kp : '';
+    resKi.value = isFinite(ki)? ki : '';
+    resKd.value = isFinite(kd)? kd : '';
+    resCard.style.display = (isFinite(kp)&&isFinite(ki)&&isFinite(kd)) ? '' : 'none';
+  }
+  copyBtn.addEventListener('click', async ()=>{
+    const kp = resKp.value, ki = resKi.value, kd = resKd.value;
+    const h = heaterSel.value;
+    const snippet =
+`# Insert into your printer.cfg:
+[heater_pid ${h}]
+kp: ${kp}
+ki: ${ki}
+kd: ${kd}`;
+    try{
+      await navigator.clipboard.writeText(snippet);
+      copyHint.textContent = 'Copied!';
+      setTimeout(()=>copyHint.textContent='', 1200);
+    }catch{
+      copyHint.textContent = 'Select and copy manually.';
+    }
+  });
+
+  /* ========= Form handlers ========= */
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     out.textContent = '';
+    showResult(NaN,NaN,NaN);
     setBusy(true);
+    setRunState('Running');
+    tuningActive = true;
+    startTimer();
     try{
-      const fd = new FormData(form);
-      const script = buildScript(fd);
-      log('Script:\n  ' + script);
-      await sendScript(script);
-      log('✓ Submitted. PID calibration will run until complete.');
+      const {script, heater, target} = buildScript(new FormData(form));
+      await sendScript(script, `PID_CALIBRATE ${heater} @ ${target}°C`);
+      log('✓ Submitted. Watch live temperatures; results will appear below on completion.', {force:true});
     }catch(err){
-      log('✗ Error: ' + err);
+      log('✗ Error: ' + err, {force:true});
+      setRunState('Idle');
+      tuningActive = false;
+      stopTimer();
     }finally{
       setBusy(false);
     }
   });
 
-  // Abort: prefer CANCEL_PRINT; if that fails, try M112.
+  // Abort flow
   stopBtn.addEventListener('click', async ()=>{
     setBusy(true);
     try{
-      await sendScript('CANCEL_PRINT');
-      log('Requested CANCEL_PRINT.');
+      await sendScript('CANCEL_PRINT', 'CANCEL_PRINT');
+      setRunState('Aborted');
     }catch(err){
       try{
-        await sendScript('M112');
-        log('Sent M112 (Emergency Stop).');
+        await sendScript('M112', 'M112 (Emergency Stop)');
+        setRunState('Aborted');
       }catch(err2){
-        log('Abort failed: ' + err2);
+        log('Abort failed: ' + err2, {force:true});
       }
     }finally{
+      tuningActive = false;
+      stopTimer();
       setBusy(false);
     }
   });
