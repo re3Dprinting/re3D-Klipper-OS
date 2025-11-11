@@ -849,36 +849,9 @@ command -v step_end   >/dev/null 2>&1 || step_end(){ echo "==> done"; }
 
 # Optional override to skip cache and force a rebuild (decision taken earlier)
 
-# --- Crowsnest binary cache restore (accept either binary; best-effort)
-BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
-CROWSNEST_PREINSTALLED=0
-
-if [ "${CROWSNEST_FORCE_BUILD}" -eq 1 ]; then
-  echo "CROWSNEST: FORCE BUILD enabled — skipping cached binaries"
-else
-  if [ -d "${BIN_SRC}" ]; then
-    echo "CROWSNEST FAST-PATH: checking cached crowsnest binaries"
-    if [ -f "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/ustreamer" ]; then
-      echo "Installing cached ustreamer"
-      install -Dm0755 "${BIN_SRC}/ustreamer" /usr/local/bin/ustreamer || true
-      CROWSNEST_PREINSTALLED=1
-    fi
-    if [ -f "${BIN_SRC}/camera-streamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
-      echo "Installing cached camera-streamer"
-      install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer || true
-      CROWSNEST_PREINSTALLED=1
-    fi
-    if [ -f "${BIN_SRC}/crowsnest" ] && [ -x "${BIN_SRC}/crowsnest" ]; then
-      install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest || true
-      CROWSNEST_PREINSTALLED=1
-    fi
-    if [ -f "${BIN_SRC}/crowsnest.service" ]; then
-      install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service || true
-      command -v systemctl >/dev/null && systemctl daemon-reload || true
-      command -v systemctl >/dev/null && systemctl enable crowsnest || true
-    fi
-  fi
-fi
+# Early crowsnest cached-binaries restore is handled above (gated by
+# CROWSNEST_FORCE_BUILD). Removed the later duplicate block to avoid
+# using ${CACHE_ROOT} after it may have been deleted.
 
 step_start "Crowsnest Clone & Install"
 set -xe
