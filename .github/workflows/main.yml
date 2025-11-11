@@ -62,40 +62,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-
             ${{ runner.os }}-moonraker-
-      - id: crowsnest-restore
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/crowsnest
-          key: ${{ steps.keys.outputs.CROWSNEST_KEY }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-
-            ${{ runner.os }}-crowsnest-
-      - id: crowsnest-bin-restore
-        uses: actions/cache@v4
-        with:
-          path: ~/crowsnest-binaries
-          key: ${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-
-            ${{ runner.os }}-crowsnest-binaries-
       - name: Stage caches (incl. Crowsnest binaries) into host_cache
         run: |
           set -euxo pipefail
           DEST="repository/src/modules/fullpageos/filesystem/host_cache"
           rm -rf "$DEST"; mkdir -p "$DEST"
 
-          for d in klipper moonraker crowsnest; do
+          for d in klipper moonraker; do
             if [ -d "$HOME/$d" ]; then
               mkdir -p "$DEST/$d"
               rsync -a --delete "$HOME/$d/" "$DEST/$d/"
             fi
           done
-
-          if [ -d "$HOME/crowsnest-binaries" ]; then
-            mkdir -p "$DEST/crowsnest-binaries"
-            rsync -a --delete "$HOME/crowsnest-binaries/" "$DEST/crowsnest-binaries/"
-          fi
 
       - name: Build Image
         run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
