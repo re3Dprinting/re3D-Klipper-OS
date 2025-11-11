@@ -770,7 +770,6 @@ chmod 0755 /opt/mconfig/www/cgi-bin/collect_logs.sh || true
 chmod 0755 /opt/mconfig/www/cgi-bin/reboot.sh      || true
 chmod 0755 /opt/mconfig/www/cgi-bin/save_history.sh      || true
 chmod 0755 /opt/mconfig/www/cgi-bin/restore_history.sh      || true
-chmod 0755 /opt/mconfig/www/cgi-bin/net_info.sh      || true
 chown -R root:root /opt/mconfig
 
 # 4) Wire up the service you ship (already present in /etc/systemd/system/)
