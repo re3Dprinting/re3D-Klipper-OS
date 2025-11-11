@@ -172,8 +172,8 @@ jobs:
           for d in klipper moonraker crowsnest; do
             SRC="extracted/home/pi/$d"
             if [ -d "$SRC/.git" ]; then
-              sudo rm -rf "$HOME/$d"
-              sudo mkdir -p "$HOME/$d"
+              sudo rm -rf "$HOME/$d/"
+              sudo mkdir -p "$HOME/$d/"
               sudo rsync -a --delete \
                 --exclude 'klippy-env' \
                 --exclude 'moonraker-env' \
