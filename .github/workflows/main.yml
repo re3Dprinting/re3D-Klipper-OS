@@ -168,21 +168,22 @@ jobs:
           ROOT_PART="${LOOPDEV}p2"
           sudo mount -o ro "$ROOT_PART" extracted || true
 
-          # copy only the git trees, not the venvs
+          # for each repo, nuke the old one first so we don't get klipper/klipper/...
           for d in klipper moonraker crowsnest; do
-            if [ -d "extracted/home/pi/$d/.git" ]; then
+            SRC="extracted/home/pi/$d"
+            if [ -d "$SRC/.git" ]; then
               sudo rm -rf "$HOME/$d"
               sudo mkdir -p "$HOME/$d"
               sudo rsync -a --delete \
                 --exclude 'klippy-env' \
                 --exclude 'moonraker-env' \
                 --exclude 'venv' \
-                "extracted/home/pi/$d/" "$HOME/$d/"
+                "$SRC/" "$HOME/$d/"
               sudo chown -R runner:docker "$HOME/$d"
             fi
           done
 
-          # grab crowsnest binaries (small)
+          # small binaries
           sudo mkdir -p "$HOME/crowsnest-binaries"
           sudo cp -f extracted/usr/local/bin/ustreamer       "$HOME/crowsnest-binaries/ustreamer"       2>/dev/null || true
           sudo cp -f extracted/usr/local/bin/camera-streamer "$HOME/crowsnest-binaries/camera-streamer" 2>/dev/null || true
@@ -190,7 +191,7 @@ jobs:
           sudo cp -f extracted/lib/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
           sudo cp -f extracted/etc/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
           sudo chown -R runner:docker "$HOME/crowsnest-binaries" || true
-
+          
       # free space BEFORE caches are saved
       - name: Free space before caching
         run: |
