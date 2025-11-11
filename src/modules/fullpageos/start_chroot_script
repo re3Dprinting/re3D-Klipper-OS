@@ -15,13 +15,6 @@ step_end() { local end_time=$(date +%s); local elapsed=$((end_time-STEP_TIME)); 
 
 source /common.sh
 
-# Decide whether to force-build crowsnest early so every subsequent
-# step (seeding, early binary-restore, etc.) can respect the caller's
-# choice. Exported environment variables (e.g. CROWSNEST_FORCE_BUILD=1)
-# should be honored when this script is invoked; default to 1 when
-# unspecified to preserve the previous behavior.
-: "${CROWSNEST_FORCE_BUILD:=1}"
-
 echo "=== Checking for host cache ==="
 ls -lah /host_cache || echo "No /host_cache found"
 
@@ -62,30 +55,20 @@ seed_dir "${CACHE_ROOT}/klipper"        "${USER_HOME}/klipper"
 seed_dir "${CACHE_ROOT}/klippy-env"     "${USER_HOME}/klippy-env"
 seed_dir "${CACHE_ROOT}/moonraker"      "${USER_HOME}/moonraker"
 seed_dir "${CACHE_ROOT}/moonraker-env"  "${USER_HOME}/moonraker-env"
-if [ "${CROWSNEST_FORCE_BUILD}" -ne 1 ]; then
-  seed_dir "${CACHE_ROOT}/crowsnest"      "${USER_HOME}/crowsnest"
-else
-  echo "CROWSNEST: FORCE BUILD enabled — skipping seeding crowsnest from host cache."
-fi
+seed_dir "${CACHE_ROOT}/crowsnest"      "${USER_HOME}/crowsnest"
 
 # If present, restore prebuilt Crowsnest binaries BEFORE deleting /host_cache
-# but only do this when we're NOT forcing a rebuild. When forcing a
-# rebuild we must skip using cached binaries entirely.
 CROWSNEST_PREINSTALLED=0
 BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
-if [ "${CROWSNEST_FORCE_BUILD}" -ne 1 ]; then
-  if [ -x "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
-    echo "CROWSNEST FAST-PATH: installing prebuilt binaries from cache"
-    install -Dm0755 "${BIN_SRC}/ustreamer"       /usr/local/bin/ustreamer
-    install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer
-    [ -x "${BIN_SRC}/crowsnest" ] && install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest
-    [ -f "${BIN_SRC}/crowsnest.service" ] && install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service
-    systemctl daemon-reload || true
-    systemctl enable crowsnest || true
-    CROWSNEST_PREINSTALLED=1
-  fi
-else
-  echo "CROWSNEST: FORCE BUILD enabled — skipping cached binaries (early restore)."
+if [ -x "${BIN_SRC}/ustreamer" ] && [ -x "${BIN_SRC}/camera-streamer" ]; then
+  echo "CROWSNEST FAST-PATH: installing prebuilt binaries from cache"
+  install -Dm0755 "${BIN_SRC}/ustreamer"       /usr/local/bin/ustreamer
+  install -Dm0755 "${BIN_SRC}/camera-streamer" /usr/local/bin/camera-streamer
+  [ -x "${BIN_SRC}/crowsnest" ] && install -Dm0755 "${BIN_SRC}/crowsnest" /usr/local/bin/crowsnest
+  [ -f "${BIN_SRC}/crowsnest.service" ] && install -Dm0644 "${BIN_SRC}/crowsnest.service" /lib/systemd/system/crowsnest.service
+  systemctl daemon-reload || true
+  systemctl enable crowsnest || true
+  CROWSNEST_PREINSTALLED=1
 fi
 
 # Reclaim space BEFORE pip installs
@@ -846,7 +829,8 @@ step_end
 command -v step_start >/dev/null 2>&1 || step_start(){ echo "==> $*"; }
 command -v step_end   >/dev/null 2>&1 || step_end(){ echo "==> done"; }
 
-# Optional override to skip cache and force a rebuild (decision taken earlier)
+# Optional override to skip cache and force a rebuild
+: "${CROWSNEST_FORCE_BUILD:=1}"
 
 # --- Crowsnest binary cache restore (accept either binary; best-effort)
 BIN_SRC="${CACHE_ROOT}/crowsnest-binaries"
