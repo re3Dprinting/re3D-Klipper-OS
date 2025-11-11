@@ -13,37 +13,56 @@ jobs:
       CACHE_VER: v1
       CACHE_NS: main
     steps:
+      # 0) free space first
+      - name: Free space early
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache || true
+          sudo docker image prune -af || true
+          df -h
+
       - name: Update apt
         run: sudo apt-get update
+
       - name: Install Dependencies
         run: sudo apt-get install -y coreutils p7zip-full qemu-user-static python3-git rsync
+
       - name: Checkout CustomPiOS
         uses: actions/checkout@v4
         with:
           repository: "guysoft/CustomPiOS"
           path: CustomPiOS
+
       - name: Checkout Project Repository
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
           path: repository
           submodules: true
+
+      # compute cache keys from start_chroot_script
       - name: Compute cache keys
         id: keys
         run: |
           FILE=repository/src/modules/fullpageos/start_chroot_script
           H=$( [ -f "$FILE" ] && sha256sum "$FILE" | cut -d' ' -f1 || echo none )
 
-          # Authoritative keys for this workflow
           echo "KLIPPER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-klipper-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
           echo "MOONRAKER_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
           echo "CROWSNEST_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
           echo "CROWSNEST_BIN_KEY=${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-${H}-${{ env.CACHE_NS }}" >> $GITHUB_OUTPUT
 
+      # grab base image
       - name: Download Raspbian Image
-        run: cd repository/src/image && wget -q -c --trust-server-names 'https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz'
+        run: |
+          cd repository/src/image
+          wget -q -c --trust-server-names \
+            'https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2025-05-13/2025-05-13-raspios-bookworm-armhf-lite.img.xz'
+
       - name: Update CustomPiOS Paths
         run: cd repository/src && ../../CustomPiOS/src/update-custompios-paths
+
+      # restore caches (host machine $HOME)
       - id: klipper-restore
         uses: actions/cache@v4
         with:
@@ -53,6 +72,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-klipper-
             ${{ runner.os }}-klipper-
+
       - id: moonraker-restore
         uses: actions/cache@v4
         with:
@@ -62,6 +82,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-moonraker-
             ${{ runner.os }}-moonraker-
+
       - id: crowsnest-restore
         uses: actions/cache@v4
         with:
@@ -71,6 +92,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-
             ${{ runner.os }}-crowsnest-
+
       - id: crowsnest-bin-restore
         uses: actions/cache@v4
         with:
@@ -79,16 +101,24 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.CACHE_VER }}-crowsnest-binaries-
             ${{ runner.os }}-crowsnest-binaries-
+
+      # stage caches into filesystem/host_cache (but exclude huge venvs)
       - name: Stage caches (incl. Crowsnest binaries) into host_cache
         run: |
           set -euxo pipefail
           DEST="repository/src/modules/fullpageos/filesystem/host_cache"
           rm -rf "$DEST"; mkdir -p "$DEST"
 
+          # these repos might have venvs, skip those
           for d in klipper moonraker crowsnest; do
-            if [ -d "$HOME/$d" ]; then
+            SRC="$HOME/$d"
+            if [ -d "$SRC" ]; then
               mkdir -p "$DEST/$d"
-              rsync -a --delete "$HOME/$d/" "$DEST/$d/"
+              rsync -a --delete \
+                --exclude 'klippy-env' \
+                --exclude 'moonraker-env' \
+                --exclude 'venv' \
+                "$SRC/" "$DEST/$d/"
             fi
           done
 
@@ -98,22 +128,28 @@ jobs:
           fi
 
       - name: Build Image
-        run: sudo modprobe loop && cd repository/src && sudo bash -x ./build_dist
-      - name: Copy Output
-        run: cp ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
+        run: |
+          sudo modprobe loop
+          cd repository/src
+          sudo bash -x ./build_dist
+
+      # use mv, not cp → avoid a second giant file
+      - name: Move Output
+        run: |
+          mv ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
+
       - name: Debug image file before mounting
         run: |
-          IMAGE_FILE=$(ls repository/src/workspace/*.img | head -n1)
+          IMAGE_FILE=build.img
           echo "Image file: $IMAGE_FILE"
           echo "=== file output ==="
           file "$IMAGE_FILE"
           echo "=== fdisk output ==="
           sudo fdisk -l "$IMAGE_FILE" || true
-          echo "=== losetup output ==="
-          sudo losetup -f --show "$IMAGE_FILE" || true
           echo "=== parted output ==="
           sudo parted "$IMAGE_FILE" print || true
 
+      # mount built image read-only, copy back ONLY repos + small binaries
       - name: Extract build outputs from image for caching
         shell: bash
         run: |
@@ -121,7 +157,7 @@ jobs:
           sudo umount -R extracted 2>/dev/null || true
           sudo losetup -D 2>/dev/null || true
           mkdir -p extracted
-          IMAGE_FILE="$(ls repository/src/workspace/*.img | head -n1)"
+          IMAGE_FILE="build.img"
           LOOPDEV="$(sudo losetup -fP --show "$IMAGE_FILE")"
           cleanup() {
             set +e
@@ -131,17 +167,31 @@ jobs:
           trap cleanup EXIT
           ROOT_PART="${LOOPDEV}p2"
           sudo mount -o ro "$ROOT_PART" extracted || true
-          sudo cp -r extracted/home/pi/klipper        "$HOME/klipper"        || true
-          sudo cp -r extracted/home/pi/moonraker      "$HOME/moonraker"      || true
-          sudo cp -r extracted/home/pi/crowsnest      "$HOME/crowsnest"      || true
+
+          # copy only the git trees, not the venvs
+          for d in klipper moonraker crowsnest; do
+            if [ -d "extracted/home/pi/$d/.git" ]; then
+              sudo rm -rf "$HOME/$d"
+              sudo mkdir -p "$HOME/$d"
+              sudo rsync -a --delete \
+                --exclude 'klippy-env' \
+                --exclude 'moonraker-env' \
+                --exclude 'venv' \
+                "extracted/home/pi/$d/" "$HOME/$d/"
+              sudo chown -R runner:docker "$HOME/$d"
+            fi
+          done
+
+          # grab crowsnest binaries (small)
           sudo mkdir -p "$HOME/crowsnest-binaries"
           sudo cp -f extracted/usr/local/bin/ustreamer       "$HOME/crowsnest-binaries/ustreamer"       2>/dev/null || true
           sudo cp -f extracted/usr/local/bin/camera-streamer "$HOME/crowsnest-binaries/camera-streamer" 2>/dev/null || true
           sudo cp -f extracted/usr/local/bin/crowsnest       "$HOME/crowsnest-binaries/crowsnest"       2>/dev/null || true
           sudo cp -f extracted/lib/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
           sudo cp -f extracted/etc/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
-          sudo chown -R runner:docker "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" "$HOME/crowsnest-binaries" || true
+          sudo chown -R runner:docker "$HOME/crowsnest-binaries" || true
 
+      # free space BEFORE caches are saved
       - name: Free space before caching
         run: |
           set -euxo pipefail
@@ -151,12 +201,11 @@ jobs:
               git -C "$HOME/$d" repack -a -d --depth=1 --window=1 || true
             fi
           done
-          du -sh "$HOME/klipper" "$HOME/moonraker" "$HOME/crowsnest" 2>/dev/null || true
-          du -sh "$HOME/crowsnest-binaries" 2>/dev/null || true
           sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb || true
-          sudo rm -rf /usr/share/dotnet /opt/ghc || true
-          [ -n "${AGENT_TOOLSDIRECTORY:-}" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache || true
           df -h
+
+      # save caches back (only if we didn't have them)
       - name: Save Klipper cache
         if: steps.klipper-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -188,11 +237,15 @@ jobs:
           path: ~/crowsnest-binaries
           key: ${{ steps.keys.outputs.CROWSNEST_BIN_KEY }}
 
-      - name: Cleanup
-        run: sudo rm -rf repository CustomPiOS extracted || true
+      - name: Cleanup workspace
+        run: |
+          sudo rm -rf repository CustomPiOS extracted || true
+          df -h
 
       - name: Zip Output
-        run: pigz -1 build.img
+        run: |
+          # build.img is already in workspace
+          pigz -1 build.img
 
       - uses: actions/upload-artifact@v4
         with:
