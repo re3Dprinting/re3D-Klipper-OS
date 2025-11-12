@@ -1,137 +1,105 @@
-<!-- Calibration Prints tab -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Calibration Prints — Pressure Advance</title>
 <style>
-  .out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
-    border:1px dashed var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
-  }
-  .coming-soon-wrap{position:relative}
-  .coming-soon-overlay{
-    position:absolute; inset:0; border-radius:12px;
-    background:rgba(24,27,32,.75); backdrop-filter:saturate(0.6) blur(1px);
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    color:var(--gray-200); z-index:5; pointer-events:auto;
-    border:1px dashed var(--border);
-  }
-  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:16px}
-  .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
-  .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
-  .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}
-  .grid2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
-  @media(max-width:980px){.grid2{grid-template-columns:1fr}}
+  :root{ --bg:#0f1013; --panel:#15171b; --muted:#9aa3b2; --fg:#e9eef5; --brand:#FFD400; --border:#262a31; --gray-200:#D9D9D9; }
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  .page{max-width:900px;margin:24px auto;padding:0 14px}
+  h1{margin:0 0 12px 0;font-size:20px}
+  .content{display:grid;gap:12px}
+  .card{background:var(--panel);border:1px dashed var(--border);border-radius:12px;padding:12px;display:grid;gap:12px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:900px){ .row{grid-template-columns:1fr} }
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input,select,button{font:inherit;color:var(--fg);background:#0C0E12;border:1px solid var(--border);border-radius:10px;padding:8px 10px;outline:none}
+  input::placeholder{color:#7b8494}
+  .btn-row{display:flex;gap:8px}
+  button{cursor:pointer}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  .out{margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;border:1px dashed var(--border);max-height:200px;overflow:auto;font-size:12px;color:var(--gray-200)}
+  .radio-group{display:flex;gap:10px;align-items:center}
+  .radio-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#0C0E12}
+  .radio-chip input{accent-color:var(--brand)}
 </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Calibration Prints</h1>
 
-<div class="content">
-  <div class="coming-soon-wrap span2">
-    <div class="blur-under grid2">
-      <form class="card" action="/cgi-bin/print_temp_tower.sh" method="post" id="cal-temp-form">
-        <div style="font-weight:800;margin-bottom:6px">Temperature Tower</div>
+    <div class="content">
+      <!-- Pressure Advance -->
+      <form class="card" action="/cgi-bin/print_pressure_advance.sh" method="post" id="cal-pa-form">
+        <div style="font-weight:800;margin-bottom:2px">Pressure Advance</div>
+
         <div class="row">
-          <div><label>Start (°C)</label><input name="start" type="number" min="150" max="300" value="220" required></div>
-          <div><label>Step (°C)</label><input name="step" type="number" min="2" max="15" value="5" required></div>
-        </div>
-        <div class="row">
-          <div><label>Floors</label><input name="floors" type="number" min="4" max="12" value="6"></div>
           <div>
-            <label>Material</label>
-            <select name="material">
-              <option>PLA</option><option>PETG</option><option>ABS</option><option>ASA</option>
+            <label for="pa-hotend">Hotend Temp (°C)</label>
+            <input id="pa-hotend" name="hotend_temp" type="number" step="0.1" min="0" max="330" value="220" required>
+          </div>
+          <div>
+            <label for="pa-bed">Bed Temp (°C)</label>
+            <input id="pa-bed" name="bed_temp" type="number" step="0.1" min="0" max="150" value="60" required>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="pa-machine">Machine Type</label>
+            <select id="pa-machine" name="machine" required>
+              <option value="" disabled selected>Select machine</option>
+              <option>Gigabot 4</option>
+              <option>Gigabot 4 XLT</option>
+              <option>Terabot 4</option>
             </select>
           </div>
-        </div>
-        <div class="btn-row"><button type="submit" disabled>Start Tower</button></div>
-        <div class="out mono" id="out-cal-temp"></div>
-      </form>
 
-      <form class="card" action="/cgi-bin/print_flow_cube.sh" method="post" id="cal-flow-form">
-        <div style="font-weight:800;margin-bottom:6px">Flow Cube (Single Wall)</div>
-        <div class="row">
-          <div><label>Nozzle (mm)</label><input name="nozzle" type="number" step="0.05" min="0.2" max="1.2" value="0.4" required></div>
-          <div><label>Wall Speed (mm/s)</label><input name="speed" type="number" min="10" max="120" value="40"></div>
-        </div>
-        <div class="row">
-          <div><label>Wall Count</label><input name="walls" type="number" min="1" max="3" value="1"></div>
-          <div><label>Size (mm)</label><input name="size" type="number" min="15" max="40" value="20"></div>
-        </div>
-        <div class="btn-row"><button type="submit" disabled>Print Flow Cube</button></div>
-        <div class="out mono" id="out-cal-flow"></div>
-      </form>
-
-      <form class="card" action="/cgi-bin/print_xyz_cube.sh" method="post" id="cal-xyz-form">
-        <div style="font-weight:800;margin-bottom:6px">XYZ Calibration Cube</div>
-        <div class="row">
-          <div><label>Size (mm)</label><input name="size" type="number" min="15" max="40" value="20"></div>
-          <div><label>Speed (mm/s)</label><input name="speed" type="number" min="20" max="150" value="60"></div>
-        </div>
-        <div class="btn-row"><button type="submit" disabled>Print XYZ Cube</button></div>
-        <div class="out mono" id="out-cal-xyz"></div>
-      </form>
-
-      <form class="card" action="/cgi-bin/print_bed_mesh_pattern.sh" method="post" id="cal-mesh-form">
-        <div style="font-weight:800;margin-bottom:6px">Bed Mesh Pattern</div>
-        <div class="row">
-          <div><label>Lines</label><input name="lines" type="number" min="5" max="30" value="12"></div>
-          <div><label>Spacing (mm)</label><input name="spacing" type="number" min="10" max="60" value="25"></div>
-        </div>
-        <div class="row">
           <div>
-            <label>Prime Line</label>
-            <select name="prime"><option value="1" selected>Yes</option><option value="0">No</option></select>
+            <label>Extruder</label>
+            <div class="radio-group" role="radiogroup" aria-label="Extruder">
+              <label class="radio-chip"><input type="radio" name="extruder" value="left" required>Left</label>
+              <label class="radio-chip"><input type="radio" name="extruder" value="right">Right</label>
+            </div>
           </div>
-          <div><label>Temperature (°C)</label><input name="temp" type="number" min="0" max="300" value="0" placeholder="0=skip"></div>
         </div>
-        <div class="btn-row"><button type="submit" disabled>Print Mesh Pattern</button></div>
-        <div class="out mono" id="out-cal-mesh"></div>
-      </form>
-    </div>
 
-    <div class="coming-soon-overlay" id="overlay">
-      <div class="msg">
-        <strong>Calibration Prints — Coming Soon</strong>
-        <div class="sub">Kick off common calibration prints from here once enabled.</div>
-      </div>
+        <div class="btn-row">
+          <button type="submit">Generate PA G-code</button>
+        </div>
+
+        <div class="out mono" id="out-cal-pa">Awaiting input…</div>
+      </form>
     </div>
   </div>
-</div>
 
 <script>
 (() => {
-  const ENABLED = false; // set true to remove overlay & enable buttons
+  const ENABLED = true; // per your request: active
 
-  function wireAjaxForm(formId,outId){
-    const f=document.getElementById(formId);
-    const out=document.getElementById(outId);
-    if(!f||!out) return;
-    f.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      out.textContent='Running…';
-      try{
-        const fd=new FormData(f);
-        const resp=await fetch(f.action,{
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(fd)
-        });
-        const text=await resp.text();
-        out.textContent=text.trim()||'Done.';
-      }catch(err){ out.textContent=`Error: ${err}`; }
-    });
-  }
+  // Submit via AJAX and show the CGI response
+  const f = document.getElementById('cal-pa-form');
+  const out = document.getElementById('out-cal-pa');
 
-  const overlay = document.getElementById('overlay');
-  const wrap = overlay?.parentElement;
-  const buttons = wrap?.querySelectorAll('button') || [];
-  if (ENABLED){
-    overlay?.remove();
-    buttons.forEach(b=>b.disabled=false);
-    const blur = wrap.querySelector('.blur-under');
-    blur && blur.classList.remove('blur-under');
-  }else{
-    buttons.forEach(b=>b.disabled=true);
-  }
-
-  wireAjaxForm('cal-temp-form','out-cal-temp');
-  wireAjaxForm('cal-flow-form','out-cal-flow');
-  wireAjaxForm('cal-xyz-form','out-cal-xyz');
-  wireAjaxForm('cal-mesh-form','out-cal-mesh');
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    out.textContent = 'Generating file…';
+    try{
+      const fd = new FormData(f);
+      const resp = await fetch(f.action, {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: new URLSearchParams(fd)
+      });
+      const text = await resp.text();
+      out.textContent = text.trim() || 'Done.';
+    }catch(err){
+      out.textContent = `Error: ${err}`;
+    }
+  });
 })();
 </script>
+</body>
+</html>
