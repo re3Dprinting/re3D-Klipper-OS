@@ -126,8 +126,7 @@
 ; EXECUTABLE_BLOCK_START
 M73 P0 R89
 ;TYPE:Custom
-T{extruder}
-M109 T0 S150
+T{tool_select}
 M83  ; Use relative extrusion distances
 G28  ; Home all axes
 
@@ -138,7 +137,7 @@ M190 S{bed_temp}  ; Wait for bed to reach temperature
 ; HEAT THE USED TOOL
 ; ---------------------------
 
-M109 T0 S{hotend_temp}  ; Wait for active extruder to reach temperature
+M109 S{hotend_temp}  ; Wait for active extruder to reach temperature
 
 
 G1 F18000
@@ -162,6 +161,7 @@ G92 E0
 ;_SET_FAN_SPEED_CHANGING_LAYER
 SET_VELOCITY_LIMIT ACCEL=500
 SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=1
+TUNING_TOWER COMMAND=SET_PRESSURE_ADVANCE PARAMETER=ADVANCE START=0 FACTOR=.005
 G1 E-.6 F12000
 G1 X262.677 Y259.241 F18000
 G1 Z.4 F3000

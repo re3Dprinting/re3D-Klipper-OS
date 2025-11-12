@@ -137,7 +137,7 @@ M190 S{bed_temp}  ; Wait for bed to reach temperature
 ; HEAT THE USED TOOL
 ; ---------------------------
 
-M109 T0 S{hotend_temp}  ; Wait for active extruder to reach temperature
+M109 S{hotend_temp}  ; Wait for active extruder to reach temperature
 
 
 G1 F18000
