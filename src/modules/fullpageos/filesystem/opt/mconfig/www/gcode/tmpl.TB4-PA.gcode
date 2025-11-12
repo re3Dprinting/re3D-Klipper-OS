@@ -129,7 +129,7 @@ M73 P0 R88
 ; ---------------------------
 ; MACHINE START G-CODE
 ; ---------------------------
-
+T{tool_select}
 M83  ; Use relative extrusion distances
 G28  ; Home all axes
 

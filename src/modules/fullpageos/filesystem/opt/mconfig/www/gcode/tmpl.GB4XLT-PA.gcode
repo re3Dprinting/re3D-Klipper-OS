@@ -126,6 +126,7 @@
 ; EXECUTABLE_BLOCK_START
 M73 P0 R88
 ;TYPE:Custom
+T{tool_select}
 M83  ; Use relative extrusion distances
 G28  ; Home all axes
 
