@@ -133,10 +133,10 @@ jobs:
           cd repository/src
           sudo bash -x ./build_dist
 
-      # use mv, not cp → avoid a second giant file
-      - name: Move Output
+
+      - name: copy Output
         run: |
-          mv ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
+          cp ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
 
       - name: Debug image file before mounting
         run: |
