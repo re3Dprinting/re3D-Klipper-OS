@@ -1,105 +1,396 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Calibration Prints — Pressure Advance</title>
+<!-- tabs/calibration.html -->
 <style>
-  :root{ --bg:#0f1013; --panel:#15171b; --muted:#9aa3b2; --fg:#e9eef5; --brand:#FFD400; --border:#262a31; --gray-200:#D9D9D9; }
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  .page{max-width:900px;margin:24px auto;padding:0 14px}
-  h1{margin:0 0 12px 0;font-size:20px}
-  .content{display:grid;gap:12px}
-  .card{background:var(--panel);border:1px dashed var(--border);border-radius:12px;padding:12px;display:grid;gap:12px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media (max-width:900px){ .row{grid-template-columns:1fr} }
-  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-  input,select,button{font:inherit;color:var(--fg);background:#0C0E12;border:1px solid var(--border);border-radius:10px;padding:8px 10px;outline:none}
-  input::placeholder{color:#7b8494}
-  .btn-row{display:flex;gap:8px}
-  button{cursor:pointer}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
-  .out{margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;border:1px dashed var(--border);max-height:200px;overflow:auto;font-size:12px;color:var(--gray-200)}
-  .radio-group{display:flex;gap:10px;align-items:center}
-  .radio-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#0C0E12}
-  .radio-chip input{accent-color:var(--brand)}
+  /* Scoped to this tab only; uses your global tokens */
+  .cal-out{
+    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
+    border:1px dashed var(--border);max-height:220px;overflow:auto;font-size:12px;color:var(--gray-200)
+  }
+  .cal-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+  .cal-card{display:flex;flex-direction:column;gap:10px}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+  .cal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width: 980px){ .cal-grid{grid-template-columns:1fr} }
+  .hint{color:var(--gray-300);font-size:12px}
+
+  /* Condense width just on this tab */
+  .cal-wrap{max-width: 920px;margin-inline:auto;width:100%}
+
+  /* Mode tabs (chips) */
+  .cal-tabs{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{
+    appearance:none;border:none;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;
+    padding:6px 12px;border-radius:999px;
+    background:#0C0E12;color:var(--fg);
+    border:1px solid var(--border);
+    font-weight:600;
+  }
+  .chip[aria-selected="true"]{
+    background:var(--brand); color:#111;
+    border-color:var(--brand); box-shadow:none;
+  }
+
+  /* Stepper layout (left rail + card on the right) */
+  .step{display:grid;grid-template-columns:28px 1fr;column-gap:10px;align-items:stretch}
+  .rail{position:relative;display:flex;justify-content:center}
+  .dot{
+    display:grid;place-items:center;
+    width:18px;height:18px;border-radius:50%;
+    background:var(--brand);color:#111;
+    font-weight:800;font-size:12px;line-height:1;
+    z-index:1;margin-top:8px;
+  }
+  .rail::after{content:"";position:absolute;top:18px;bottom:-10px;width:2px;background:var(--border)}
+  .step.is-last .rail::after{display:none}
+
+  /* Reveal-after-start pattern */
+  .post-fields{display:none;opacity:0;transform:translateY(-2px);transition:opacity .18s ease, transform .18s ease}
+  .post-fields.show{display:block;opacity:1;transform:translateY(0)}
+
+  /* Actions: button + QR cluster */
+  .actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .qr{
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    padding:6px;border:1px solid var(--border);border-radius:12px;background:#0C0E12
+  }
+  .qr img{width:120px;height:120px;display:block;border-radius:8px}
+  .qr .label{font-size:11px;color:var(--gray-300);text-align:center}
+  .qr a{display:block;line-height:0}
+
+  /* Keep borders inside the box so nothing spills up into the header */
+  *,*::before,*::after{box-sizing:border-box}
 </style>
-</head>
-<body>
-  <div class="page">
-    <h1>Calibration Prints</h1>
 
-    <div class="content">
-      <!-- Pressure Advance -->
-      <form class="card" action="/cgi-bin/print_pressure_advance.sh" method="post" id="cal-pa-form">
-        <div style="font-weight:800;margin-bottom:2px">Pressure Advance</div>
+<div class="content cal-wrap" style="display:grid;gap:12px">
+  <!-- Mode selector -->
+  <div class="card cal-card">
+    <div style="font-weight:800;margin-bottom:4px">Calibration</div>
+    <div class="hint">Run the guided sequence or perform individual tests.</div>
+    <div class="cal-tabs" role="tablist" aria-label="Calibration modes">
+      <button class="chip" role="tab" id="cal-tab-guided" aria-controls="cal-panel-guided" aria-selected="true">Guided</button>
+      <button class="chip" role="tab" id="cal-tab-individual" aria-controls="cal-panel-individual" aria-selected="false">Individual Tests</button>
+    </div>
+  </div>
 
-        <div class="row">
-          <div>
-            <label for="pa-hotend">Hotend Temp (°C)</label>
-            <input id="pa-hotend" name="hotend_temp" type="number" step="0.1" min="0" max="330" value="220" required>
-          </div>
-          <div>
-            <label for="pa-bed">Bed Temp (°C)</label>
-            <input id="pa-bed" name="bed_temp" type="number" step="0.1" min="0" max="150" value="60" required>
+  <!-- PANEL: GUIDED -->
+  <div id="cal-panel-guided" class="cal-guided" role="tabpanel" aria-labelledby="cal-tab-guided" aria-hidden="false" style="display:contents">
+    <!-- Global (not part of the stepper) -->
+    <form class="card cal-card">
+      <div style="font-weight:800;margin-bottom:6px">Global Parameters</div>
+      <div class="cal-grid">
+        <div>
+          <label class="hint">Hotend Temp (°C)</label>
+          <input name="hotend_temp" type="number" step="0.1" min="0" max="330" value="220" required>
+        </div>
+        <div>
+          <label class="hint">Bed Temp (°C)</label>
+          <input name="bed_temp" type="number" step="0.1" min="0" max="150" value="60" required>
+        </div>
+      </div>
+      <div class="cal-grid">
+        <div>
+          <label class="hint">Machine Type</label>
+          <select name="machine" required>
+            <option value="" disabled>Select machine</option>
+            <option>Gigabot 4</option>
+            <option>Gigabot 4 XLT</option>
+            <option>Terabot 4</option>
+          </select>
+        </div>
+        <div>
+          <label class="hint">Extruder</label>
+          <div style="display:flex;gap:8px">
+            <label class="chip"><input type="radio" name="extruder" value="left" required> Left</label>
+            <label class="chip"><input type="radio" name="extruder" value="right"> Right</label>
           </div>
         </div>
+      </div>
+      <div class="cal-out mono" id="out-global">Tip: Save once so later steps auto-fill. (Wiring to persistence comes later.)</div>
+    </form>
 
-        <div class="row">
+    <!-- Step 1: Flow -->
+    <div class="step">
+      <div class="rail"><div class="dot" aria-hidden="true">1</div></div>
+      <div class="card cal-card" aria-label="Step 1 — Flow Calibration">
+        <div class="cal-row">
           <div>
-            <label for="pa-machine">Machine Type</label>
-            <select id="pa-machine" name="machine" required>
-              <option value="" disabled selected>Select machine</option>
-              <option>Gigabot 4</option>
-              <option>Gigabot 4 XLT</option>
-              <option>Terabot 4</option>
-            </select>
+            <div style="font-weight:800;margin-bottom:6px">Step 1 — Flow Calibration</div>
+            <div class="hint">Run the flow test, then enter results.</div>
           </div>
-
-          <div>
-            <label>Extruder</label>
-            <div class="radio-group" role="radiogroup" aria-label="Extruder">
-              <label class="radio-chip"><input type="radio" name="extruder" value="left" required>Left</label>
-              <label class="radio-chip"><input type="radio" name="extruder" value="right">Right</label>
+          <div class="actions">
+            <button type="button" class="start-btn" id="btn-flow" data-reveal="#flow-fields" aria-expanded="false">Start Calibration</button>
+            <div class="qr">
+              <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
+                <img alt="Flow guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
+              </a>
+              <div class="label">Scan: Flow Guide</div>
             </div>
           </div>
         </div>
 
-        <div class="btn-row">
-          <button type="submit">Generate PA G-code</button>
+        <div class="post-fields" id="flow-fields" aria-hidden="true">
+          <div class="cal-grid">
+            <div><label class="hint">Flow Multiplier</label><input id="flow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98"></div>
+            <div><label class="hint">Notes</label><input id="flow-notes" type="text" placeholder="optional…"></div>
+          </div>
         </div>
 
-        <div class="out mono" id="out-cal-pa">Awaiting input…</div>
-      </form>
+        <div class="cal-out mono" id="out-flow">[preview] Waiting…</div>
+      </div>
+    </div>
+
+    <!-- Step 2: Pressure Advance -->
+    <div class="step">
+      <div class="rail"><div class="dot" aria-hidden="true">2</div></div>
+      <div class="card cal-card" aria-label="Step 2 — Pressure Advance">
+        <div class="cal-row">
+          <div>
+            <div style="font-weight:800;margin-bottom:6px">Step 2 — Pressure Advance</div>
+            <div class="hint">Run the PA test, then enter your K value.</div>
+          </div>
+          <div class="actions">
+            <button type="button" class="start-btn" id="btn-pa" data-reveal="#pa-fields" aria-expanded="false">Start Calibration</button>
+            <div class="qr">
+              <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
+                <img alt="Pressure advance guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
+              </a>
+              <div class="label">Scan: PA Guide</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="post-fields" id="pa-fields" aria-hidden="true">
+          <div class="cal-grid">
+            <div><label class="hint">Measured PA (K)</label><input id="pa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065"></div>
+            <div><label class="hint">Notes</label><input id="pa-notes" type="text" placeholder="optional…"></div>
+          </div>
+        </div>
+
+        <div class="cal-out mono" id="out-pa">[preview] Waiting…</div>
+      </div>
+    </div>
+
+    <!-- Step 3: Retraction -->
+    <div class="step">
+      <div class="rail"><div class="dot" aria-hidden="true">3</div></div>
+      <div class="card cal-card" aria-label="Step 3 — Retraction">
+        <div class="cal-row">
+          <div>
+            <div style="font-weight:800;margin-bottom:6px">Step 3 — Retraction</div>
+            <div class="hint">Start the test, then dial in distance & speed.</div>
+          </div>
+          <div class="actions">
+            <button type="button" class="start-btn" id="btn-retr" data-reveal="#retr-fields" aria-expanded="false">Start Calibration</button>
+            <div class="qr">
+              <a href="https://example.com/calibration/retraction" target="_blank" rel="noopener">
+                <img alt="Retraction guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fretraction">
+              </a>
+              <div class="label">Scan: Retraction Guide</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="post-fields" id="retr-fields" aria-hidden="true">
+          <div class="cal-grid">
+            <div><label class="hint">Distance (mm)</label><input id="retr-dist" type="number" step="0.1" min="0" max="12" value="2.0"></div>
+            <div><label class="hint">Speed (mm/s)</label><input id="retr-speed" type="number" step="1" min="5" max="120" value="35"></div>
+          </div>
+          <div class="cal-grid">
+            <div><label class="hint">Extra Prime (mm³)</label><input id="retr-prime" type="number" step="0.01" min="-1" max="1" value="0.00"></div>
+            <div><label class="hint">Notes</label><input id="retr-notes" type="text" placeholder="optional…"></div>
+          </div>
+        </div>
+
+        <div class="cal-out mono" id="out-retr">[preview] Waiting…</div>
+      </div>
+    </div>
+
+    <!-- Step 4: Summary (last) -->
+    <div class="step is-last">
+      <div class="rail"><div class="dot" aria-hidden="true">4</div></div>
+      <div class="card cal-card" aria-label="Step 4 — Summary">
+        <div style="font-weight:800;margin-bottom:6px">Step 4 — Summary</div>
+        <div class="cal-out mono" id="summary-body" style="white-space:pre">
+; Summary will appear here.
+; Klipper + slicer suggestions (preview only).
+        </div>
+        <div class="cal-row">
+          <div class="hint">Export or copy these values into your configs.</div>
+          <button type="button" id="btn-summary">Refresh Summary</button>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- PANEL: INDIVIDUAL -->
+  <div id="cal-panel-individual" class="cal-individual" role="tabpanel" aria-labelledby="cal-tab-individual" aria-hidden="true" hidden style="display:contents">
+    <div class="card cal-card">
+      <div style="font-weight:800;margin-bottom:6px">Individual Tests</div>
+      <div class="hint">Use the global parameters above. Run only what you need.</div>
+
+      <!-- Flow -->
+      <div class="cal-card" style="padding:0">
+        <div class="cal-row">
+          <div style="font-weight:700;margin-bottom:6px">Flow Calibration</div>
+          <div class="actions">
+            <button type="button" class="start-btn" id="btn-iflow" data-reveal="#iflow-fields" aria-expanded="false">Start Calibration</button>
+            <div class="qr">
+              <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
+                <img alt="Flow guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
+              </a>
+              <div class="label">Scan: Flow Guide</div>
+            </div>
+          </div>
+        </div>
+        <div class="post-fields" id="iflow-fields" aria-hidden="true">
+          <div class="cal-grid">
+            <div><label class="hint">Flow Multiplier</label><input id="iflow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98"></div>
+            <div><label class="hint">Notes</label><input id="iflow-notes" type="text" placeholder="optional…"></div>
+          </div>
+        </div>
+        <div class="cal-out mono" id="out-iflow">[preview] Waiting…</div>
+      </div>
+
+      <!-- Pressure Advance -->
+      <div class="cal-card" style="padding:0">
+        <div class="cal-row">
+          <div style="font-weight:700;margin-bottom:6px">Pressure Advance</div>
+          <div class="actions">
+            <button type="button" class="start-btn" id="btn-ipa" data-reveal="#ipa-fields" aria-expanded="false">Start Calibration</button>
+            <div class="qr">
+              <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
+                <img alt="PA guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
+              </a>
+              <div class="label">Scan: PA Guide</div>
+            </div>
+          </div>
+        </div>
+        <div class="post-fields" id="ipa-fields" aria-hidden="true">
+          <div class="cal-grid">
+            <div><label class="hint">Measured PA (K)</label><input id="ipa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065"></div>
+            <div><label class="hint">Notes</label><input id="ipa-notes" type="text" placeholder="optional…"></div>
+          </div>
+        </div>
+        <div class="cal-out mono" id="out-ipa">[preview] Waiting…</div>
+      </div>
+
+      <!-- Retraction -->
+      <div class="cal-card" style="padding:0">
+        <div class="cal-row">
+          <div style="font-weight:700;margin-bottom:6px">Retraction</div>
+          <div class="actions">
+            <button type="button" class="start-btn" id="btn-iretr" data-reveal="#iretr-fields" aria-expanded="false">Start Calibration</button>
+            <div class="qr">
+              <a href="https://example.com/calibration/retraction" target="_blank" rel="noopener">
+                <img alt="Retraction guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fretraction">
+              </a>
+              <div class="label">Scan: Retraction Guide</div>
+            </div>
+          </div>
+        </div>
+        <div class="post-fields" id="iretr-fields" aria-hidden="true">
+          <div class="cal-grid">
+            <div><label class="hint">Distance (mm)</label><input id="iretr-dist" type="number" step="0.1" min="0" max="12" value="2.0"></div>
+            <div><label class="hint">Speed (mm/s)</label><input id="iretr-speed" type="number" step="1" min="5" max="120" value="35"></div>
+          </div>
+          <div class="cal-grid">
+            <div><label class="hint">Extra Prime (mm³)</label><input id="iretr-prime" type="number" step="0.01" min="-1" max="1" value="0.00"></div>
+            <div><label class="hint">Notes</label><input id="iretr-notes" type="text" placeholder="optional…"></div>
+          </div>
+        </div>
+        <div class="cal-out mono" id="out-iretr">[preview] Waiting…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
-  const ENABLED = true; // per your request: active
+  // --- tab switching (toggle the two panel containers) ---
+  const tabGuided = document.getElementById('cal-tab-guided');
+  const tabIndiv  = document.getElementById('cal-tab-individual');
+  const panelGuided = document.getElementById('cal-panel-guided');
+  const panelIndiv  = document.getElementById('cal-panel-individual');
 
-  // Submit via AJAX and show the CGI response
-  const f = document.getElementById('cal-pa-form');
-  const out = document.getElementById('out-cal-pa');
+  function setMode(mode){
+    const guided = (mode === 'guided');
+    tabGuided.setAttribute('aria-selected', guided ? 'true':'false');
+    tabIndiv.setAttribute('aria-selected', guided ? 'false':'true');
 
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    out.textContent = 'Generating file…';
-    try{
-      const fd = new FormData(f);
-      const resp = await fetch(f.action, {
-        method: 'POST',
-        headers: {'Content-Type':'application/x-www-form-urlencoded'},
-        body: new URLSearchParams(fd)
-      });
-      const text = await resp.text();
-      out.textContent = text.trim() || 'Done.';
-    }catch(err){
-      out.textContent = `Error: ${err}`;
-    }
+    panelGuided.setAttribute('aria-hidden', guided ? 'false':'true');
+    panelIndiv.setAttribute('aria-hidden', guided ? 'true':'false');
+
+    panelGuided.hidden = !guided;
+    panelIndiv.hidden  = guided;
+  }
+  tabGuided.addEventListener('click', ()=> setMode('guided'));
+  tabIndiv .addEventListener('click', ()=> setMode('individual'));
+  setMode('guided');
+
+  // --- helper: reveal fields after start ---
+  function revealFields(btn){
+    const selector = btn.getAttribute('data-reveal');
+    const target = selector ? document.querySelector(selector) : null;
+    if (!target) return;
+
+    target.classList.add('show');
+    target.setAttribute('aria-hidden','false');
+
+    btn.textContent = 'Re-run Calibration';
+    btn.setAttribute('aria-expanded','true');
+  }
+
+  // --- preview helper ---
+  const preview = (outId, msg) => {
+    const el = document.getElementById(outId);
+    if(el) el.textContent = msg;
+  };
+
+  // Attach behavior to all "Start Calibration" buttons
+  document.querySelectorAll('.start-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      revealFields(btn);
+      switch(btn.id){
+        case 'btn-flow':
+          preview('out-flow','[preview] Would POST: /cgi-bin/print_flow_calibration.sh with globals'); break;
+        case 'btn-pa':
+          preview('out-pa','[preview] Would POST: /cgi-bin/print_pressure_advance.sh with globals'); break;
+        case 'btn-retr':
+          preview('out-retr','[preview] Would POST: /cgi-bin/print_retraction_calibration.sh with globals & retraction params'); break;
+        case 'btn-iflow':
+          preview('out-iflow','[preview] Would POST: /cgi-bin/print_flow_calibration.sh (individual)'); break;
+        case 'btn-ipa':
+          preview('out-ipa','[preview] Would POST: /cgi-bin/print_pressure_advance.sh (individual)'); break;
+        case 'btn-iretr':
+          preview('out-iretr','[preview] Would POST: /cgi-bin/print_retraction_calibration.sh (individual)'); break;
+      }
+    }, { once:false });
+  });
+
+  // --- summary preview ---
+  document.getElementById('btn-summary').addEventListener('click', ()=>{
+    const paK    = (document.getElementById('pa-k')?.value || document.getElementById('ipa-k')?.value || '').trim();
+    const flow   = (document.getElementById('flow-mult')?.value || document.getElementById('iflow-mult')?.value || '').trim();
+    const retrD  = (document.getElementById('retr-dist')?.value || document.getElementById('iretr-dist')?.value || '').trim();
+    const retrS  = (document.getElementById('retr-speed')?.value || document.getElementById('iretr-speed')?.value || '').trim();
+    const retrP  = (document.getElementById('retr-prime')?.value || document.getElementById('iretr-prime')?.value || '').trim();
+
+    const lines = [];
+    lines.push('; === Calibration Summary (preview) ===');
+    lines.push('; Temperature Tower: (omitted)');
+    lines.push('');
+    lines.push('; --- Klipper ---');
+    lines.push(paK ? `SET_PRESSURE_ADVANCE ADVANCE=${paK}` : '; SET_PRESSURE_ADVANCE ADVANCE=<K>');
+    lines.push('; Add to [extruder]: ' + (paK ? `pressure_advance: ${paK}` : 'pressure_advance: <K>'));
+    lines.push('');
+    lines.push('; --- Slicer ---');
+    lines.push(flow ? `; Flow (Extrusion Multiplier): ${flow}` : '; Flow (Extrusion Multiplier): <value>');
+    lines.push('');
+    lines.push('; --- Retraction (slicer) ---');
+    lines.push(retrD ? `; Retraction Distance (mm): ${retrD}` : '; Retraction Distance (mm): <value>');
+    lines.push(retrS ? `; Retraction Speed (mm/s): ${retrS}` : '; Retraction Speed (mm/s): <value>');
+    if (retrP) lines.push(`; Extra Prime (mm³): ${retrP}`);
+    document.getElementById('summary-body').textContent = lines.join('\n');
   });
 })();
 </script>
-</body>
-</html>
