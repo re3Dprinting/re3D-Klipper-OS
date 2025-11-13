@@ -43,12 +43,9 @@
   .rail::after{content:"";position:absolute;top:18px;bottom:-10px;width:2px;background:var(--border)}
   .step.is-last .rail::after{display:none}
 
-  /* Reveal-after-start pattern */
-  .post-fields{display:none;opacity:0;transform:translateY(-2px);transition:opacity .18s ease, transform .18s ease}
-  .post-fields.show{display:block;opacity:1;transform:translateY(0)}
-
-  /* Actions: button + QR cluster */
-  .actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  /* Actions: QR cluster */
+  .actions{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
   .qr{
     display:flex;flex-direction:column;align-items:center;gap:6px;
     padding:6px;border:1px solid var(--border);border-radius:12px;background:#0C0E12
@@ -56,6 +53,30 @@
   .qr img{width:120px;height:120px;display:block;border-radius:8px}
   .qr .label{font-size:11px;color:var(--gray-300);text-align:center}
   .qr a{display:block;line-height:0}
+
+  /* Compact value + notes + submit row */
+  .field-row{
+    margin-top:6px;
+    display:flex;
+    align-items:flex-end;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .field-row > div{
+    flex:1;
+    min-width:160px;
+  }
+  .field-row input{
+    width:100%;
+  }
+  .field-row .submit-btn{
+    margin-left:auto;
+    white-space:nowrap;
+  }
+
+  .short-input{
+    max-width:100%;
+  }
 
   /* Keep borders inside the box so nothing spills up into the header */
   *,*::before,*::after{box-sizing:border-box}
@@ -74,7 +95,7 @@
 
   <!-- PANEL: GUIDED -->
   <div id="cal-panel-guided" class="cal-guided" role="tabpanel" aria-labelledby="cal-tab-guided" aria-hidden="false" style="display:contents">
-    <!-- Global (not part of the stepper) -->
+    <!-- Global -->
     <form class="card cal-card">
       <div style="font-weight:800;margin-bottom:6px">Global Parameters</div>
       <div class="cal-grid">
@@ -116,9 +137,11 @@
           <div>
             <div style="font-weight:800;margin-bottom:6px">Step 1 — Flow Calibration</div>
             <div class="hint">Run the flow test, then enter results.</div>
+            <div class="btns">
+              <button type="button" class="start-btn" id="btn-flow">Start Calibration</button>
+            </div>
           </div>
           <div class="actions">
-            <button type="button" class="start-btn" id="btn-flow" data-reveal="#flow-fields" aria-expanded="false">Start Calibration</button>
             <div class="qr">
               <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
                 <img alt="Flow guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
@@ -128,11 +151,17 @@
           </div>
         </div>
 
-        <div class="post-fields" id="flow-fields" aria-hidden="true">
-          <div class="cal-grid">
-            <div><label class="hint">Flow Multiplier</label><input id="flow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98"></div>
-            <div><label class="hint">Notes</label><input id="flow-notes" type="text" placeholder="optional…"></div>
+        <!-- one line: value, notes, submit -->
+        <div class="field-row">
+          <div>
+            <label class="hint">Flow Multiplier</label>
+            <input class="short-input" id="flow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98">
           </div>
+          <div>
+            <label class="hint">Notes</label>
+            <input id="flow-notes" type="text" placeholder="optional…">
+          </div>
+          <button type="button" class="submit-btn" id="submit-flow">Submit Results</button>
         </div>
 
         <div class="cal-out mono" id="out-flow">[preview] Waiting…</div>
@@ -147,9 +176,11 @@
           <div>
             <div style="font-weight:800;margin-bottom:6px">Step 2 — Pressure Advance</div>
             <div class="hint">Run the PA test, then enter your K value.</div>
+            <div class="btns">
+              <button type="button" class="start-btn" id="btn-pa">Start Calibration</button>
+            </div>
           </div>
           <div class="actions">
-            <button type="button" class="start-btn" id="btn-pa" data-reveal="#pa-fields" aria-expanded="false">Start Calibration</button>
             <div class="qr">
               <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
                 <img alt="Pressure advance guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
@@ -159,11 +190,17 @@
           </div>
         </div>
 
-        <div class="post-fields" id="pa-fields" aria-hidden="true">
-          <div class="cal-grid">
-            <div><label class="hint">Measured PA (K)</label><input id="pa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065"></div>
-            <div><label class="hint">Notes</label><input id="pa-notes" type="text" placeholder="optional…"></div>
+        <!-- one line: value, notes, submit -->
+        <div class="field-row">
+          <div>
+            <label class="hint">Measured PA (K)</label>
+            <input class="short-input" id="pa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065">
           </div>
+          <div>
+            <label class="hint">Notes</label>
+            <input id="pa-notes" type="text" placeholder="optional…">
+          </div>
+          <button type="button" class="submit-btn" id="submit-pa">Submit Results</button>
         </div>
 
         <div class="cal-out mono" id="out-pa">[preview] Waiting…</div>
@@ -177,10 +214,12 @@
         <div class="cal-row">
           <div>
             <div style="font-weight:800;margin-bottom:6px">Step 3 — Retraction</div>
-            <div class="hint">Start the test, then dial in distance & speed.</div>
+            <div class="hint">Dial in distance & speed to reduce stringing.</div>
+            <div class="btns">
+              <button type="button" class="start-btn" id="btn-retr">Start Calibration</button>
+            </div>
           </div>
           <div class="actions">
-            <button type="button" class="start-btn" id="btn-retr" data-reveal="#retr-fields" aria-expanded="false">Start Calibration</button>
             <div class="qr">
               <a href="https://example.com/calibration/retraction" target="_blank" rel="noopener">
                 <img alt="Retraction guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fretraction">
@@ -190,22 +229,32 @@
           </div>
         </div>
 
-        <div class="post-fields" id="retr-fields" aria-hidden="true">
-          <div class="cal-grid">
-            <div><label class="hint">Distance (mm)</label><input id="retr-dist" type="number" step="0.1" min="0" max="12" value="2.0"></div>
-            <div><label class="hint">Speed (mm/s)</label><input id="retr-speed" type="number" step="1" min="5" max="120" value="35"></div>
+        <!-- one line: values, notes, submit (will wrap on small screens) -->
+        <div class="field-row">
+          <div>
+            <label class="hint">Distance (mm)</label>
+            <input class="short-input" id="retr-dist" type="number" step="0.1" min="0" max="12" value="2.0">
           </div>
-          <div class="cal-grid">
-            <div><label class="hint">Extra Prime (mm³)</label><input id="retr-prime" type="number" step="0.01" min="-1" max="1" value="0.00"></div>
-            <div><label class="hint">Notes</label><input id="retr-notes" type="text" placeholder="optional…"></div>
+          <div>
+            <label class="hint">Speed (mm/s)</label>
+            <input class="short-input" id="retr-speed" type="number" step="1" min="5" max="120" value="35">
           </div>
+          <div>
+            <label class="hint">Extra Prime (mm³)</label>
+            <input class="short-input" id="retr-prime" type="number" step="0.01" min="-1" max="1" value="0.00">
+          </div>
+          <div>
+            <label class="hint">Notes</label>
+            <input id="retr-notes" type="text" placeholder="optional…">
+          </div>
+          <button type="button" class="submit-btn" id="submit-retr">Submit Results</button>
         </div>
 
         <div class="cal-out mono" id="out-retr">[preview] Waiting…</div>
       </div>
     </div>
 
-    <!-- Step 4: Summary (last) -->
+    <!-- Step 4: Summary -->
     <div class="step is-last">
       <div class="rail"><div class="dot" aria-hidden="true">4</div></div>
       <div class="card cal-card" aria-label="Step 4 — Summary">
@@ -231,9 +280,14 @@
       <!-- Flow -->
       <div class="cal-card" style="padding:0">
         <div class="cal-row">
-          <div style="font-weight:700;margin-bottom:6px">Flow Calibration</div>
+          <div>
+            <div style="font-weight:700;margin-bottom:6px">Flow Calibration</div>
+            <div class="hint">Run the flow test, then enter results.</div>
+            <div class="btns">
+              <button type="button" class="start-btn" id="btn-iflow">Start Calibration</button>
+            </div>
+          </div>
           <div class="actions">
-            <button type="button" class="start-btn" id="btn-iflow" data-reveal="#iflow-fields" aria-expanded="false">Start Calibration</button>
             <div class="qr">
               <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
                 <img alt="Flow guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
@@ -242,21 +296,34 @@
             </div>
           </div>
         </div>
-        <div class="post-fields" id="iflow-fields" aria-hidden="true">
-          <div class="cal-grid">
-            <div><label class="hint">Flow Multiplier</label><input id="iflow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98"></div>
-            <div><label class="hint">Notes</label><input id="iflow-notes" type="text" placeholder="optional…"></div>
+
+        <!-- one line: value, notes, submit -->
+        <div class="field-row">
+          <div>
+            <label class="hint">Flow Multiplier</label>
+            <input class="short-input" id="iflow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98">
           </div>
+          <div>
+            <label class="hint">Notes</label>
+            <input id="iflow-notes" type="text" placeholder="optional…">
+          </div>
+          <button type="button" class="submit-btn" id="submit-iflow">Submit Results</button>
         </div>
+
         <div class="cal-out mono" id="out-iflow">[preview] Waiting…</div>
       </div>
 
       <!-- Pressure Advance -->
       <div class="cal-card" style="padding:0">
         <div class="cal-row">
-          <div style="font-weight:700;margin-bottom:6px">Pressure Advance</div>
+          <div>
+            <div style="font-weight:700;margin-bottom:6px">Pressure Advance</div>
+            <div class="hint">Run the PA test, then enter your K value.</div>
+            <div class="btns">
+              <button type="button" class="start-btn" id="btn-ipa">Start Calibration</button>
+            </div>
+          </div>
           <div class="actions">
-            <button type="button" class="start-btn" id="btn-ipa" data-reveal="#ipa-fields" aria-expanded="false">Start Calibration</button>
             <div class="qr">
               <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
                 <img alt="PA guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
@@ -265,21 +332,34 @@
             </div>
           </div>
         </div>
-        <div class="post-fields" id="ipa-fields" aria-hidden="true">
-          <div class="cal-grid">
-            <div><label class="hint">Measured PA (K)</label><input id="ipa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065"></div>
-            <div><label class="hint">Notes</label><input id="ipa-notes" type="text" placeholder="optional…"></div>
+
+        <!-- one line: value, notes, submit -->
+        <div class="field-row">
+          <div>
+            <label class="hint">Measured PA (K)</label>
+            <input class="short-input" id="ipa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065">
           </div>
+          <div>
+            <label class="hint">Notes</label>
+            <input id="ipa-notes" type="text" placeholder="optional…">
+          </div>
+          <button type="button" class="submit-btn" id="submit-ipa">Submit Results</button>
         </div>
+
         <div class="cal-out mono" id="out-ipa">[preview] Waiting…</div>
       </div>
 
       <!-- Retraction -->
       <div class="cal-card" style="padding:0">
         <div class="cal-row">
-          <div style="font-weight:700;margin-bottom:6px">Retraction</div>
+          <div>
+            <div style="font-weight:700;margin-bottom:6px">Retraction</div>
+            <div class="hint">Run the retraction test, then enter results.</div>
+            <div class="btns">
+              <button type="button" class="start-btn" id="btn-iretr">Start Calibration</button>
+            </div>
+          </div>
           <div class="actions">
-            <button type="button" class="start-btn" id="btn-iretr" data-reveal="#iretr-fields" aria-expanded="false">Start Calibration</button>
             <div class="qr">
               <a href="https://example.com/calibration/retraction" target="_blank" rel="noopener">
                 <img alt="Retraction guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fretraction">
@@ -288,16 +368,28 @@
             </div>
           </div>
         </div>
-        <div class="post-fields" id="iretr-fields" aria-hidden="true">
-          <div class="cal-grid">
-            <div><label class="hint">Distance (mm)</label><input id="iretr-dist" type="number" step="0.1" min="0" max="12" value="2.0"></div>
-            <div><label class="hint">Speed (mm/s)</label><input id="iretr-speed" type="number" step="1" min="5" max="120" value="35"></div>
+
+        <!-- one line: values, notes, submit -->
+        <div class="field-row">
+          <div>
+            <label class="hint">Distance (mm)</label>
+            <input class="short-input" id="iretr-dist" type="number" step="0.1" min="0" max="12" value="2.0">
           </div>
-          <div class="cal-grid">
-            <div><label class="hint">Extra Prime (mm³)</label><input id="iretr-prime" type="number" step="0.01" min="-1" max="1" value="0.00"></div>
-            <div><label class="hint">Notes</label><input id="iretr-notes" type="text" placeholder="optional…"></div>
+          <div>
+            <label class="hint">Speed (mm/s)</label>
+            <input class="short-input" id="iretr-speed" type="number" step="1" min="5" max="120" value="35">
           </div>
+          <div>
+            <label class="hint">Extra Prime (mm³)</label>
+            <input class="short-input" id="iretr-prime" type="number" step="0.01" min="-1" max="1" value="0.00">
+          </div>
+          <div>
+            <label class="hint">Notes</label>
+            <input id="iretr-notes" type="text" placeholder="optional…">
+          </div>
+          <button type="button" class="submit-btn" id="submit-iretr">Submit Results</button>
         </div>
+
         <div class="cal-out mono" id="out-iretr">[preview] Waiting…</div>
       </div>
     </div>
@@ -306,7 +398,7 @@
 
 <script>
 (() => {
-  // --- tab switching (toggle the two panel containers) ---
+  // --- tab switching ---
   const tabGuided = document.getElementById('cal-tab-guided');
   const tabIndiv  = document.getElementById('cal-tab-individual');
   const panelGuided = document.getElementById('cal-panel-guided');
@@ -316,10 +408,8 @@
     const guided = (mode === 'guided');
     tabGuided.setAttribute('aria-selected', guided ? 'true':'false');
     tabIndiv.setAttribute('aria-selected', guided ? 'false':'true');
-
     panelGuided.setAttribute('aria-hidden', guided ? 'false':'true');
     panelIndiv.setAttribute('aria-hidden', guided ? 'true':'false');
-
     panelGuided.hidden = !guided;
     panelIndiv.hidden  = guided;
   }
@@ -327,44 +417,90 @@
   tabIndiv .addEventListener('click', ()=> setMode('individual'));
   setMode('guided');
 
-  // --- helper: reveal fields after start ---
-  function revealFields(btn){
-    const selector = btn.getAttribute('data-reveal');
-    const target = selector ? document.querySelector(selector) : null;
-    if (!target) return;
-
-    target.classList.add('show');
-    target.setAttribute('aria-hidden','false');
-
-    btn.textContent = 'Re-run Calibration';
-    btn.setAttribute('aria-expanded','true');
-  }
-
   // --- preview helper ---
   const preview = (outId, msg) => {
     const el = document.getElementById(outId);
-    if(el) el.textContent = msg;
+    if (el) el.textContent = msg;
   };
 
-  // Attach behavior to all "Start Calibration" buttons
-  document.querySelectorAll('.start-btn').forEach(btn=>{
+  // --- Start Calibration (print) previews ---
+  const startMap = {
+    'btn-flow':  { out: 'out-flow',  msg: '[preview] Would POST: /cgi-bin/print_flow_calibration.sh with globals' },
+    'btn-pa':    { out: 'out-pa',    msg: '[preview] Would POST: /cgi-bin/print_pressure_advance.sh with globals' },
+    'btn-retr':  { out: 'out-retr',  msg: '[preview] Would POST: /cgi-bin/print_retraction_calibration.sh with globals & retraction params' },
+    'btn-iflow': { out: 'out-iflow', msg: '[preview] Would POST: /cgi-bin/print_flow_calibration.sh (individual)' },
+    'btn-ipa':   { out: 'out-ipa',   msg: '[preview] Would POST: /cgi-bin/print_pressure_advance.sh (individual)' },
+    'btn-iretr': { out: 'out-iretr', msg: '[preview] Would POST: /cgi-bin/print_retraction_calibration.sh (individual)' },
+  };
+  Object.keys(startMap).forEach(id=>{
+    const btn = document.getElementById(id);
+    if (!btn) return;
     btn.addEventListener('click', ()=>{
-      revealFields(btn);
-      switch(btn.id){
-        case 'btn-flow':
-          preview('out-flow','[preview] Would POST: /cgi-bin/print_flow_calibration.sh with globals'); break;
-        case 'btn-pa':
-          preview('out-pa','[preview] Would POST: /cgi-bin/print_pressure_advance.sh with globals'); break;
-        case 'btn-retr':
-          preview('out-retr','[preview] Would POST: /cgi-bin/print_retraction_calibration.sh with globals & retraction params'); break;
-        case 'btn-iflow':
-          preview('out-iflow','[preview] Would POST: /cgi-bin/print_flow_calibration.sh (individual)'); break;
-        case 'btn-ipa':
-          preview('out-ipa','[preview] Would POST: /cgi-bin/print_pressure_advance.sh (individual)'); break;
-        case 'btn-iretr':
-          preview('out-iretr','[preview] Would POST: /cgi-bin/print_retraction_calibration.sh (individual)'); break;
-      }
-    }, { once:false });
+      const {out, msg} = startMap[id];
+      preview(out, msg);
+    });
+  });
+
+  // --- Submit Results previews ---
+  function collectGuidedFlow(){
+    return {
+      flow: (document.getElementById('flow-mult').value||'').trim(),
+      notes: (document.getElementById('flow-notes').value||'').trim()
+    };
+  }
+  function collectGuidedPA(){
+    return {
+      k: (document.getElementById('pa-k').value||'').trim(),
+      notes: (document.getElementById('pa-notes').value||'').trim()
+    };
+  }
+  function collectGuidedRetr(){
+    return {
+      dist:(document.getElementById('retr-dist').value||'').trim(),
+      speed:(document.getElementById('retr-speed').value||'').trim(),
+      prime:(document.getElementById('retr-prime').value||'').trim(),
+      notes:(document.getElementById('retr-notes').value||'').trim()
+    };
+  }
+  function collectIndivFlow(){
+    return {
+      flow:(document.getElementById('iflow-mult').value||'').trim(),
+      notes:(document.getElementById('iflow-notes').value||'').trim()
+    };
+  }
+  function collectIndivPA(){
+    return {
+      k:(document.getElementById('ipa-k').value||'').trim(),
+      notes:(document.getElementById('ipa-notes').value||'').trim()
+    };
+  }
+  function collectIndivRetr(){
+    return {
+      dist:(document.getElementById('iretr-dist').value||'').trim(),
+      speed:(document.getElementById('iretr-speed').value||'').trim(),
+      prime:(document.getElementById('iretr-prime').value||'').trim(),
+      notes:(document.getElementById('iretr-notes').value||'').trim()
+    };
+  }
+
+  const submitMap = {
+    'submit-flow':  { out:'out-flow',  collect: collectGuidedFlow,  url:'/cgi-bin/submit_flow_results.sh' },
+    'submit-pa':    { out:'out-pa',    collect: collectGuidedPA,    url:'/cgi-bin/submit_pa_results.sh' },
+    'submit-retr':  { out:'out-retr',  collect: collectGuidedRetr,  url:'/cgi-bin/submit_retraction_results.sh' },
+    'submit-iflow': { out:'out-iflow', collect: collectIndivFlow,   url:'/cgi-bin/submit_flow_results.sh' },
+    'submit-ipa':   { out:'out-ipa',   collect: collectIndivPA,     url:'/cgi-bin/submit_pa_results.sh' },
+    'submit-iretr': { out:'out-iretr', collect: collectIndivRetr,   url:'/cgi-bin/submit_retraction_results.sh' },
+  };
+
+  Object.keys(submitMap).forEach(id=>{
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', ()=>{
+      const {out, collect, url} = submitMap[id];
+      const data = collect();
+      const payload = JSON.stringify(data);
+      preview(out, `[preview] Would POST: ${url}\nBody: ${payload}`);
+    });
   });
 
   // --- summary preview ---
