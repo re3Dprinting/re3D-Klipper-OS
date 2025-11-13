@@ -101,17 +101,17 @@
       <div class="cal-grid">
         <div>
           <label class="hint">Hotend Temp (°C)</label>
-          <input name="hotend_temp" type="number" step="0.1" min="0" max="330" value="220" required>
+          <input name="hotend_temp" id="global-hotend" type="number" step="0.1" min="0" max="330" value="220" required>
         </div>
         <div>
           <label class="hint">Bed Temp (°C)</label>
-          <input name="bed_temp" type="number" step="0.1" min="0" max="150" value="60" required>
+          <input name="bed_temp" id="global-bed" type="number" step="0.1" min="0" max="150" value="60" required>
         </div>
       </div>
       <div class="cal-grid">
         <div>
           <label class="hint">Machine Type</label>
-          <select name="machine" required>
+          <select name="machine" id="global-machine" required>
             <option value="" disabled>Select machine</option>
             <option>Gigabot 4</option>
             <option>Gigabot 4 XLT</option>
@@ -126,7 +126,16 @@
           </div>
         </div>
       </div>
-      <div class="cal-out mono" id="out-global">Tip: Save once so later steps auto-fill. (Wiring to persistence comes later.)</div>
+
+      <!-- Current loaded values box -->
+      <div class="cal-out mono" id="globals-display" style="max-height:none;margin-top:8px">
+Loaded globals: none (using defaults).
+      </div>
+
+      <div class="btns" style="margin-top:8px">
+        <button type="button" id="btn-global">Set Parameters</button>
+      </div>
+      <div class="cal-out mono" id="out-global">Tip: Save once so later steps auto-fill.</div>
     </form>
 
     <!-- Step 1: Flow -->
@@ -207,58 +216,11 @@
       </div>
     </div>
 
-    <!-- Step 3: Retraction -->
-    <div class="step">
-      <div class="rail"><div class="dot" aria-hidden="true">3</div></div>
-      <div class="card cal-card" aria-label="Step 3 — Retraction">
-        <div class="cal-row">
-          <div>
-            <div style="font-weight:800;margin-bottom:6px">Step 3 — Retraction</div>
-            <div class="hint">Dial in distance & speed to reduce stringing.</div>
-            <div class="btns">
-              <button type="button" class="start-btn" id="btn-retr">Start Calibration</button>
-            </div>
-          </div>
-          <div class="actions">
-            <div class="qr">
-              <a href="https://example.com/calibration/retraction" target="_blank" rel="noopener">
-                <img alt="Retraction guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fretraction">
-              </a>
-              <div class="label">Scan: Retraction Guide</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- one line: values, notes, submit (will wrap on small screens) -->
-        <div class="field-row">
-          <div>
-            <label class="hint">Distance (mm)</label>
-            <input class="short-input" id="retr-dist" type="number" step="0.1" min="0" max="12" value="2.0">
-          </div>
-          <div>
-            <label class="hint">Speed (mm/s)</label>
-            <input class="short-input" id="retr-speed" type="number" step="1" min="5" max="120" value="35">
-          </div>
-          <div>
-            <label class="hint">Extra Prime (mm³)</label>
-            <input class="short-input" id="retr-prime" type="number" step="0.01" min="-1" max="1" value="0.00">
-          </div>
-          <div>
-            <label class="hint">Notes</label>
-            <input id="retr-notes" type="text" placeholder="optional…">
-          </div>
-          <button type="button" class="submit-btn" id="submit-retr">Submit Results</button>
-        </div>
-
-        <div class="cal-out mono" id="out-retr">[preview] Waiting…</div>
-      </div>
-    </div>
-
-    <!-- Step 4: Summary -->
+    <!-- Step 3: Summary -->
     <div class="step is-last">
-      <div class="rail"><div class="dot" aria-hidden="true">4</div></div>
-      <div class="card cal-card" aria-label="Step 4 — Summary">
-        <div style="font-weight:800;margin-bottom:6px">Step 4 — Summary</div>
+      <div class="rail"><div class="dot" aria-hidden="true">3</div></div>
+      <div class="card cal-card" aria-label="Step 3 — Summary">
+        <div style="font-weight:800;margin-bottom:6px">Step 3 — Summary</div>
         <div class="cal-out mono" id="summary-body" style="white-space:pre">
 ; Summary will appear here.
 ; Klipper + slicer suggestions (preview only).
@@ -348,50 +310,6 @@
 
         <div class="cal-out mono" id="out-ipa">[preview] Waiting…</div>
       </div>
-
-      <!-- Retraction -->
-      <div class="cal-card" style="padding:0">
-        <div class="cal-row">
-          <div>
-            <div style="font-weight:700;margin-bottom:6px">Retraction</div>
-            <div class="hint">Run the retraction test, then enter results.</div>
-            <div class="btns">
-              <button type="button" class="start-btn" id="btn-iretr">Start Calibration</button>
-            </div>
-          </div>
-          <div class="actions">
-            <div class="qr">
-              <a href="https://example.com/calibration/retraction" target="_blank" rel="noopener">
-                <img alt="Retraction guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fretraction">
-              </a>
-              <div class="label">Scan: Retraction Guide</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- one line: values, notes, submit -->
-        <div class="field-row">
-          <div>
-            <label class="hint">Distance (mm)</label>
-            <input class="short-input" id="iretr-dist" type="number" step="0.1" min="0" max="12" value="2.0">
-          </div>
-          <div>
-            <label class="hint">Speed (mm/s)</label>
-            <input class="short-input" id="iretr-speed" type="number" step="1" min="5" max="120" value="35">
-          </div>
-          <div>
-            <label class="hint">Extra Prime (mm³)</label>
-            <input class="short-input" id="iretr-prime" type="number" step="0.01" min="-1" max="1" value="0.00">
-          </div>
-          <div>
-            <label class="hint">Notes</label>
-            <input id="iretr-notes" type="text" placeholder="optional…">
-          </div>
-          <button type="button" class="submit-btn" id="submit-iretr">Submit Results</button>
-        </div>
-
-        <div class="cal-out mono" id="out-iretr">[preview] Waiting…</div>
-      </div>
     </div>
   </div>
 </div>
@@ -399,13 +317,13 @@
 <script>
 (() => {
   // --- tab switching ---
-  const tabGuided = document.getElementById('cal-tab-guided');
-  const tabIndiv  = document.getElementById('cal-tab-individual');
-  const panelGuided = document.getElementById('cal-panel-guided');
-  const panelIndiv  = document.getElementById('cal-panel-individual');
+  var tabGuided   = document.getElementById('cal-tab-guided');
+  var tabIndiv    = document.getElementById('cal-tab-individual');
+  var panelGuided = document.getElementById('cal-panel-guided');
+  var panelIndiv  = document.getElementById('cal-panel-individual');
 
   function setMode(mode){
-    const guided = (mode === 'guided');
+    var guided = (mode === 'guided');
     tabGuided.setAttribute('aria-selected', guided ? 'true':'false');
     tabIndiv.setAttribute('aria-selected', guided ? 'false':'true');
     panelGuided.setAttribute('aria-hidden', guided ? 'false':'true');
@@ -413,120 +331,253 @@
     panelGuided.hidden = !guided;
     panelIndiv.hidden  = guided;
   }
-  tabGuided.addEventListener('click', ()=> setMode('guided'));
-  tabIndiv .addEventListener('click', ()=> setMode('individual'));
+
+  tabGuided.addEventListener('click', function(){ setMode('guided'); });
+  tabIndiv .addEventListener('click', function(){ setMode('individual'); });
   setMode('guided');
 
-  // --- preview helper ---
-  const preview = (outId, msg) => {
-    const el = document.getElementById(outId);
+  // --- helper: update output text ---
+  function preview(outId, msg){
+    var el = document.getElementById(outId);
     if (el) el.textContent = msg;
-  };
+  }
 
-  // --- Start Calibration (print) previews ---
-  const startMap = {
-    'btn-flow':  { out: 'out-flow',  msg: '[preview] Would POST: /cgi-bin/print_flow_calibration.sh with globals' },
-    'btn-pa':    { out: 'out-pa',    msg: '[preview] Would POST: /cgi-bin/print_pressure_advance.sh with globals' },
-    'btn-retr':  { out: 'out-retr',  msg: '[preview] Would POST: /cgi-bin/print_retraction_calibration.sh with globals & retraction params' },
-    'btn-iflow': { out: 'out-iflow', msg: '[preview] Would POST: /cgi-bin/print_flow_calibration.sh (individual)' },
-    'btn-ipa':   { out: 'out-ipa',   msg: '[preview] Would POST: /cgi-bin/print_pressure_advance.sh (individual)' },
-    'btn-iretr': { out: 'out-iretr', msg: '[preview] Would POST: /cgi-bin/print_retraction_calibration.sh (individual)' },
-  };
-  Object.keys(startMap).forEach(id=>{
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.addEventListener('click', ()=>{
-      const {out, msg} = startMap[id];
-      preview(out, msg);
+  // --- helper: encode x-www-form-urlencoded body ---
+  function encodeForm(data){
+    var parts = [];
+    for (var k in data){
+      if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+      var v = data[k];
+      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(v == null ? '' : v));
+    }
+    return parts.join('&');
+  }
+
+  // --- helper: POST to CGI and show response in an output box ---
+  function postToCgi(url, data, outId){
+    preview(outId, 'Sending to ' + url + '…');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: encodeForm(data)
+    })
+    .then(function(r){ return r.text(); })
+    .then(function(txt){
+      preview(outId, txt || '(no response body)');
+    })
+    .catch(function(err){
+      preview(outId, 'Error: ' + err);
     });
-  });
+  }
 
-  // --- Submit Results previews ---
+  // --- load globals from server and show in box + inputs ---
+  function loadGlobalsFromServer(){
+    fetch('cgi-bin/get_global_calibration_params.sh')
+      .then(function(r){ return r.text(); })
+      .then(function(txt){
+        var map = {};
+        txt.split(/\r?\n/).forEach(function(line){
+          line = line.trim();
+          if (!line || line.charAt(0) === '#') return;
+          var eq = line.indexOf('=');
+          if (eq === -1) return;
+          var key = line.slice(0, eq).trim();
+          var val = line.slice(eq + 1).trim();
+          if (val.length >= 2 &&
+              ((val.charAt(0) === '"' && val.charAt(val.length - 1) === '"') ||
+               (val.charAt(0) === "'" && val.charAt(val.length - 1) === "'"))) {
+            val = val.slice(1, -1);
+          }
+          map[key] = val;
+        });
+
+        var ht       = map.HOTEND_TEMP || '';
+        var bt       = map.BED_TEMP || '';
+        var machine  = map.MACHINE || '';
+        var extruder = map.EXTRUDER || '';
+        var updated  = map.UPDATED_AT || '';
+
+        var display = document.getElementById('globals-display');
+        if (display){
+          if (!ht && !bt && !machine && !extruder){
+            display.textContent = 'Loaded globals: none (using defaults).';
+          } else {
+            var parts = [];
+            if (ht)       parts.push('Hotend: ' + ht + '°C');
+            if (bt)       parts.push('Bed: ' + bt + '°C');
+            if (machine)  parts.push('Machine: ' + machine);
+            if (extruder) parts.push('Extruder: ' + extruder);
+            if (updated)  parts.push('Updated: ' + updated);
+            display.textContent = 'Loaded globals: ' + parts.join(' | ');
+          }
+        }
+
+        // also pre-fill inputs so a refresh picks up last saved values
+        var el;
+        if (ht && (el = document.getElementById('global-hotend'))) el.value = ht;
+        if (bt && (el = document.getElementById('global-bed'))) el.value = bt;
+        if (machine && (el = document.getElementById('global-machine'))) {
+          el.value = machine;
+        }
+        if (extruder){
+          var radios = document.querySelectorAll('input[name="extruder"]');
+          Array.prototype.forEach.call(radios, function(r){
+            if (r.value === extruder) r.checked = true;
+          });
+        }
+      })
+      .catch(function(err){
+        var display = document.getElementById('globals-display');
+        if (display){
+          display.textContent = 'Loaded globals: (error fetching) ' + err;
+        }
+      });
+  }
+
+  // --- Collect helpers ---
+  function collectGlobals(){
+    var hotendEl   = document.getElementById('global-hotend');
+    var bedEl      = document.getElementById('global-bed');
+    var machineEl  = document.getElementById('global-machine');
+    var extruderEl = document.querySelector('input[name="extruder"]:checked');
+
+    var hotend_temp = hotendEl   ? hotendEl.value.trim()   : '';
+    var bed_temp    = bedEl      ? bedEl.value.trim()      : '';
+    var machine     = machineEl  ? machineEl.value.trim()  : '';
+    var extruder    = extruderEl ? extruderEl.value.trim() : '';
+
+    // Keys must match CGI scripts:
+    // hotend_temp, bed_temp, machine, extruder
+    return {
+      hotend_temp: hotend_temp,
+      bed_temp:    bed_temp,
+      machine:     machine,
+      extruder:    extruder
+    };
+  }
+
   function collectGuidedFlow(){
+    var flowEl  = document.getElementById('flow-mult');
+    var notesEl = document.getElementById('flow-notes');
     return {
-      flow: (document.getElementById('flow-mult').value||'').trim(),
-      notes: (document.getElementById('flow-notes').value||'').trim()
-    };
-  }
-  function collectGuidedPA(){
-    return {
-      k: (document.getElementById('pa-k').value||'').trim(),
-      notes: (document.getElementById('pa-notes').value||'').trim()
-    };
-  }
-  function collectGuidedRetr(){
-    return {
-      dist:(document.getElementById('retr-dist').value||'').trim(),
-      speed:(document.getElementById('retr-speed').value||'').trim(),
-      prime:(document.getElementById('retr-prime').value||'').trim(),
-      notes:(document.getElementById('retr-notes').value||'').trim()
-    };
-  }
-  function collectIndivFlow(){
-    return {
-      flow:(document.getElementById('iflow-mult').value||'').trim(),
-      notes:(document.getElementById('iflow-notes').value||'').trim()
-    };
-  }
-  function collectIndivPA(){
-    return {
-      k:(document.getElementById('ipa-k').value||'').trim(),
-      notes:(document.getElementById('ipa-notes').value||'').trim()
-    };
-  }
-  function collectIndivRetr(){
-    return {
-      dist:(document.getElementById('iretr-dist').value||'').trim(),
-      speed:(document.getElementById('iretr-speed').value||'').trim(),
-      prime:(document.getElementById('iretr-prime').value||'').trim(),
-      notes:(document.getElementById('iretr-notes').value||'').trim()
+      flow:  flowEl  ? flowEl.value.trim()  : '',
+      notes: notesEl ? notesEl.value.trim() : ''
     };
   }
 
-  const submitMap = {
-    'submit-flow':  { out:'out-flow',  collect: collectGuidedFlow,  url:'/cgi-bin/submit_flow_results.sh' },
-    'submit-pa':    { out:'out-pa',    collect: collectGuidedPA,    url:'/cgi-bin/submit_pa_results.sh' },
-    'submit-retr':  { out:'out-retr',  collect: collectGuidedRetr,  url:'/cgi-bin/submit_retraction_results.sh' },
-    'submit-iflow': { out:'out-iflow', collect: collectIndivFlow,   url:'/cgi-bin/submit_flow_results.sh' },
-    'submit-ipa':   { out:'out-ipa',   collect: collectIndivPA,     url:'/cgi-bin/submit_pa_results.sh' },
-    'submit-iretr': { out:'out-iretr', collect: collectIndivRetr,   url:'/cgi-bin/submit_retraction_results.sh' },
+  function collectGuidedPA(){
+    var kEl     = document.getElementById('pa-k');
+    var notesEl = document.getElementById('pa-notes');
+    return {
+      k:     kEl     ? kEl.value.trim()     : '',
+      notes: notesEl ? notesEl.value.trim() : ''
+    };
+  }
+
+  function collectIndivFlow(){
+    var flowEl  = document.getElementById('iflow-mult');
+    var notesEl = document.getElementById('iflow-notes');
+    return {
+      flow:  flowEl  ? flowEl.value.trim()  : '',
+      notes: notesEl ? notesEl.value.trim() : ''
+    };
+  }
+
+  function collectIndivPA(){
+    var kEl     = document.getElementById('ipa-k');
+    var notesEl = document.getElementById('ipa-notes');
+    return {
+      k:     kEl     ? kEl.value.trim()     : '',
+      notes: notesEl ? notesEl.value.trim() : ''
+    };
+  }
+
+  // --- Global parameters "Set" button ---
+  var btnGlobal = document.getElementById('btn-global');
+  if (btnGlobal){
+    btnGlobal.addEventListener('click', function(){
+      var data = collectGlobals();
+      // relative URL so it works under /configurator/ as well
+      postToCgi('cgi-bin/set_global_calibration_params.sh', data, 'out-global');
+      // refresh the loaded-values box shortly after saving
+      setTimeout(loadGlobalsFromServer, 300);
+    });
+  }
+
+  // --- Start Calibration (print) POSTs ---
+  var startMap = {
+    'btn-flow':  { out: 'out-flow',  url: 'cgi-bin/print_flow_calibration.sh',   mode: 'guided' },
+    'btn-pa':    { out: 'out-pa',    url: 'cgi-bin/print_pressure_advance.sh',   mode: 'guided' },
+    'btn-iflow': { out: 'out-iflow', url: 'cgi-bin/print_flow_calibration.sh',   mode: 'individual' },
+    'btn-ipa':   { out: 'out-ipa',   url: 'cgi-bin/print_pressure_advance.sh',   mode: 'individual' }
   };
 
-  Object.keys(submitMap).forEach(id=>{
-    const btn = document.getElementById(id);
+  Object.keys(startMap).forEach(function(id){
+    var btn = document.getElementById(id);
     if (!btn) return;
-    btn.addEventListener('click', ()=>{
-      const {out, collect, url} = submitMap[id];
-      const data = collect();
-      const payload = JSON.stringify(data);
-      preview(out, `[preview] Would POST: ${url}\nBody: ${payload}`);
+    btn.addEventListener('click', function(){
+      var cfg = startMap[id];
+      var payload = Object.assign({ mode: cfg.mode }, collectGlobals());
+      postToCgi(cfg.url, payload, cfg.out);
     });
   });
 
-  // --- summary preview ---
-  document.getElementById('btn-summary').addEventListener('click', ()=>{
-    const paK    = (document.getElementById('pa-k')?.value || document.getElementById('ipa-k')?.value || '').trim();
-    const flow   = (document.getElementById('flow-mult')?.value || document.getElementById('iflow-mult')?.value || '').trim();
-    const retrD  = (document.getElementById('retr-dist')?.value || document.getElementById('iretr-dist')?.value || '').trim();
-    const retrS  = (document.getElementById('retr-speed')?.value || document.getElementById('iretr-speed')?.value || '').trim();
-    const retrP  = (document.getElementById('retr-prime')?.value || document.getElementById('iretr-prime')?.value || '').trim();
+  // --- Submit Results POSTs ---
+  var submitMap = {
+    'submit-flow':  { out:'out-flow',  collect: collectGuidedFlow,  url:'cgi-bin/submit_flow_results.sh', mode:'guided' },
+    'submit-pa':    { out:'out-pa',    collect: collectGuidedPA,    url:'cgi-bin/submit_pa_results.sh',   mode:'guided' },
+    'submit-iflow': { out:'out-iflow', collect: collectIndivFlow,   url:'cgi-bin/submit_flow_results.sh', mode:'individual' },
+    'submit-ipa':   { out:'out-ipa',   collect: collectIndivPA,     url:'cgi-bin/submit_pa_results.sh',   mode:'individual' }
+  };
 
-    const lines = [];
-    lines.push('; === Calibration Summary (preview) ===');
-    lines.push('; Temperature Tower: (omitted)');
-    lines.push('');
-    lines.push('; --- Klipper ---');
-    lines.push(paK ? `SET_PRESSURE_ADVANCE ADVANCE=${paK}` : '; SET_PRESSURE_ADVANCE ADVANCE=<K>');
-    lines.push('; Add to [extruder]: ' + (paK ? `pressure_advance: ${paK}` : 'pressure_advance: <K>'));
-    lines.push('');
-    lines.push('; --- Slicer ---');
-    lines.push(flow ? `; Flow (Extrusion Multiplier): ${flow}` : '; Flow (Extrusion Multiplier): <value>');
-    lines.push('');
-    lines.push('; --- Retraction (slicer) ---');
-    lines.push(retrD ? `; Retraction Distance (mm): ${retrD}` : '; Retraction Distance (mm): <value>');
-    lines.push(retrS ? `; Retraction Speed (mm/s): ${retrS}` : '; Retraction Speed (mm/s): <value>');
-    if (retrP) lines.push(`; Extra Prime (mm³): ${retrP}`);
-    document.getElementById('summary-body').textContent = lines.join('\n');
+  Object.keys(submitMap).forEach(function(id){
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', function(){
+      var cfg   = submitMap[id];
+      var data  = cfg.collect();
+      var full  = Object.assign({ mode: cfg.mode }, collectGlobals(), data);
+      postToCgi(cfg.url, full, cfg.out);
+    });
   });
+
+  // --- summary preview (local only) ---
+  var btnSummary = document.getElementById('btn-summary');
+  if (btnSummary){
+    btnSummary.addEventListener('click', function(){
+      var paKEl    = document.getElementById('pa-k');
+      var ipaKEl   = document.getElementById('ipa-k');
+      var flowEl   = document.getElementById('flow-mult');
+      var iflowEl  = document.getElementById('iflow-mult');
+
+      var paK   = paKEl   ? paKEl.value.trim()   : '';
+      if (!paK && ipaKEl) paK = ipaKEl.value.trim();
+
+      var flow  = flowEl  ? flowEl.value.trim()  : '';
+      if (!flow && iflowEl) flow = iflowEl.value.trim();
+
+      var lines = [];
+      lines.push('; === Calibration Summary (preview) ===');
+      lines.push('; Temperature Tower: (omitted)');
+      lines.push('');
+      lines.push('; --- Klipper ---');
+      lines.push(paK ? ('SET_PRESSURE_ADVANCE ADVANCE=' + paK)
+                     : '; SET_PRESSURE_ADVANCE ADVANCE=<K>');
+      lines.push('; Add to [extruder]: ' + (paK ? ('pressure_advance: ' + paK)
+                                               : 'pressure_advance: <K>'));
+      lines.push('');
+      lines.push('; --- Slicer ---');
+      lines.push(flow ? ('; Flow (Extrusion Multiplier): ' + flow)
+                      : '; Flow (Extrusion Multiplier): <value>');
+      lines.push('');
+      lines.push('; Retraction: test disabled in this UI.');
+
+      var sumBody = document.getElementById('summary-body');
+      if (sumBody) sumBody.textContent = lines.join('\n');
+    });
+  }
+
+  // Initial load of saved globals on page load
+  loadGlobalsFromServer();
 })();
 </script>
