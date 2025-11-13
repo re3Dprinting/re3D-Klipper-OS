@@ -124,7 +124,8 @@ if ! grep -q '{hotend_temp}' "$TEMPLATE" || ! grep -q '{bed_temp}' "$TEMPLATE" |
 fi
 
 # ---- GENERATE OUTPUT FILE --------------------------------------------------
-safe_machine="$(echo "$MACHINE" | tr ' ' '_' )"
+# sanitize machine name: only alphanumeric, everything else -> underscore
+safe_machine="$(printf '%s' "$MACHINE" | sed 's/[^A-Za-z0-9]/_/g')"
 ts="$(date +%Y%m%d-%H%M%S)"
 OUT_FILE="$OUT_DIR/PA_${safe_machine}_E${EXTRUDER}_H${HOTEND_TEMP}_B${BED_TEMP}_${ts}.gcode"
 
@@ -180,9 +181,11 @@ UPLOAD_RC=$?
 echo "Upload response: $UPLOAD_RES"
 [ $UPLOAD_RC -eq 0 ] || { echo "Error: upload failed ($UPLOAD_RC)"; exit 0; }
 
-# Start print with the uploaded filename (basename only)
-JSON_PAYLOAD="{\"filename\":\"$BASENAME\"}"
-echo "Starting print: $START_URL  (filename=$BASENAME)"
+# JSON-escape backslashes and quotes in the filename
+JSON_FILENAME="$(printf '%s' "$BASENAME" | sed 's/\\/\\\\/g; s/\"/\\\"/g')"
+JSON_PAYLOAD="{\"filename\":\"$JSON_FILENAME\"}"
+
+echo "Starting print: $START_URL  (filename=$JSON_FILENAME)"
 START_RES="$(printf '%s' "$JSON_PAYLOAD" | curl -sS -X POST $API_KEY_HDR -H 'Content-Type: application/json' --data-binary @- "$START_URL" 2>&1)"
 START_RC=$?
 echo "Start response: $START_RES"
