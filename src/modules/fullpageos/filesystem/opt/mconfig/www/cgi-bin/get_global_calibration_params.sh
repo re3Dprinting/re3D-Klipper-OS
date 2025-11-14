@@ -21,6 +21,7 @@ fi
   echo "HOTEND_TEMP=${HOTEND_TEMP:-}"
   echo "BED_TEMP=${BED_TEMP:-}"
   echo "MACHINE=${MACHINE:-}"
+  echo "MATERIAL=${MATERIAL:-}"
   echo "EXTRUDER=${EXTRUDER:-}"
   echo "UPDATED_AT=${UPDATED_AT:-}"
 )

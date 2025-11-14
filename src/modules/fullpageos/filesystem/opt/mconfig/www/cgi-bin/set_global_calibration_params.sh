@@ -51,6 +51,7 @@ BODY="$(read_stdin)"
 HOTEND_TEMP=""
 BED_TEMP=""
 MACHINE=""
+MATERIAL=""
 EXTRUDER=""
 
 OLD_IFS="$IFS"
@@ -66,6 +67,7 @@ for kv in "$@"; do
     hotend_temp) HOTEND_TEMP="$(trim "$val")" ;;
     bed_temp)    BED_TEMP="$(trim "$val")" ;;
     machine)     MACHINE="$(trim "$val")" ;;
+    material)    MATERIAL="$(trim "$val")" ;;
     extruder)    EXTRUDER="$(trim "$val")" ;;
   esac
 done
@@ -75,6 +77,7 @@ is_number "$HOTEND_TEMP" || { echo "Error: hotend_temp must be numeric"; exit 0;
 is_number "$BED_TEMP"    || { echo "Error: bed_temp must be numeric"; exit 0; }
 [ -n "$MACHINE" ]  || { echo "Error: machine is required"; exit 0; }
 [ -n "$EXTRUDER" ] || { echo "Error: extruder is required"; exit 0; }
+# MATERIAL is optional for now; can be enforced later if you want.
 
 # ---- WRITE GLOBALS FILE ----------------------------------------------------
 TMP_FILE="$(mktemp "$DATA_DIR/.tmp.globals.XXXXXX")" || {
@@ -86,8 +89,9 @@ TMP_FILE="$(mktemp "$DATA_DIR/.tmp.globals.XXXXXX")" || {
   echo "# Global calibration parameters (auto-generated, do not edit by hand)"
   echo "HOTEND_TEMP=$HOTEND_TEMP"
   echo "BED_TEMP=$BED_TEMP"
-  printf "MACHINE=%s\n"   "$(shell_quote "$MACHINE")"
-  printf "EXTRUDER=%s\n"  "$(shell_quote "$EXTRUDER")"
+  printf "MACHINE=%s\n"    "$(shell_quote "$MACHINE")"
+  printf "MATERIAL=%s\n"   "$(shell_quote "$MATERIAL")"
+  printf "EXTRUDER=%s\n"   "$(shell_quote "$EXTRUDER")"
   printf "UPDATED_AT=%s\n" "$(shell_quote "$(date -Iseconds)")"
 } > "$TMP_FILE"
 
@@ -102,4 +106,5 @@ echo "File: $GLOBALS_FILE"
 echo "HOTEND_TEMP=$HOTEND_TEMP"
 echo "BED_TEMP=$BED_TEMP"
 echo "MACHINE=$MACHINE"
+echo "MATERIAL=$MATERIAL"
 echo "EXTRUDER=$EXTRUDER"
