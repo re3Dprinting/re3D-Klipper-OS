@@ -18,7 +18,7 @@
   /* Condense width just on this tab */
   .cal-wrap{max-width: 920px;margin-inline:auto;width:100%}
 
-  /* Mode tabs (chips) */
+  /* Base chip style (also used for extruder radios) */
   .cal-tabs{display:flex;flex-wrap:wrap;gap:8px}
   .chip{
     appearance:none;border:none;cursor:pointer;
@@ -27,6 +27,7 @@
     background:#0C0E12;color:var(--fg);
     border:1px solid var(--border);
     font-weight:600;
+    font-size:12px;
   }
   .chip[aria-selected="true"]{
     background:var(--brand); color:#111;
@@ -82,44 +83,96 @@
     max-width:100%;
   }
 
-  /* Globals box to the right of extruder */
-  .globals-row{
-    display:flex;
-    gap:10px;
+  /* Global parameters layout: inputs left, profile box + button right */
+  .global-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1.7fr) minmax(220px,0.9fr);
+    gap:12px;
     align-items:flex-start;
-    margin-top:2px; /* slightly tighter */
+    margin-top:6px;
   }
-  .extruder-select{
+  @media (max-width:980px){
+    .global-layout{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .global-main .cal-grid{
+    margin-top:4px;
+  }
+  .global-main .cal-grid:first-of-type{
+    margin-top:0;
+  }
+  .global-main .cal-grid input,
+  .global-main .cal-grid select{
+    max-width:260px;  /* make input boxes visually thinner */
+  }
+
+  .extruder-row{
+    margin-top:8px;
     display:flex;
     flex-direction:column;
     gap:4px;
   }
+  .extruder-select{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .extruder-select .chip{
+    padding:4px 10px;
+    font-size:11px;
+  }
+
+  .global-side{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:6px;
+  }
 
   .globals-box{
-    min-width:200px;
-    padding:8px 10px;
-    border-radius:10px;
+    min-width:220px;
+    max-width:260px;
+    padding:6px 8px;
+    border-radius:8px;
     background:#0C0E12;
     border:1px solid var(--border);
-    font-size:11px;
+    font-size:10px;
     color:var(--gray-200);
+    align-self:flex-end;
   }
   .globals-title{
     font-weight:700;
-    font-size:11px;
+    font-size:10px;
     margin-bottom:4px;
     color:var(--gray-100);
+    text-transform:uppercase;
+    letter-spacing:0.03em;
   }
   .globals-kv{
-    font-size:11px;
+    display:flex;
+    justify-content:space-between;
+    gap:6px;
+    font-size:10px;
     line-height:1.4;
   }
+  .globals-kv + .globals-kv{
+    margin-top:2px;
+  }
   .globals-kv .label{
-    color:var(--gray-300);
-    margin-right:4px;
+    color:var(--gray-400);
+    margin-right:0;
+    white-space:nowrap;
   }
   .globals-kv .val{
-    color:var(--gray-100);
+    color:var(--gray-050);
+    text-align:right;
+    flex:1;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
   }
 
   /* Keep borders inside the box so nothing spills up into the header */
@@ -127,254 +180,201 @@
 </style>
 
 <div class="content cal-wrap" style="display:grid;gap:12px">
-  <!-- Mode selector -->
+  <!-- Header only, no tabs -->
   <div class="card cal-card">
     <div style="font-weight:800;margin-bottom:4px">Calibration</div>
-    <div class="hint">Run the guided sequence or perform individual tests.</div>
-    <div class="cal-tabs" role="tablist" aria-label="Calibration modes">
-      <button class="chip" role="tab" id="cal-tab-guided" aria-controls="cal-panel-guided" aria-selected="true">Guided</button>
-      <button class="chip" role="tab" id="cal-tab-individual" aria-controls="cal-panel-individual" aria-selected="false">Individual Tests</button>
+    <div class="hint">
+      Follow this guided sequence to tune your printer. Machine + material + extruder form the active profile.
     </div>
   </div>
 
-  <!-- PANEL: GUIDED -->
-  <div id="cal-panel-guided" class="cal-guided" role="tabpanel" aria-labelledby="cal-tab-guided" aria-hidden="false" style="display:contents">
-    <!-- Global -->
-    <form class="card cal-card global-card">
-      <div style="font-weight:800;margin-bottom:4px">Global Parameters</div>
-      <div class="cal-grid">
-        <div>
-          <label class="hint">Hotend Temp (°C)</label>
-          <input name="hotend_temp" id="global-hotend" type="number" step="0.1" min="0" max="330" value="220" required>
+  <!-- Global Parameters (inputs left, profile box + button right) -->
+  <form class="card cal-card global-card">
+    <div style="font-weight:800;margin-bottom:2px">Global Parameters</div>
+    <div class="hint" style="margin-bottom:2px">
+      These values define the active calibration profile and will be used for all calibration runs.
+    </div>
+
+    <div class="global-layout">
+      <!-- Left: inputs + extruder -->
+      <div class="global-main">
+        <!-- Row 1: Machine + Material -->
+        <div class="cal-grid">
+          <div>
+            <label class="hint">Machine Type</label>
+            <select name="machine" id="global-machine" required>
+              <option value="" disabled>Select machine</option>
+              <option>Gigabot 4</option>
+              <option>Gigabot 4 XLT</option>
+              <option>Terabot 4</option>
+            </select>
+          </div>
+          <div>
+            <label class="hint">Material Profile</label>
+            <input name="material" id="global-material" type="text" placeholder="e.g., PLA, PLA-CF, PETG">
+          </div>
         </div>
-        <div>
-          <label class="hint">Bed Temp (°C)</label>
-          <input name="bed_temp" id="global-bed" type="number" step="0.1" min="0" max="150" value="60" required>
+
+        <!-- Row 2: Temps -->
+        <div class="cal-grid">
+          <div>
+            <label class="hint">Hotend Temp (°C)</label>
+            <input name="hotend_temp" id="global-hotend" type="number" step="0.1" min="0" max="330" value="220" required>
+          </div>
+          <div>
+            <label class="hint">Bed Temp (°C)</label>
+            <input name="bed_temp" id="global-bed" type="number" step="0.1" min="0" max="150" value="60" required>
+          </div>
         </div>
-      </div>
-      <div class="cal-grid">
-        <div>
-          <label class="hint">Machine Type</label>
-          <select name="machine" id="global-machine" required>
-            <option value="" disabled>Select machine</option>
-            <option>Gigabot 4</option>
-            <option>Gigabot 4 XLT</option>
-            <option>Terabot 4</option>
-          </select>
-        </div>
-        <div>
+
+        <!-- Row 3: Extruder -->
+        <div class="extruder-row">
           <label class="hint">Extruder</label>
-          <div class="globals-row">
-            <div class="extruder-select">
-              <div style="display:flex;gap:8px">
-                <label class="chip"><input type="radio" name="extruder" value="left" required> Left</label>
-                <label class="chip"><input type="radio" name="extruder" value="right"> Right</label>
-              </div>
-            </div>
-            <div class="globals-box" id="globals-box">
-              <div class="globals-title">Current loaded</div>
-              <div class="globals-kv" id="globals-machine">
-                <span class="label">Machine:</span>
-                <span class="val">—</span>
-              </div>
-              <div class="globals-kv" id="globals-hotend">
-                <span class="label">Hotend:</span>
-                <span class="val">—</span>
-              </div>
-              <div class="globals-kv" id="globals-bed">
-                <span class="label">Bed:</span>
-                <span class="val">—</span>
-              </div>
-              <div class="globals-kv" id="globals-extruder">
-                <span class="label">Extruder:</span>
-                <span class="val">—</span>
-              </div>
-              <div class="globals-kv" id="globals-updated">
-                <span class="label">Updated:</span>
-                <span class="val">—</span>
-              </div>
+          <div class="extruder-select">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <label class="chip">
+                <input type="radio" name="extruder" value="left" required> Left
+              </label>
+              <label class="chip">
+                <input type="radio" name="extruder" value="right"> Right
+              </label>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="btns">
-        <button type="button" id="btn-global">Set Parameters</button>
-      </div>
-      <div class="cal-out mono" id="out-global">Tip: Save once so later steps auto-fill.</div>
-    </form>
-
-    <!-- Step 1: Flow -->
-    <div class="step">
-      <div class="rail"><div class="dot" aria-hidden="true">1</div></div>
-      <div class="card cal-card" aria-label="Step 1 — Flow Calibration">
-        <div class="cal-row">
-          <div>
-            <div style="font-weight:800;margin-bottom:6px">Step 1 — Flow Calibration</div>
-            <div class="hint">Run the flow test, then enter results.</div>
-            <div class="btns">
-              <button type="button" class="start-btn" id="btn-flow">Start Calibration</button>
-            </div>
+      <!-- Right: Active Profile box + Set Parameters button -->
+      <div class="global-side">
+        <div class="globals-box" id="globals-box">
+          <div class="globals-title">Active Profile</div>
+          <div class="globals-kv" id="globals-machine">
+            <span class="label">Machine</span>
+            <span class="val">—</span>
           </div>
-          <div class="actions">
-            <div class="qr">
-              <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
-                <img alt="Flow guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
-              </a>
-              <div class="label">Scan: Flow Guide</div>
-            </div>
+          <div class="globals-kv" id="globals-material">
+            <span class="label">Material</span>
+            <span class="val">—</span>
+          </div>
+          <div class="globals-kv" id="globals-hotend">
+            <span class="label">Hotend</span>
+            <span class="val">—</span>
+          </div>
+          <div class="globals-kv" id="globals-bed">
+            <span class="label">Bed</span>
+            <span class="val">—</span>
+          </div>
+          <div class="globals-kv" id="globals-extruder">
+            <span class="label">Extruder</span>
+            <span class="val">—</span>
+          </div>
+          <div class="globals-kv" id="globals-updated">
+            <span class="label">Updated</span>
+            <span class="val">—</span>
           </div>
         </div>
-
-        <!-- one line: value, notes, submit -->
-        <div class="field-row">
-          <div>
-            <label class="hint">Flow Multiplier</label>
-            <input class="short-input" id="flow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98">
-          </div>
-          <div>
-            <label class="hint">Notes</label>
-            <input id="flow-notes" type="text" placeholder="optional…">
-          </div>
-          <button type="button" class="submit-btn" id="submit-flow">Submit Results</button>
+        <div class="btns" style="justify-content:flex-end;margin-top:4px">
+          <button type="button" id="btn-global">Set Parameters</button>
         </div>
-
-        <div class="cal-out mono" id="out-flow">[preview] Waiting…</div>
       </div>
     </div>
 
-    <!-- Step 2: Pressure Advance -->
-    <div class="step">
-      <div class="rail"><div class="dot" aria-hidden="true">2</div></div>
-      <div class="card cal-card" aria-label="Step 2 — Pressure Advance">
-        <div class="cal-row">
-          <div>
-            <div style="font-weight:800;margin-bottom:6px">Step 2 — Pressure Advance</div>
-            <div class="hint">Run the PA test, then enter your K value.</div>
-            <div class="btns">
-              <button type="button" class="start-btn" id="btn-pa">Start Calibration</button>
-            </div>
-          </div>
-          <div class="actions">
-            <div class="qr">
-              <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
-                <img alt="Pressure advance guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
-              </a>
-              <div class="label">Scan: PA Guide</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- one line: value, notes, submit -->
-        <div class="field-row">
-          <div>
-            <label class="hint">Measured PA (K)</label>
-            <input class="short-input" id="pa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065">
-          </div>
-          <div>
-            <label class="hint">Notes</label>
-            <input id="pa-notes" type="text" placeholder="optional…">
-          </div>
-          <button type="button" class="submit-btn" id="submit-pa">Submit Results</button>
-        </div>
-
-        <div class="cal-out mono" id="out-pa">[preview] Waiting…</div>
-      </div>
+    <div class="cal-out mono" id="out-global">
+      Tip: Save once so later steps auto-fill. This profile is tagged with machine, material, and extruder.
     </div>
+  </form>
 
-    <!-- Step 3: Summary -->
-    <div class="step is-last">
-      <div class="rail"><div class="dot" aria-hidden="true">3</div></div>
-      <div class="card cal-card" aria-label="Step 3 — Summary">
-        <div style="font-weight:800;margin-bottom:6px">Step 3 — Summary</div>
-        <div class="cal-out mono" id="summary-body" style="white-space:pre">
+  <!-- Step 1: Flow -->
+  <div class="step">
+    <div class="rail"><div class="dot" aria-hidden="true">1</div></div>
+    <div class="card cal-card" aria-label="Step 1 — Flow Calibration">
+      <div class="cal-row">
+        <div>
+          <div style="font-weight:800;margin-bottom:6px">Step 1 — Flow Calibration</div>
+          <div class="hint">Run the flow test, then enter results. These will be tied to the active profile.</div>
+          <div class="btns">
+            <button type="button" class="start-btn" id="btn-flow">Start Calibration</button>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="qr">
+            <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
+              <img alt="Flow guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
+            </a>
+            <div class="label">Scan: Flow Guide</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- one line: value, notes, submit -->
+      <div class="field-row">
+        <div>
+          <label class="hint">Flow Multiplier</label>
+          <input class="short-input" id="flow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98">
+        </div>
+        <div>
+          <label class="hint">Notes</label>
+          <input id="flow-notes" type="text" placeholder="optional…">
+        </div>
+        <button type="button" class="submit-btn" id="submit-flow">Submit Results</button>
+      </div>
+
+      <div class="cal-out mono" id="out-flow">[preview] Waiting…</div>
+    </div>
+  </div>
+
+  <!-- Step 2: Pressure Advance -->
+  <div class="step">
+    <div class="rail"><div class="dot" aria-hidden="true">2</div></div>
+    <div class="card cal-card" aria-label="Step 2 — Pressure Advance">
+      <div class="cal-row">
+        <div>
+          <div style="font-weight:800;margin-bottom:6px">Step 2 — Pressure Advance</div>
+          <div class="hint">Run the PA test, then enter your K value. Also tied to the active profile.</div>
+          <div class="btns">
+            <button type="button" class="start-btn" id="btn-pa">Start Calibration</button>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="qr">
+            <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
+              <img alt="Pressure advance guide QR" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
+            </a>
+            <div class="label">Scan: PA Guide</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- one line: value, notes, submit -->
+      <div class="field-row">
+        <div>
+          <label class="hint">Measured PA (K)</label>
+          <input class="short-input" id="pa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065">
+        </div>
+        <div>
+          <label class="hint">Notes</label>
+          <input id="pa-notes" type="text" placeholder="optional…">
+        </div>
+        <button type="button" class="submit-btn" id="submit-pa">Submit Results</button>
+      </div>
+
+      <div class="cal-out mono" id="out-pa">[preview] Waiting…</div>
+    </div>
+  </div>
+
+  <!-- Step 3: Summary -->
+  <div class="step is-last">
+    <div class="rail"><div class="dot" aria-hidden="true">3</div></div>
+    <div class="card cal-card" aria-label="Step 3 — Summary">
+      <div style="font-weight:800;margin-bottom:6px">Step 3 — Summary</div>
+      <div class="cal-out mono" id="summary-body" style="white-space:pre">
 ; Summary will appear here.
 ; Klipper + slicer suggestions (preview only).
-        </div>
-        <div class="cal-row">
-          <div class="hint">Export or copy these values into your configs.</div>
-          <button type="button" id="btn-summary">Refresh Summary</button>
-        </div>
       </div>
-    </div>
-  </div>
-
-  <!-- PANEL: INDIVIDUAL -->
-  <div id="cal-panel-individual" class="cal-individual" role="tabpanel" aria-labelledby="cal-tab-individual" aria-hidden="true" hidden style="display:contents">
-    <div class="card cal-card">
-      <div style="font-weight:800;margin-bottom:6px">Individual Tests</div>
-      <div class="hint">Use the global parameters above. Run only what you need.</div>
-
-      <!-- Flow -->
-      <div class="cal-card" style="padding:0">
-        <div class="cal-row">
-          <div>
-            <div style="font-weight:700;margin-bottom:6px">Flow Calibration</div>
-            <div class="hint">Run the flow test, then enter results.</div>
-            <div class="btns">
-              <button type="button" class="start-btn" id="btn-iflow">Start Calibration</button>
-            </div>
-          </div>
-          <div class="actions">
-            <div class="qr">
-              <a href="https://example.com/calibration/flow" target="_blank" rel="noopener">
-                <img alt="Flow guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fflow">
-              </a>
-              <div class="label">Scan: Flow Guide</div>
-            </div>
-          </div>
+      <div class="cal-row">
+        <div class="hint">
+          Export or copy these values into your configs. A future reports page can aggregate all runs per material profile.
         </div>
-
-        <!-- one line: value, notes, submit -->
-        <div class="field-row">
-          <div>
-            <label class="hint">Flow Multiplier</label>
-            <input class="short-input" id="iflow-mult" type="number" step="0.001" min="0.5" max="1.5" placeholder="e.g., 0.98">
-          </div>
-          <div>
-            <label class="hint">Notes</label>
-            <input id="iflow-notes" type="text" placeholder="optional…">
-          </div>
-          <button type="button" class="submit-btn" id="submit-iflow">Submit Results</button>
-        </div>
-
-        <div class="cal-out mono" id="out-iflow">[preview] Waiting…</div>
-      </div>
-
-      <!-- Pressure Advance -->
-      <div class="cal-card" style="padding:0">
-        <div class="cal-row">
-          <div>
-            <div style="font-weight:700;margin-bottom:6px">Pressure Advance</div>
-            <div class="hint">Run the PA test, then enter your K value.</div>
-            <div class="btns">
-              <button type="button" class="start-btn" id="btn-ipa">Start Calibration</button>
-            </div>
-          </div>
-          <div class="actions">
-            <div class="qr">
-              <a href="https://example.com/calibration/pressure-advance" target="_blank" rel="noopener">
-                <img alt="PA guide QR (individual)" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https%3A%2F%2Fexample.com%2Fcalibration%2Fpressure-advance">
-              </a>
-              <div class="label">Scan: PA Guide</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- one line: value, notes, submit -->
-        <div class="field-row">
-          <div>
-            <label class="hint">Measured PA (K)</label>
-            <input class="short-input" id="ipa-k" type="number" step="0.001" min="0" max="1" placeholder="e.g., 0.065">
-          </div>
-          <div>
-            <label class="hint">Notes</label>
-            <input id="ipa-notes" type="text" placeholder="optional…">
-          </div>
-          <button type="button" class="submit-btn" id="submit-ipa">Submit Results</button>
-        </div>
-
-        <div class="cal-out mono" id="out-ipa">[preview] Waiting…</div>
+        <button type="button" id="btn-summary">Refresh Summary</button>
       </div>
     </div>
   </div>
@@ -382,26 +382,6 @@
 
 <script>
 (() => {
-  // --- tab switching ---
-  var tabGuided   = document.getElementById('cal-tab-guided');
-  var tabIndiv    = document.getElementById('cal-tab-individual');
-  var panelGuided = document.getElementById('cal-panel-guided');
-  var panelIndiv  = document.getElementById('cal-panel-individual');
-
-  function setMode(mode){
-    var guided = (mode === 'guided');
-    tabGuided.setAttribute('aria-selected', guided ? 'true':'false');
-    tabIndiv.setAttribute('aria-selected', guided ? 'false':'true');
-    panelGuided.setAttribute('aria-hidden', guided ? 'false':'true');
-    panelIndiv.setAttribute('aria-hidden', guided ? 'true':'false');
-    panelGuided.hidden = !guided;
-    panelIndiv.hidden  = guided;
-  }
-
-  tabGuided.addEventListener('click', function(){ setMode('guided'); });
-  tabIndiv .addEventListener('click', function(){ setMode('individual'); });
-  setMode('guided');
-
   // --- helper: update output text ---
   function preview(outId, msg){
     var el = document.getElementById(outId);
@@ -461,6 +441,7 @@
         var bt       = map.BED_TEMP || '';
         var machine  = map.MACHINE || '';
         var extruder = map.EXTRUDER || '';
+        var material = map.MATERIAL || '';
         var updated  = map.UPDATED_AT || '';
 
         // Update friendly box
@@ -472,15 +453,16 @@
           valSpan.textContent = value || '—';
         }
 
-        setVal('globals-machine',  machine);
-        setVal('globals-hotend',   ht ? (ht + ' °C') : '');
-        setVal('globals-bed',      bt ? (bt + ' °C') : '');
-        setVal('globals-extruder', extruder);
-        setVal('globals-updated',  updated);
+        setVal('globals-machine',   machine);
+        setVal('globals-material',  material);
+        setVal('globals-hotend',    ht ? (ht + ' °C') : '');
+        setVal('globals-bed',       bt ? (bt + ' °C') : '');
+        setVal('globals-extruder',  extruder);
+        setVal('globals-updated',   updated);
 
         var box = document.getElementById('globals-box');
         if (box){
-          if (!ht && !bt && !machine && !extruder){
+          if (!ht && !bt && !machine && !extruder && !material){
             box.style.opacity = '0.7';
           } else {
             box.style.opacity = '1';
@@ -493,6 +475,9 @@
         if (bt && (el = document.getElementById('global-bed'))) el.value = bt;
         if (machine && (el = document.getElementById('global-machine'))) {
           el.value = machine;
+        }
+        if (material && (el = document.getElementById('global-material'))) {
+          el.value = material;
         }
         if (extruder){
           var radios = document.querySelectorAll('input[name="extruder"]');
@@ -516,19 +501,22 @@
     var hotendEl   = document.getElementById('global-hotend');
     var bedEl      = document.getElementById('global-bed');
     var machineEl  = document.getElementById('global-machine');
+    var materialEl = document.getElementById('global-material');
     var extruderEl = document.querySelector('input[name="extruder"]:checked');
 
     var hotend_temp = hotendEl   ? hotendEl.value.trim()   : '';
     var bed_temp    = bedEl      ? bedEl.value.trim()      : '';
     var machine     = machineEl  ? machineEl.value.trim()  : '';
+    var material    = materialEl ? materialEl.value.trim() : '';
     var extruder    = extruderEl ? extruderEl.value.trim() : '';
 
     // Keys must match CGI scripts:
-    // hotend_temp, bed_temp, machine, extruder
+    // hotend_temp, bed_temp, machine, material, extruder
     return {
       hotend_temp: hotend_temp,
       bed_temp:    bed_temp,
       machine:     machine,
+      material:    material,
       extruder:    extruder
     };
   }
@@ -551,24 +539,6 @@
     };
   }
 
-  function collectIndivFlow(){
-    var flowEl  = document.getElementById('iflow-mult');
-    var notesEl = document.getElementById('iflow-notes');
-    return {
-      flow:  flowEl  ? flowEl.value.trim()  : '',
-      notes: notesEl ? notesEl.value.trim() : ''
-    };
-  }
-
-  function collectIndivPA(){
-    var kEl     = document.getElementById('ipa-k');
-    var notesEl = document.getElementById('ipa-notes');
-    return {
-      k:     kEl     ? kEl.value.trim()     : '',
-      notes: notesEl ? notesEl.value.trim() : ''
-    };
-  }
-
   // --- Global parameters "Set" button ---
   var btnGlobal = document.getElementById('btn-global');
   if (btnGlobal){
@@ -583,10 +553,8 @@
 
   // --- Start Calibration (print) POSTs ---
   var startMap = {
-    'btn-flow':  { out: 'out-flow',  url: 'cgi-bin/print_flow_calibration.sh',   mode: 'guided' },
-    'btn-pa':    { out: 'out-pa',    url: 'cgi-bin/print_pressure_advance.sh',   mode: 'guided' },
-    'btn-iflow': { out: 'out-iflow', url: 'cgi-bin/print_flow_calibration.sh',   mode: 'individual' },
-    'btn-ipa':   { out: 'out-ipa',   url: 'cgi-bin/print_pressure_advance.sh',   mode: 'individual' }
+    'btn-flow': { out: 'out-flow', url: 'cgi-bin/print_flow_calibration.sh',   mode: 'guided' },
+    'btn-pa':   { out: 'out-pa',   url: 'cgi-bin/print_pressure_advance.sh',   mode: 'guided' }
   };
 
   Object.keys(startMap).forEach(function(id){
@@ -601,10 +569,8 @@
 
   // --- Submit Results POSTs ---
   var submitMap = {
-    'submit-flow':  { out:'out-flow',  collect: collectGuidedFlow,  url:'cgi-bin/submit_flow_results.sh', mode:'guided' },
-    'submit-pa':    { out:'out-pa',    collect: collectGuidedPA,    url:'cgi-bin/submit_pa_results.sh',   mode:'guided' },
-    'submit-iflow': { out:'out-iflow', collect: collectIndivFlow,   url:'cgi-bin/submit_flow_results.sh', mode:'individual' },
-    'submit-ipa':   { out:'out-ipa',   collect: collectIndivPA,     url:'cgi-bin/submit_pa_results.sh',   mode:'individual' }
+    'submit-flow': { out:'out-flow', collect: collectGuidedFlow, url:'cgi-bin/submit_flow_results.sh', mode:'guided' },
+    'submit-pa':   { out:'out-pa',   collect: collectGuidedPA,   url:'cgi-bin/submit_pa_results.sh',   mode:'guided' }
   };
 
   Object.keys(submitMap).forEach(function(id){
@@ -622,19 +588,21 @@
   var btnSummary = document.getElementById('btn-summary');
   if (btnSummary){
     btnSummary.addEventListener('click', function(){
-      var paKEl    = document.getElementById('pa-k');
-      var ipaKEl   = document.getElementById('ipa-k');
-      var flowEl   = document.getElementById('flow-mult');
-      var iflowEl  = document.getElementById('iflow-mult');
+      var paKEl      = document.getElementById('pa-k');
+      var flowEl     = document.getElementById('flow-mult');
+      var materialEl = document.getElementById('global-material');
 
-      var paK   = paKEl   ? paKEl.value.trim()   : '';
-      if (!paK && ipaKEl) paK = ipaKEl.value.trim();
-
-      var flow  = flowEl  ? flowEl.value.trim()  : '';
-      if (!flow && iflowEl) flow = iflowEl.value.trim();
+      var paK      = paKEl      ? paKEl.value.trim()      : '';
+      var flow     = flowEl     ? flowEl.value.trim()     : '';
+      var material = materialEl ? materialEl.value.trim() : '';
 
       var lines = [];
       lines.push('; === Calibration Summary (preview) ===');
+      if (material){
+        lines.push('; Material profile: ' + material);
+      } else {
+        lines.push('; Material profile: <not set>');
+      }
       lines.push('; Temperature Tower: (omitted)');
       lines.push('');
       lines.push('; --- Klipper ---');
@@ -648,6 +616,8 @@
                       : '; Flow (Extrusion Multiplier): <value>');
       lines.push('');
       lines.push('; Retraction: test disabled in this UI.');
+      lines.push('');
+      lines.push('; Future: a reports page can group all runs by material + machine + extruder.');
 
       var sumBody = document.getElementById('summary-body');
       if (sumBody) sumBody.textContent = lines.join('\n');
