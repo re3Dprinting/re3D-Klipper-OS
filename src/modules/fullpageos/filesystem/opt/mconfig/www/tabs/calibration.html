@@ -399,6 +399,14 @@
     return parts.join('&');
   }
 
+  // Decode \xHH sequences from shell/env strings (e.g. "Gigabot\x204" -> "Gigabot 4")
+  function unescapeHex(str){
+    if (!str) return str;
+    return str.replace(/\\x([0-9A-Fa-f]{2})/g, function(_, hex){
+      return String.fromCharCode(parseInt(hex, 16));
+    });
+  }
+
   // --- helper: POST to CGI and show response in an output box ---
   function postToCgi(url, data, outId){
     preview(outId, 'Sending to ' + url + '…');
@@ -429,20 +437,19 @@
           if (eq === -1) return;
           var key = line.slice(0, eq).trim();
           var val = line.slice(eq + 1).trim();
-          if (val.length >= 2 &&
-              ((val.charAt(0) === '"' && val.charAt(val.length - 1) === '"') ||
-               (val.charAt(0) === "'" && val.charAt(val.length - 1) === "'"))) {
-            val = val.slice(1, -1);
-          }
           map[key] = val;
         });
 
         var ht       = map.HOTEND_TEMP || '';
         var bt       = map.BED_TEMP || '';
         var machine  = map.MACHINE || '';
-        var extruder = map.EXTRUDER || '';
         var material = map.MATERIAL || '';
+        var extruder = map.EXTRUDER || '';
         var updated  = map.UPDATED_AT || '';
+
+        // Decode any \xHH escapes coming from the env file
+        machine  = unescapeHex(machine);
+        material = unescapeHex(material);
 
         // Update friendly box
         function setVal(id, value){
@@ -453,16 +460,15 @@
           valSpan.textContent = value || '—';
         }
 
-        setVal('globals-machine',   machine);
-        setVal('globals-material',  material);
-        setVal('globals-hotend',    ht ? (ht + ' °C') : '');
-        setVal('globals-bed',       bt ? (bt + ' °C') : '');
-        setVal('globals-extruder',  extruder);
-        setVal('globals-updated',   updated);
+        setVal('globals-machine',  machine);
+        setVal('globals-hotend',   ht ? (ht + ' °C') : '');
+        setVal('globals-bed',      bt ? (bt + ' °C') : '');
+        setVal('globals-extruder', extruder);
+        setVal('globals-updated',  updated);
 
         var box = document.getElementById('globals-box');
         if (box){
-          if (!ht && !bt && !machine && !extruder && !material){
+          if (!ht && !bt && !machine && !extruder){
             box.style.opacity = '0.7';
           } else {
             box.style.opacity = '1';
@@ -474,11 +480,12 @@
         if (ht && (el = document.getElementById('global-hotend'))) el.value = ht;
         if (bt && (el = document.getElementById('global-bed'))) el.value = bt;
         if (machine && (el = document.getElementById('global-machine'))) {
-          el.value = machine;
+          el.value = machine;   // now matches option text, so it stays selected
         }
-        if (material && (el = document.getElementById('global-material'))) {
-          el.value = material;
-        }
+        // if you have a material <select>, you'd also set it here:
+        // if (material && (el = document.getElementById('global-material'))) {
+        //   el.value = material;
+        // }
         if (extruder){
           var radios = document.querySelectorAll('input[name="extruder"]');
           Array.prototype.forEach.call(radios, function(r){
@@ -487,7 +494,6 @@
         }
       })
       .catch(function(err){
-        // if error, just show something subtle in updated line
         var row = document.getElementById('globals-updated');
         if (row){
           var valSpan = row.querySelector('.val');
@@ -501,22 +507,17 @@
     var hotendEl   = document.getElementById('global-hotend');
     var bedEl      = document.getElementById('global-bed');
     var machineEl  = document.getElementById('global-machine');
-    var materialEl = document.getElementById('global-material');
     var extruderEl = document.querySelector('input[name="extruder"]:checked');
 
     var hotend_temp = hotendEl   ? hotendEl.value.trim()   : '';
     var bed_temp    = bedEl      ? bedEl.value.trim()      : '';
     var machine     = machineEl  ? machineEl.value.trim()  : '';
-    var material    = materialEl ? materialEl.value.trim() : '';
     var extruder    = extruderEl ? extruderEl.value.trim() : '';
 
-    // Keys must match CGI scripts:
-    // hotend_temp, bed_temp, machine, material, extruder
     return {
       hotend_temp: hotend_temp,
       bed_temp:    bed_temp,
       machine:     machine,
-      material:    material,
       extruder:    extruder
     };
   }
@@ -539,12 +540,29 @@
     };
   }
 
+  function collectIndivFlow(){
+    var flowEl  = document.getElementById('iflow-mult');
+    var notesEl = document.getElementById('iflow-notes');
+    return {
+      flow:  flowEl  ? flowEl.value.trim()  : '',
+      notes: notesEl ? notesEl.value.trim() : ''
+    };
+  }
+
+  function collectIndivPA(){
+    var kEl     = document.getElementById('ipa-k');
+    var notesEl = document.getElementById('ipa-notes');
+    return {
+      k:     kEl     ? kEl.value.trim()     : '',
+      notes: notesEl ? notesEl.value.trim() : ''
+    };
+  }
+
   // --- Global parameters "Set" button ---
   var btnGlobal = document.getElementById('btn-global');
   if (btnGlobal){
     btnGlobal.addEventListener('click', function(){
       var data = collectGlobals();
-      // relative URL so it works under /configurator/ as well
       postToCgi('cgi-bin/set_global_calibration_params.sh', data, 'out-global');
       // refresh the loaded-values box shortly after saving
       setTimeout(loadGlobalsFromServer, 300);
@@ -553,8 +571,10 @@
 
   // --- Start Calibration (print) POSTs ---
   var startMap = {
-    'btn-flow': { out: 'out-flow', url: 'cgi-bin/print_flow_calibration.sh',   mode: 'guided' },
-    'btn-pa':   { out: 'out-pa',   url: 'cgi-bin/print_pressure_advance.sh',   mode: 'guided' }
+    'btn-flow':  { out: 'out-flow',  url: 'cgi-bin/print_flow_calibration.sh',   mode: 'guided' },
+    'btn-pa':    { out: 'out-pa',    url: 'cgi-bin/print_pressure_advance.sh',   mode: 'guided' },
+    'btn-iflow': { out: 'out-iflow', url: 'cgi-bin/print_flow_calibration.sh',   mode: 'individual' },
+    'btn-ipa':   { out: 'out-ipa',   url: 'cgi-bin/print_pressure_advance.sh',   mode: 'individual' }
   };
 
   Object.keys(startMap).forEach(function(id){
@@ -569,8 +589,10 @@
 
   // --- Submit Results POSTs ---
   var submitMap = {
-    'submit-flow': { out:'out-flow', collect: collectGuidedFlow, url:'cgi-bin/submit_flow_results.sh', mode:'guided' },
-    'submit-pa':   { out:'out-pa',   collect: collectGuidedPA,   url:'cgi-bin/submit_pa_results.sh',   mode:'guided' }
+    'submit-flow':  { out:'out-flow',  collect: collectGuidedFlow,  url:'cgi-bin/submit_flow_results.sh', mode:'guided' },
+    'submit-pa':    { out:'out-pa',    collect: collectGuidedPA,    url:'cgi-bin/submit_pa_results.sh',   mode:'guided' },
+    'submit-iflow': { out:'out-iflow', collect: collectIndivFlow,   url:'cgi-bin/submit_flow_results.sh', mode:'individual' },
+    'submit-ipa':   { out:'out-ipa',   collect: collectIndivPA,     url:'cgi-bin/submit_pa_results.sh',   mode:'individual' }
   };
 
   Object.keys(submitMap).forEach(function(id){
@@ -588,21 +610,19 @@
   var btnSummary = document.getElementById('btn-summary');
   if (btnSummary){
     btnSummary.addEventListener('click', function(){
-      var paKEl      = document.getElementById('pa-k');
-      var flowEl     = document.getElementById('flow-mult');
-      var materialEl = document.getElementById('global-material');
+      var paKEl    = document.getElementById('pa-k');
+      var ipaKEl   = document.getElementById('ipa-k');
+      var flowEl   = document.getElementById('flow-mult');
+      var iflowEl  = document.getElementById('iflow-mult');
 
-      var paK      = paKEl      ? paKEl.value.trim()      : '';
-      var flow     = flowEl     ? flowEl.value.trim()     : '';
-      var material = materialEl ? materialEl.value.trim() : '';
+      var paK   = paKEl   ? paKEl.value.trim()   : '';
+      if (!paK && ipaKEl) paK = ipaKEl.value.trim();
+
+      var flow  = flowEl  ? flowEl.value.trim()  : '';
+      if (!flow && iflowEl) flow = iflowEl.value.trim();
 
       var lines = [];
       lines.push('; === Calibration Summary (preview) ===');
-      if (material){
-        lines.push('; Material profile: ' + material);
-      } else {
-        lines.push('; Material profile: <not set>');
-      }
       lines.push('; Temperature Tower: (omitted)');
       lines.push('');
       lines.push('; --- Klipper ---');
@@ -616,8 +636,6 @@
                       : '; Flow (Extrusion Multiplier): <value>');
       lines.push('');
       lines.push('; Retraction: test disabled in this UI.');
-      lines.push('');
-      lines.push('; Future: a reports page can group all runs by material + machine + extruder.');
 
       var sumBody = document.getElementById('summary-body');
       if (sumBody) sumBody.textContent = lines.join('\n');
@@ -628,3 +646,4 @@
   loadGlobalsFromServer();
 })();
 </script>
+
