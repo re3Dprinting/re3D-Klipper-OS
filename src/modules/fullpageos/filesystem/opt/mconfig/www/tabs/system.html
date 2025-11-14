@@ -44,7 +44,6 @@
     <div style="font-weight:800;margin-bottom:6px">Print History</div>
     <div class="hint">
       Save/restore Moonraker’s print-history database and gcode files.<br/>
-
     </div>
 
     <!-- Save to USB -->
@@ -70,6 +69,20 @@
       </div>
       <div class="sys-out mono" id="out-restore"></div>
     </form>
+  </div>
+
+  <!-- Calibration & Print Report -->
+  <div class="card sys-card">
+    <div class="sys-row">
+      <div>
+        <div style="font-weight:800;margin-bottom:6px">Calibration &amp; Print Report</div>
+        <div class="hint">
+          Opens a detailed HTML report with calibration profiles and print-history metrics.
+          You can print it or export as PDF from the browser.
+        </div>
+      </div>
+      <button type="button" id="btn-open-report">Open Report</button>
+    </div>
   </div>
 </div>
 
@@ -170,5 +183,15 @@
       }
     }
   })();
+
+  // ---- Open Calibration & Print Report ----
+  const btnReport = document.getElementById('btn-open-report');
+  if (btnReport){
+    btnReport.addEventListener('click', () => {
+      // Path is relative to the main configurator page, which is usually /configurator/
+      // tabs/report.html should sit next to tabs/calibration.html
+      window.open('tabs/report.html', '_blank', 'noopener');
+    });
+  }
 })();
 </script>

@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=1024, initial-scale=1"/>
+<title>Calibration & Print Report</title>
+
+<style>
+  /* ── Local style-guide tokens (mirrors Configurator theme) ─────────────── */
+  :root{
+    --brand:#FFD400;
+    --brand-600:#FFC800;
+    --brand-700:#FFBD00;
+    --brand-800:#FFB300;
+
+    --white:#FFFFFF;
+    --gray-050:#F2F2F2;
+    --gray-100:#E6E6E6;
+    --gray-200:#D9D9D9;
+    --gray-300:#CCCCCC;
+    --gray-400:#B3B3B3;
+    --gray-500:#999999;
+    --gray-600:#808080;
+    --gray-700:#666666;
+    --gray-800:#4D4D4D;
+    --gray-900:#333333;
+
+    --bg:#050609;
+    --bg-card:#0C0E12;
+    --border:#20242F;
+    --fg:#F5F5F5;
+  }
+
+  * ,*::before,*::after{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    padding:16px 20px 24px;
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:radial-gradient(circle at top,#141824 0,#050609 40%,#050609 100%);
+    color:var(--gray-050);
+  }
+
+  .report-shell{
+    max-width:960px;
+    margin:0 auto;
+    display:grid;
+    gap:12px;
+  }
+
+  .report-card{
+    background:var(--bg-card);
+    border-radius:10px;
+    border:1px solid var(--border);
+    padding:10px 12px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    box-shadow:0 8px 20px rgba(0,0,0,0.35);
+  }
+
+  .report-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .report-title{
+    font-weight:800;
+    font-size:18px;
+  }
+
+  .report-subtitle{
+    font-size:13px;
+    color:var(--gray-300);
+  }
+
+  .pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:3px 8px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    font-size:11px;
+    color:var(--gray-200);
+    background:#050609;
+  }
+
+  .pill-label{
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    font-size:10px;
+    color:var(--gray-400);
+  }
+
+  .pill-value{
+    font-weight:600;
+  }
+
+  .pill-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+
+  .section-title{
+    font-weight:700;
+    font-size:13px;
+    color:var(--gray-050);
+  }
+
+  .section-sub{
+    font-size:12px;
+    color:var(--gray-300);
+  }
+
+  /* Profile list */
+  .profile-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:10px;
+  }
+
+  .profile-card{
+    background:#050609;
+    border-radius:8px;
+    border:1px solid var(--border);
+    padding:8px 10px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    font-size:12px;
+  }
+
+  .profile-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:6px;
+  }
+
+  .profile-name{
+    font-weight:600;
+    color:var(--gray-050);
+  }
+
+  .profile-tagline{
+    font-size:11px;
+    color:var(--gray-400);
+  }
+
+  .profile-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+
+  .kv-rows{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:4px 10px;
+  }
+
+  @media (max-width:600px){
+    .kv-rows{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .kv-row{
+    display:flex;
+    justify-content:space-between;
+    gap:4px;
+  }
+
+  .kv-label{
+    font-size:11px;
+    color:var(--gray-400);
+  }
+
+  .kv-val{
+    font-size:12px;
+    color:var(--gray-050);
+    text-align:right;
+    flex:1;
+  }
+
+  .note-text{
+    font-size:11px;
+    color:var(--gray-300);
+    border-top:1px dashed var(--border);
+    padding-top:4px;
+    margin-top:2px;
+  }
+
+  /* Metrics summary */
+  .metrics-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:8px;
+  }
+
+  .metric-block{
+    background:#050609;
+    border-radius:8px;
+    padding:6px 8px;
+    border:1px solid var(--border);
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+
+  .metric-label{
+    font-size:11px;
+    color:var(--gray-400);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+  }
+
+  .metric-value{
+    font-size:16px;
+    font-weight:700;
+    color:var(--gray-050);
+  }
+
+  .metric-footnote{
+    font-size:10px;
+    color:var(--gray-400);
+  }
+
+  /* Simple bar chart */
+  .chart-wrap{
+    margin-top:6px;
+    background:#050609;
+    border-radius:8px;
+    border:1px solid var(--border);
+    padding:8px 10px;
+  }
+
+  .chart-bars{
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+    height:120px;
+  }
+
+  .chart-bar{
+    flex:1;
+    min-width:10px;
+    background:linear-gradient(to top, var(--brand-800), var(--brand));
+    border-radius:4px 4px 0 0;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .chart-bar::after{
+    content:attr(data-value);
+    position:absolute;
+    bottom:2px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:9px;
+    color:#111;
+    font-weight:700;
+    text-shadow:0 0 4px rgba(0,0,0,0.4);
+  }
+
+  .chart-axis{
+    display:flex;
+    justify-content:space-between;
+    gap:4px;
+    margin-top:4px;
+  }
+
+  .chart-label{
+    flex:1;
+    text-align:center;
+    font-size:9px;
+    color:var(--gray-400);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .chart-caption{
+    margin-top:4px;
+    font-size:10px;
+    color:var(--gray-400);
+  }
+
+  /* Print-friendly tweaks */
+  @media print{
+    body{
+      background:#FFFFFF;
+      color:#000000;
+      padding:10mm;
+    }
+    .report-card{
+      background:#FFFFFF;
+      border-color:#CCCCCC;
+      box-shadow:none;
+    }
+    .profile-card,
+    .metric-block,
+    .chart-wrap{
+      background:#FFFFFF;
+    }
+  }
+</style>
+</head>
+<body>
+  <main class="report-shell">
+    <!-- Hero / Header -->
+    <section class="report-card">
+      <div class="report-header">
+        <div>
+          <div class="report-title">Calibration &amp; Print Report</div>
+          <div class="report-subtitle">Quality and performance overview for this machine.</div>
+        </div>
+        <div class="pill-row" id="hero-pill-row">
+          <!-- Filled by JS: machine, material, extruder, last-updated, basic usage -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Calibration Profiles -->
+    <section class="report-card">
+      <div>
+        <div class="section-title">Calibration Profiles</div>
+        <div class="section-sub">
+          Each profile corresponds to a machine + material + extruder combination and its tuned values.
+        </div>
+      </div>
+      <div class="profile-grid" id="profile-grid">
+        <!-- Profile cards injected by JS -->
+      </div>
+    </section>
+
+    <!-- Print History & Metrics -->
+    <section class="report-card">
+      <div>
+        <div class="section-title">Print History &amp; Metrics</div>
+        <div class="section-sub">
+          Aggregated print time, run count, and success ratio from this machine’s recent usage.
+        </div>
+      </div>
+
+      <div class="metrics-row" id="metrics-row">
+        <!-- Metric blocks injected by JS -->
+      </div>
+
+      <div class="chart-wrap" id="print-chart-wrap" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
+          <div class="section-title" style="font-size:12px;">Print Hours by Period</div>
+          <div class="section-sub" style="font-size:10px;">Visual snapshot of activity over time.</div>
+        </div>
+        <div class="chart-bars" id="chart-bars">
+          <!-- Bars injected by JS -->
+        </div>
+        <div class="chart-axis" id="chart-axis">
+          <!-- Labels injected by JS -->
+        </div>
+        <div class="chart-caption" id="chart-caption">
+          <!-- Caption injected by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+  function safeText(v){
+    return (v === null || v === undefined) ? '' : String(v);
+  }
+
+  function formatHours(h){
+    if (h == null || isNaN(h)) return '—';
+    var num = Number(h);
+    if (num < 1) return (num * 60).toFixed(0) + ' min';
+    if (num < 10) return num.toFixed(1) + ' h';
+    return num.toFixed(0) + ' h';
+  }
+
+  function formatPct(p){
+    if (p == null || isNaN(p)) return '—';
+    return (Number(p) * 100).toFixed(1) + '%';
+  }
+
+  function formatDateShort(iso){
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      year:'numeric', month:'short', day:'2-digit',
+      hour:'2-digit', minute:'2-digit'
+    });
+  }
+
+  function el(tag, className, text){
+    var e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // -------------------------------------------------------------------------
+  // HERO / PILL ROW
+  // -------------------------------------------------------------------------
+  function renderHeroPills(profiles, metrics){
+    var row = document.getElementById('hero-pill-row');
+    if (!row) return;
+    row.innerHTML = '';
+
+    if (profiles && profiles.length){
+      var p0 = profiles[0];
+
+      function pill(label, value){
+        if (!value) return;
+        var p = el('div', 'pill');
+        var l = el('span', 'pill-label', label);
+        var v = el('span', 'pill-value', value);
+        p.appendChild(l);
+        p.appendChild(v);
+        row.appendChild(p);
+      }
+
+      pill('Machine', p0.machine || '—');
+      pill('Material', p0.material || '—');
+      pill('Extruder', p0.extruder || '—');
+
+      // Latest updated across profiles
+      var latest = profiles.reduce(function(acc, p){
+        if (!p.updated_at) return acc;
+        if (!acc) return p.updated_at;
+        return (p.updated_at > acc) ? p.updated_at : acc;
+      }, null);
+      if (latest){
+        pill('Last Calibrated', formatDateShort(latest));
+      }
+    }
+
+    if (metrics && metrics.summary){
+      var s = metrics.summary;
+      if (s.total_prints != null){
+        var p = el('div', 'pill');
+        p.appendChild(el('span', 'pill-label', 'Prints'));
+        p.appendChild(el('span', 'pill-value', String(s.total_prints)));
+        row.appendChild(p);
+      }
+      if (s.success_rate != null){
+        var p2 = el('div', 'pill');
+        p2.appendChild(el('span', 'pill-label', 'Success'));
+        p2.appendChild(el('span', 'pill-value', formatPct(s.success_rate)));
+        row.appendChild(p2);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // PROFILES
+  // Expected: { profiles:[ { machine, material, extruder,
+  //   hotend_temp, bed_temp, flow, flow_notes, pa_k, pa_notes, updated_at } ] }
+  // -------------------------------------------------------------------------
+  function renderProfiles(profiles){
+    var grid = document.getElementById('profile-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    if (!profiles || !profiles.length){
+      var empty = el('div', 'section-sub', 'No calibration profiles have been saved yet.');
+      empty.style.fontStyle = 'italic';
+      grid.appendChild(empty);
+      return;
+    }
+
+    profiles.forEach(function(p){
+      var card = el('div', 'profile-card');
+
+      // Header
+      var head = el('div', 'profile-header');
+      var left = el('div', '');
+      left.appendChild(el('div', 'profile-name',
+        (p.machine || 'Unknown machine') +
+        (p.material ? ' · ' + p.material : '')
+      ));
+      left.appendChild(el('div', 'profile-tagline',
+        (p.extruder ? ('Extruder: ' + p.extruder) : 'Extruder: —')
+      ));
+
+      var right = el('div', '');
+      if (p.updated_at){
+        var small = el('div', 'profile-tagline',
+          'Updated ' + formatDateShort(p.updated_at)
+        );
+        small.style.textAlign = 'right';
+        right.appendChild(small);
+      }
+
+      head.appendChild(left);
+      head.appendChild(right);
+      card.appendChild(head);
+
+      // Meta row
+      var meta = el('div', 'profile-meta');
+      var mHot = el('div', 'pill');
+      mHot.appendChild(el('span', 'pill-label', 'Nozzle'));
+      mHot.appendChild(el('span', 'pill-value',
+        p.hotend_temp != null ? (p.hotend_temp + ' °C') : '—'
+      ));
+      meta.appendChild(mHot);
+
+      var mBed = el('div', 'pill');
+      mBed.appendChild(el('span', 'pill-label', 'Bed'));
+      mBed.appendChild(el('span', 'pill-value',
+        p.bed_temp != null ? (p.bed_temp + ' °C') : '—'
+      ));
+      meta.appendChild(mBed);
+
+      card.appendChild(meta);
+
+      // KV rows
+      var kv = el('div', 'kv-rows');
+
+      function kvRow(label, val){
+        var row = el('div', 'kv-row');
+        row.appendChild(el('div', 'kv-label', label));
+        row.appendChild(el('div', 'kv-val', val));
+        kv.appendChild(row);
+      }
+
+      kvRow('Flow Multiplier',
+        p.flow != null && p.flow !== '' ? String(p.flow) : '—'
+      );
+      kvRow('Pressure Advance (K)',
+        p.pa_k != null && p.pa_k !== '' ? String(p.pa_k) : '—'
+      );
+      kvRow('Material',
+        p.material || '—'
+      );
+      kvRow('Extruder',
+        p.extruder || '—'
+      );
+
+      card.appendChild(kv);
+
+      // Notes
+      var notes = [];
+      if (p.flow_notes) notes.push('Flow: ' + p.flow_notes);
+      if (p.pa_notes)   notes.push('PA: ' + p.pa_notes);
+      if (notes.length){
+        var nEl = el('div', 'note-text', notes.join('  ·  '));
+        card.appendChild(nEl);
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // METRICS + SIMPLE CHART
+  // Expected:
+  // { summary:{ total_prints, total_print_time_hours, avg_print_time_hours,
+  //             success_rate, last_print_finished, longest_print_hours, ... },
+  //   by_period:[ { label:"2025-11", hours: 12.3 }, ... ] }
+  // -------------------------------------------------------------------------
+  function renderMetrics(metrics){
+    var row = document.getElementById('metrics-row');
+    if (!row) return;
+    row.innerHTML = '';
+
+    if (!metrics || !metrics.summary){
+      var empty = el('div', 'section-sub', 'No print history metrics available yet.');
+      empty.style.fontStyle = 'italic';
+      row.appendChild(empty);
+      return;
+    }
+
+    var s = metrics.summary;
+
+    function metric(label, value, footnote){
+      var block = el('div', 'metric-block');
+      block.appendChild(el('div', 'metric-label', label));
+      block.appendChild(el('div', 'metric-value', value));
+      if (footnote){
+        block.appendChild(el('div', 'metric-footnote', footnote));
+      }
+      row.appendChild(block);
+    }
+
+    metric('Total Prints',
+      s.total_prints != null ? String(s.total_prints) : '—',
+      s.completed_prints != null && s.failed_prints != null
+        ? (s.completed_prints + ' completed · ' + s.failed_prints + ' failed')
+        : ''
+    );
+
+    metric('Total Print Time',
+      formatHours(s.total_print_time_hours),
+      s.avg_print_time_hours != null
+        ? 'Avg ' + formatHours(s.avg_print_time_hours) + ' per job'
+        : ''
+    );
+
+    metric('Success Rate',
+      formatPct(s.success_rate),
+      s.last_print_finished ? 'Last job ' + formatDateShort(s.last_print_finished) : ''
+    );
+
+    if (s.longest_print_hours != null){
+      metric('Longest Single Print',
+        formatHours(s.longest_print_hours),
+        s.longest_print_name ? s.longest_print_name : ''
+      );
+    }
+
+    var periods = metrics.by_period || [];
+    renderChart(periods);
+  }
+
+  function renderChart(periods){
+    var wrap = document.getElementById('print-chart-wrap');
+    var bars = document.getElementById('chart-bars');
+    var axis = document.getElementById('chart-axis');
+    var caption = document.getElementById('chart-caption');
+    if (!wrap || !bars || !axis || !caption) return;
+
+    if (!periods.length){
+      wrap.hidden = true;
+      return;
+    }
+
+    wrap.hidden = false;
+    bars.innerHTML = '';
+    axis.innerHTML = '';
+
+    var maxHours = periods.reduce(function(m, p){
+      var h = Number(p.hours || 0);
+      return h > m ? h : m;
+    }, 0);
+
+    if (maxHours <= 0){
+      wrap.hidden = true;
+      return;
+    }
+
+    periods.forEach(function(p){
+      var h = Number(p.hours || 0);
+      var pct = Math.max(4, (h / maxHours) * 100);
+
+      var bar = el('div', 'chart-bar');
+      bar.style.height = pct + '%';
+      bar.setAttribute('data-value', h.toFixed(1));
+
+      bars.appendChild(bar);
+
+      var lab = el('div', 'chart-label', p.label || '');
+      axis.appendChild(lab);
+    });
+
+    caption.textContent = 'Relative print hours per period (scaled to the busiest period).';
+  }
+
+  // -------------------------------------------------------------------------
+  // FETCH / MOCK DATA
+  // -------------------------------------------------------------------------
+  function fetchJson(url){
+    return fetch(url, { cache: 'no-store' })
+      .then(function(r){
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      });
+  }
+
+  function buildMockProfiles(){
+    var now = new Date().toISOString();
+    return {
+      profiles: [
+        {
+          machine: 'Gigabot 4 XLT',
+          material: 'PLA',
+          extruder: 'left',
+          hotend_temp: 220,
+          bed_temp: 60,
+          flow: 0.98,
+          flow_notes: 'Dialed in for 0.4 mm nozzle at 0.2 mm layer height.',
+          pa_k: 0.065,
+          pa_notes: 'Good corners at 80 mm/s.',
+          updated_at: now
+        },
+        {
+          machine: 'Gigabot 4 XLT',
+          material: 'PETG',
+          extruder: 'right',
+          hotend_temp: 245,
+          bed_temp: 75,
+          flow: 0.96,
+          flow_notes: 'Slight under-extrusion corrected.',
+          pa_k: 0.055,
+          pa_notes: 'Reduced ooze on sharp corners.',
+          updated_at: now
+        }
+      ]
+    };
+  }
+
+  function buildMockMetrics(){
+    var now = new Date().toISOString();
+    return {
+      summary: {
+        total_prints: 42,
+        completed_prints: 39,
+        failed_prints: 3,
+        total_print_time_hours: 127.4,
+        avg_print_time_hours: 3.0,
+        success_rate: 39 / 42,
+        last_print_finished: now,
+        longest_print_hours: 18.2,
+        longest_print_name: 'Acceptance – Full Build Volume Test'
+      },
+      by_period: [
+        { label:'Sep', hours: 32.1 },
+        { label:'Oct', hours: 44.8 },
+        { label:'Nov', hours: 50.5 }
+      ]
+    };
+  }
+
+  function init(){
+    var profilesPromise = fetchJson('/cgi-bin/get_calibration_report.sh')
+      .catch(function(){
+        return buildMockProfiles();
+      });
+
+    var metricsPromise = fetchJson('/cgi-bin/get_print_history_metrics.sh')
+      .catch(function(){
+        return buildMockMetrics();
+      });
+
+    Promise.all([profilesPromise, metricsPromise])
+      .then(function(results){
+        var profilesData = results[0] || {};
+        var metricsData  = results[1] || {};
+        var profiles     = profilesData.profiles || [];
+
+        renderProfiles(profiles);
+        renderMetrics(metricsData);
+        renderHeroPills(profiles, metricsData);
+      })
+      .catch(function(err){
+        console.error('Error building report:', err);
+      });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
