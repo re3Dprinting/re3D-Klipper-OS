@@ -6,15 +6,11 @@ echo "Content-Type: text/plain"
 echo ""
 
 # ---- CONFIG ----------------------------------------------------------------
-# Toggle auto-print (1 = enabled, 0 = disabled)
-AUTO_PRINT="${AUTO_PRINT:-1}"
-
-# Moonraker URL and optional API key (override via environment)
+AUTO_PRINT="${AUTO_PRINT:-1}"                       # 1 = auto-print, 0 = just generate
 MOONRAKER_URL="${MOONRAKER_URL:-http://localhost:7125}"
 API_KEY="${API_KEY:-}"   # e.g., export API_KEY="your-moonraker-key"
 
-# Cooperative perms for files we create (group-writable)
-umask 0002
+umask 0002   # cooperative perms
 
 # ---- HELPERS ---------------------------------------------------------------
 urldecode() {
@@ -24,7 +20,6 @@ urldecode() {
 }
 
 read_stdin() {
-  # CGI: read exactly $CONTENT_LENGTH bytes; manual testing: read all
   len="${CONTENT_LENGTH:-}"
   if [ -n "$len" ] && [ "$len" -gt 0 ] 2>/dev/null; then
     dd bs=1 count="$len" 2>/dev/null
@@ -38,8 +33,17 @@ trim() {
 }
 
 is_number() {
-  # 0 if numeric (int or decimal), else 1
   printf "%s" "$1" | awk 'BEGIN{re="^[0-9]+(\\.[0-9]+)?$"} $0 ~ re {ok=1} END{exit ok?0:1}'
+}
+
+load_global_from_file() {
+  key="$1"
+  file="$2"
+  [ -f "$file" ] || { printf ""; return; }
+  val=$(grep "^$key=" "$file" 2>/dev/null | head -n1 | cut -d= -f2-)
+  # strip surrounding single/double quotes if present
+  val=$(printf "%s" "$val" | sed "s/^'//; s/'\$//; s/^\"//; s/\"\$//")
+  printf "%s" "$val"
 }
 
 # ---- READ POST BODY --------------------------------------------------------
@@ -50,7 +54,6 @@ BED_TEMP=""
 MACHINE=""
 EXTRUDER=""
 
-# Split BODY by '&', then each pair by '=' (ash-safe)
 OLD_IFS="$IFS"
 IFS='&'; set -- $BODY; IFS="$OLD_IFS"
 
@@ -60,7 +63,6 @@ for kv in "$@"; do
   val_raw=${kv#*=}
   key=$(urldecode "$key_raw")
   val=$(urldecode "$val_raw")
-  [ "${DEBUG:-0}" = "1" ] && echo "DEBUG kv: [$kv] -> key=[$key] val=[$val]"
   case "$key" in
     hotend_temp) HOTEND_TEMP="$(trim "$val")" ;;
     bed_temp)    BED_TEMP="$(trim "$val")" ;;
@@ -69,10 +71,28 @@ for kv in "$@"; do
   esac
 done
 
-if [ "${DEBUG:-0}" = "1" ]; then
-  echo "DEBUG raw BODY: [$BODY]"
-  echo "DEBUG parsed: hotend_temp=[$HOTEND_TEMP] bed_temp=[$BED_TEMP] machine=[$MACHINE] extruder=[$EXTRUDER]"
-fi
+# ---- PATHS (needed for globals fallback) -----------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WWW_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+GCODE_DIR="$WWW_ROOT/gcode"
+OUT_DIR="$GCODE_DIR/gen"
+DATA_DIR="$WWW_ROOT/calibration_data"
+GLOBALS_FILE="$DATA_DIR/globals.env"
+
+mkdir -p "$OUT_DIR"
+
+# ---- FALLBACK FROM GLOBALS FILE (if POST is missing fields) ----------------
+[ -z "$HOTEND_TEMP" ] && HOTEND_TEMP="$(load_global_from_file HOTEND_TEMP "$GLOBALS_FILE")"
+[ -z "$BED_TEMP"   ] && BED_TEMP="$(load_global_from_file BED_TEMP "$GLOBALS_FILE")"
+[ -z "$MACHINE"    ] && MACHINE="$(load_global_from_file MACHINE "$GLOBALS_FILE")"
+[ -z "$EXTRUDER"   ] && EXTRUDER="$(load_global_from_file EXTRUDER "$GLOBALS_FILE")"
+
+# Uncomment for debugging if needed:
+# echo "DEBUG: BODY=[$BODY]"
+# echo "DEBUG: HOTEND_TEMP=[$HOTEND_TEMP]"
+# echo "DEBUG: BED_TEMP=[$BED_TEMP]"
+# echo "DEBUG: MACHINE=[$MACHINE]"
+# echo "DEBUG: EXTRUDER=[$EXTRUDER]"
 
 # ---- VALIDATE --------------------------------------------------------------
 is_number "$HOTEND_TEMP" || { echo "Error: hotend_temp must be a number (e.g., 220 or 220.5)"; exit 0; }
@@ -88,14 +108,7 @@ case "$EXTRUDER" in
   *) TOOL_SELECT="0" ;;
 esac
 
-# ---- PATHS -----------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WWW_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-GCODE_DIR="$WWW_ROOT/gcode"
-OUT_DIR="$GCODE_DIR/gen"
-mkdir -p "$OUT_DIR"
-
-# ---- TEMPLATE SELECTION (matches your filenames) ---------------------------
+# ---- TEMPLATE SELECTION ----------------------------------------------------
 case "$MACHINE" in
   "Gigabot 4")
     TEMPLATE="$GCODE_DIR/tmpl.GB4-PA.gcode"
@@ -116,7 +129,6 @@ if [ ! -f "$TEMPLATE" ]; then
   exit 0
 fi
 
-# Quick guard to help catch wrong template contents early
 if ! grep -q '{hotend_temp}' "$TEMPLATE" || ! grep -q '{bed_temp}' "$TEMPLATE" || ! grep -q '{tool_select}' "$TEMPLATE"; then
   echo "Error: template missing one or more placeholders: {tool_select} {bed_temp} {hotend_temp}"
   echo "Template: $TEMPLATE"
@@ -129,29 +141,36 @@ safe_machine="$(printf '%s' "$MACHINE" | sed 's/[^A-Za-z0-9]/_/g')"
 ts="$(date +%Y%m%d-%H%M%S)"
 OUT_FILE="$OUT_DIR/PA_${safe_machine}_E${EXTRUDER}_H${HOTEND_TEMP}_B${BED_TEMP}_${ts}.gcode"
 
-# atomic-ish write: mktemp then move
-TMP_FILE="$(mktemp "$OUT_DIR/.tmp.PA.XXXXXX")" || { echo "Error: mktemp failed in $OUT_DIR"; exit 0; }
+TMP_FILE="$(mktemp "$OUT_DIR/.tmp.PA.XXXXXX")" || {
+  echo "Error: mktemp failed in $OUT_DIR"
+  exit 0
+}
 
 sed \
   -e "s/{tool_select}/$TOOL_SELECT/g" \
   -e "s/{bed_temp}/$BED_TEMP/g" \
   -e "s/{hotend_temp}/$HOTEND_TEMP/g" \
-  "$TEMPLATE" > "$TMP_FILE" || { echo "Error: failed to write temp file"; rm -f "$TMP_FILE"; exit 0; }
+  "$TEMPLATE" > "$TMP_FILE" || {
+    echo "Error: failed to write temp file"
+    rm -f "$TMP_FILE"
+    exit 0
+  }
 
-mv -f "$TMP_FILE" "$OUT_FILE" || { echo "Error: failed to move temp file into place (permissions?)"; rm -f "$TMP_FILE"; exit 0; }
+mv -f "$TMP_FILE" "$OUT_FILE" || {
+  echo "Error: failed to move temp file into place (permissions?)"
+  rm -f "$TMP_FILE"
+  exit 0
+}
 
 echo "Generated: $OUT_FILE"
 echo "URL: /gcode/gen/$(basename "$OUT_FILE")"
 
 # ---- FIND MOST RECENT GENERATED FILE --------------------------------------
-# (Use newest by mtime from OUT_DIR in case multiple exist)
 LATEST="$(ls -t "$OUT_DIR"/*.gcode 2>/dev/null | head -n1)"
-
 if [ -z "$LATEST" ]; then
   echo "Error: no generated files found in $OUT_DIR"
   exit 0
 fi
-
 echo "Latest: $LATEST"
 
 # ---- AUTO-PRINT VIA MOONRAKER ---------------------------------------------
@@ -166,12 +185,9 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 BASENAME="$(basename "$LATEST")"
-
-# Upload to Moonraker (goes into virtual_sdcard/gcodes root by default)
 UPLOAD_URL="$MOONRAKER_URL/server/files/upload"
 START_URL="$MOONRAKER_URL/printer/print/start"
 
-# Some servers dislike Expect: 100-continue; drop it.
 API_KEY_HDR=""
 [ -n "$API_KEY" ] && API_KEY_HDR="-H X-Api-Key: $API_KEY"
 

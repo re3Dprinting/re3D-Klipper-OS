@@ -7,9 +7,12 @@
   }
   .cal-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
   .cal-card{display:flex;flex-direction:column;gap:10px}
+  .global-card{gap:6px} /* tighter spacing for the global params card */
   .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
   .cal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media (max-width: 980px){ .cal-grid{grid-template-columns:1fr} }
+  @media (max-width: 980px){
+    .cal-grid{grid-template-columns:1fr}
+  }
   .hint{color:var(--gray-300);font-size:12px}
 
   /* Condense width just on this tab */
@@ -46,6 +49,7 @@
   /* Actions: QR cluster */
   .actions{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
   .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .global-card .btns{margin-top:4px} /* bring Set Parameters closer to globals */
   .qr{
     display:flex;flex-direction:column;align-items:center;gap:6px;
     padding:6px;border:1px solid var(--border);border-radius:12px;background:#0C0E12
@@ -78,6 +82,46 @@
     max-width:100%;
   }
 
+  /* Globals box to the right of extruder */
+  .globals-row{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    margin-top:2px; /* slightly tighter */
+  }
+  .extruder-select{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+
+  .globals-box{
+    min-width:200px;
+    padding:8px 10px;
+    border-radius:10px;
+    background:#0C0E12;
+    border:1px solid var(--border);
+    font-size:11px;
+    color:var(--gray-200);
+  }
+  .globals-title{
+    font-weight:700;
+    font-size:11px;
+    margin-bottom:4px;
+    color:var(--gray-100);
+  }
+  .globals-kv{
+    font-size:11px;
+    line-height:1.4;
+  }
+  .globals-kv .label{
+    color:var(--gray-300);
+    margin-right:4px;
+  }
+  .globals-kv .val{
+    color:var(--gray-100);
+  }
+
   /* Keep borders inside the box so nothing spills up into the header */
   *,*::before,*::after{box-sizing:border-box}
 </style>
@@ -96,8 +140,8 @@
   <!-- PANEL: GUIDED -->
   <div id="cal-panel-guided" class="cal-guided" role="tabpanel" aria-labelledby="cal-tab-guided" aria-hidden="false" style="display:contents">
     <!-- Global -->
-    <form class="card cal-card">
-      <div style="font-weight:800;margin-bottom:6px">Global Parameters</div>
+    <form class="card cal-card global-card">
+      <div style="font-weight:800;margin-bottom:4px">Global Parameters</div>
       <div class="cal-grid">
         <div>
           <label class="hint">Hotend Temp (°C)</label>
@@ -120,19 +164,41 @@
         </div>
         <div>
           <label class="hint">Extruder</label>
-          <div style="display:flex;gap:8px">
-            <label class="chip"><input type="radio" name="extruder" value="left" required> Left</label>
-            <label class="chip"><input type="radio" name="extruder" value="right"> Right</label>
+          <div class="globals-row">
+            <div class="extruder-select">
+              <div style="display:flex;gap:8px">
+                <label class="chip"><input type="radio" name="extruder" value="left" required> Left</label>
+                <label class="chip"><input type="radio" name="extruder" value="right"> Right</label>
+              </div>
+            </div>
+            <div class="globals-box" id="globals-box">
+              <div class="globals-title">Current loaded</div>
+              <div class="globals-kv" id="globals-machine">
+                <span class="label">Machine:</span>
+                <span class="val">—</span>
+              </div>
+              <div class="globals-kv" id="globals-hotend">
+                <span class="label">Hotend:</span>
+                <span class="val">—</span>
+              </div>
+              <div class="globals-kv" id="globals-bed">
+                <span class="label">Bed:</span>
+                <span class="val">—</span>
+              </div>
+              <div class="globals-kv" id="globals-extruder">
+                <span class="label">Extruder:</span>
+                <span class="val">—</span>
+              </div>
+              <div class="globals-kv" id="globals-updated">
+                <span class="label">Updated:</span>
+                <span class="val">—</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Current loaded values box -->
-      <div class="cal-out mono" id="globals-display" style="max-height:none;margin-top:8px">
-Loaded globals: none (using defaults).
-      </div>
-
-      <div class="btns" style="margin-top:8px">
+      <div class="btns">
         <button type="button" id="btn-global">Set Parameters</button>
       </div>
       <div class="cal-out mono" id="out-global">Tip: Save once so later steps auto-fill.</div>
@@ -370,7 +436,7 @@ Loaded globals: none (using defaults).
     });
   }
 
-  // --- load globals from server and show in box + inputs ---
+  // --- load globals from server and show in friendly box + inputs ---
   function loadGlobalsFromServer(){
     fetch('cgi-bin/get_global_calibration_params.sh')
       .then(function(r){ return r.text(); })
@@ -397,18 +463,27 @@ Loaded globals: none (using defaults).
         var extruder = map.EXTRUDER || '';
         var updated  = map.UPDATED_AT || '';
 
-        var display = document.getElementById('globals-display');
-        if (display){
+        // Update friendly box
+        function setVal(id, value){
+          var row = document.getElementById(id);
+          if (!row) return;
+          var valSpan = row.querySelector('.val');
+          if (!valSpan) return;
+          valSpan.textContent = value || '—';
+        }
+
+        setVal('globals-machine',  machine);
+        setVal('globals-hotend',   ht ? (ht + ' °C') : '');
+        setVal('globals-bed',      bt ? (bt + ' °C') : '');
+        setVal('globals-extruder', extruder);
+        setVal('globals-updated',  updated);
+
+        var box = document.getElementById('globals-box');
+        if (box){
           if (!ht && !bt && !machine && !extruder){
-            display.textContent = 'Loaded globals: none (using defaults).';
+            box.style.opacity = '0.7';
           } else {
-            var parts = [];
-            if (ht)       parts.push('Hotend: ' + ht + '°C');
-            if (bt)       parts.push('Bed: ' + bt + '°C');
-            if (machine)  parts.push('Machine: ' + machine);
-            if (extruder) parts.push('Extruder: ' + extruder);
-            if (updated)  parts.push('Updated: ' + updated);
-            display.textContent = 'Loaded globals: ' + parts.join(' | ');
+            box.style.opacity = '1';
           }
         }
 
@@ -427,9 +502,11 @@ Loaded globals: none (using defaults).
         }
       })
       .catch(function(err){
-        var display = document.getElementById('globals-display');
-        if (display){
-          display.textContent = 'Loaded globals: (error fetching) ' + err;
+        // if error, just show something subtle in updated line
+        var row = document.getElementById('globals-updated');
+        if (row){
+          var valSpan = row.querySelector('.val');
+          if (valSpan) valSpan.textContent = 'error loading (' + err + ')';
         }
       });
   }

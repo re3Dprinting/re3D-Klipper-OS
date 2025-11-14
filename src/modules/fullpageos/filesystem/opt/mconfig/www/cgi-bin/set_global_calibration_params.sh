@@ -1,15 +1,23 @@
 #!/bin/sh
-# BusyBox/ash-friendly CGI to store global calibration parameters.
+# CGI: save global calibration parameters to calibration_data/globals.env
 
 echo "Content-Type: text/plain"
 echo ""
 
-# ---- CONFIG ----------------------------------------------------------------
-umask 0002
+# ---- CONFIG / PATHS --------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WWW_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DATA_DIR="$WWW_ROOT/calibration_data"
+GLOBALS_FILE="$DATA_DIR/globals.env"
+
+mkdir -p "$DATA_DIR"
+umask 0002  # cooperative perms
 
 # ---- HELPERS ---------------------------------------------------------------
 urldecode() {
+  # POSIX/BusyBox-safe: + -> space, %HH -> byte
   s=$(printf '%s' "$1" | tr '+' ' ' | sed -r 's/%([0-9A-Fa-f]{2})/\\x\1/g')
+  # interpret \xHH sequences
   printf '%b' "$s"
 }
 
@@ -28,6 +36,13 @@ trim() {
 
 is_number() {
   printf "%s" "$1" | awk 'BEGIN{re="^[0-9]+(\\.[0-9]+)?$"} $0 ~ re {ok=1} END{exit ok?0:1}'
+}
+
+shell_quote() {
+  # Safely single-quote an arbitrary string for shell/env files
+  # 'foo bar' -> 'foo bar'
+  # foo'bar -> 'foo'\''bar'
+  printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
 
 # ---- READ POST BODY --------------------------------------------------------
@@ -61,28 +76,30 @@ is_number "$BED_TEMP"    || { echo "Error: bed_temp must be numeric"; exit 0; }
 [ -n "$MACHINE" ]  || { echo "Error: machine is required"; exit 0; }
 [ -n "$EXTRUDER" ] || { echo "Error: extruder is required"; exit 0; }
 
-# ---- PATHS -----------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WWW_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DATA_DIR="$WWW_ROOT/calibration_data"
-mkdir -p "$DATA_DIR"
+# ---- WRITE GLOBALS FILE ----------------------------------------------------
+TMP_FILE="$(mktemp "$DATA_DIR/.tmp.globals.XXXXXX")" || {
+  echo "Error: mktemp failed in $DATA_DIR"
+  exit 0
+}
 
-GLOBALS_FILE="$DATA_DIR/globals.env"
-
-# ---- WRITE FILE ------------------------------------------------------------
 {
-  echo "# Global calibration parameters"
-  echo "HOTEND_TEMP=\"$HOTEND_TEMP\""
-  echo "BED_TEMP=\"$BED_TEMP\""
-  echo "MACHINE=\"$MACHINE\""
-  echo "EXTRUDER=\"$EXTRUDER\""
-  echo "UPDATED_AT=\"$(date -Iseconds)\""
-} > "$GLOBALS_FILE" || { echo "Error: failed to write $GLOBALS_FILE"; exit 0; }
+  echo "# Global calibration parameters (auto-generated, do not edit by hand)"
+  echo "HOTEND_TEMP=$HOTEND_TEMP"
+  echo "BED_TEMP=$BED_TEMP"
+  printf "MACHINE=%s\n"   "$(shell_quote "$MACHINE")"
+  printf "EXTRUDER=%s\n"  "$(shell_quote "$EXTRUDER")"
+  printf "UPDATED_AT=%s\n" "$(shell_quote "$(date -Iseconds)")"
+} > "$TMP_FILE"
+
+mv -f "$TMP_FILE" "$GLOBALS_FILE" || {
+  echo "Error: failed to move temp file into place ($GLOBALS_FILE)"
+  rm -f "$TMP_FILE"
+  exit 0
+}
 
 echo "OK: Saved global calibration parameters."
 echo "File: $GLOBALS_FILE"
-echo ""
-echo "HOTEND_TEMP = $HOTEND_TEMP"
-echo "BED_TEMP    = $BED_TEMP"
-echo "MACHINE     = $MACHINE"
-echo "EXTRUDER    = $EXTRUDER"
+echo "HOTEND_TEMP=$HOTEND_TEMP"
+echo "BED_TEMP=$BED_TEMP"
+echo "MACHINE=$MACHINE"
+echo "EXTRUDER=$EXTRUDER"
