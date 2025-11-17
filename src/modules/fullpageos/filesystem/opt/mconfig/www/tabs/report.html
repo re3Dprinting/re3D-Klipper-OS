@@ -339,7 +339,7 @@
   .status-bar{
     margin-top:6px;
     display:flex;
-    height:12px;
+    height:10px;
     border-radius:999px;
     overflow:hidden;
     background:#050609;
@@ -348,20 +348,25 @@
   .status-seg{
     height:100%;
   }
+
+  /* Theme-aligned palette:
+     - completed: brand accent
+     - others: muted, desaturated variants that don't clash
+  */
   .status-completed{
-    background:linear-gradient(to right,#3fb950,#2ea043);
+    background:linear-gradient(to right, var(--brand-700), var(--brand));
   }
   .status-error{
-    background:#da3633;
+    background:linear-gradient(to right, #5b2f35, #7b3b44);  /* muted red */
   }
   .status-cancelled{
-    background:#8957e5;
+    background:linear-gradient(to right, #343447, #4a4a63);  /* cool gray-violet */
   }
   .status-shutdown{
-    background:#f5a623;
+    background:linear-gradient(to right, #473929, #6a5438);  /* warm gray/amber */
   }
   .status-other{
-    background:#57606a;
+    background:linear-gradient(to right, #2c3138, #3b414b);  /* neutral gray */
   }
 
   .status-legend{
@@ -372,6 +377,7 @@
     font-size:10px;
     color:var(--gray-300);
   }
+
   .status-dot{
     width:8px;
     height:8px;
@@ -379,11 +385,13 @@
     margin-right:4px;
     display:inline-block;
   }
-  .status-dot.completed{ background:linear-gradient(to right,#3fb950,#2ea043); }
-  .status-dot.error{ background:#da3633; }
-  .status-dot.cancelled{ background:#8957e5; }
-  .status-dot.shutdown{ background:#f5a623; }
-  .status-dot.other{ background:#57606a; }
+
+  /* Match legend dots to segments */
+  .status-dot.completed{ background:linear-gradient(to right, var(--brand-700), var(--brand)); }
+  .status-dot.error{ background:linear-gradient(to right, #5b2f35, #7b3b44); }
+  .status-dot.cancelled{ background:linear-gradient(to right, #343447, #4a4a63); }
+  .status-dot.shutdown{ background:linear-gradient(to right, #473929, #6a5438); }
+  .status-dot.other{ background:linear-gradient(to right, #2c3138, #3b414b); }
 
   /* Simple bar chart for hours by period */
   .chart-wrap{
@@ -764,7 +772,9 @@
 
     function segWidth(key){
       const r = rates && typeof rates[key] === 'number' ? rates[key] : 0;
-      return Math.max(0, Math.min(100, r * 100));
+      return total === 0
+        ? 0
+        : Math.max(0, Math.min(100, r * 100));
     }
 
     function pctStr(key){
