@@ -31,6 +31,7 @@ BODY="$(read_stdin)"
 HOTEND_TEMP=""
 BED_TEMP=""
 MACHINE=""
+MATERIAL=""
 EXTRUDER=""
 MODE=""
 FLOW=""
@@ -49,6 +50,7 @@ for kv in "$@"; do
     hotend_temp) HOTEND_TEMP="$(trim "$val")" ;;
     bed_temp)    BED_TEMP="$(trim "$val")" ;;
     machine)     MACHINE="$(trim "$val")" ;;
+    material)    MATERIAL="$(trim "$val")" ;;
     extruder)    EXTRUDER="$(trim "$val")" ;;
     mode)        MODE="$(trim "$val")" ;;
     flow)        FLOW="$(trim "$val")" ;;
@@ -68,9 +70,10 @@ mkdir -p "$DATA_DIR"
 RESULTS_FILE="$DATA_DIR/calibration_results.log"
 
 TS="$(date -Iseconds)"
-# Format: timestamp | type | mode | machine | extruder | hotend | bed | value | notes
-printf "%s | flow | %s | %s | %s | %s | %s | %s | %s\n" \
-  "$TS" "${MODE:-unknown}" "$MACHINE" "$EXTRUDER" "$HOTEND_TEMP" "$BED_TEMP" "$FLOW" "$NOTES" \
+# New format:
+# timestamp | type | mode | machine | material | extruder | hotend | bed | value | notes
+printf "%s | flow | %s | %s | %s | %s | %s | %s | %s | %s\n" \
+  "$TS" "${MODE:-unknown}" "$MACHINE" "$MATERIAL" "$EXTRUDER" "$HOTEND_TEMP" "$BED_TEMP" "$FLOW" "$NOTES" \
   >> "$RESULTS_FILE" || { echo "Error: failed to append to $RESULTS_FILE"; exit 0; }
 
 echo "OK: Saved flow calibration result."

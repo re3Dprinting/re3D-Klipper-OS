@@ -437,6 +437,14 @@
           if (eq === -1) return;
           var key = line.slice(0, eq).trim();
           var val = line.slice(eq + 1).trim();
+
+          // strip surrounding single/double quotes if present
+          if (val.length >= 2 &&
+              ((val.charAt(0) === '"' && val.charAt(val.length - 1) === '"') ||
+               (val.charAt(0) === "'" && val.charAt(val.length - 1) === "'"))) {
+            val = val.slice(1, -1);
+          }
+
           map[key] = val;
         });
 
@@ -461,6 +469,7 @@
         }
 
         setVal('globals-machine',  machine);
+        setVal('globals-material', material);
         setVal('globals-hotend',   ht ? (ht + ' °C') : '');
         setVal('globals-bed',      bt ? (bt + ' °C') : '');
         setVal('globals-extruder', extruder);
@@ -468,7 +477,7 @@
 
         var box = document.getElementById('globals-box');
         if (box){
-          if (!ht && !bt && !machine && !extruder){
+          if (!ht && !bt && !machine && !material && !extruder){
             box.style.opacity = '0.7';
           } else {
             box.style.opacity = '1';
@@ -482,10 +491,9 @@
         if (machine && (el = document.getElementById('global-machine'))) {
           el.value = machine;   // now matches option text, so it stays selected
         }
-        // if you have a material <select>, you'd also set it here:
-        // if (material && (el = document.getElementById('global-material'))) {
-        //   el.value = material;
-        // }
+        if (material && (el = document.getElementById('global-material'))) {
+          el.value = material;
+        }
         if (extruder){
           var radios = document.querySelectorAll('input[name="extruder"]');
           Array.prototype.forEach.call(radios, function(r){
@@ -507,17 +515,22 @@
     var hotendEl   = document.getElementById('global-hotend');
     var bedEl      = document.getElementById('global-bed');
     var machineEl  = document.getElementById('global-machine');
+    var materialEl = document.getElementById('global-material');
     var extruderEl = document.querySelector('input[name="extruder"]:checked');
 
     var hotend_temp = hotendEl   ? hotendEl.value.trim()   : '';
     var bed_temp    = bedEl      ? bedEl.value.trim()      : '';
     var machine     = machineEl  ? machineEl.value.trim()  : '';
+    var material    = materialEl ? materialEl.value.trim() : '';
     var extruder    = extruderEl ? extruderEl.value.trim() : '';
 
+    // Keys must match CGI scripts:
+    // hotend_temp, bed_temp, machine, material, extruder
     return {
       hotend_temp: hotend_temp,
       bed_temp:    bed_temp,
       machine:     machine,
+      material:    material,
       extruder:    extruder
     };
   }
@@ -646,4 +659,3 @@
   loadGlobalsFromServer();
 })();
 </script>
-

@@ -39,6 +39,19 @@
     </div>
   </div>
 
+  <!-- Calibration & Print Report -->
+  <div class="card sys-card">
+    <div class="sys-row">
+      <div>
+        <div style="font-weight:800;margin-bottom:6px">Calibration &amp; Print Report</div>
+        <div class="hint">
+          Open a summary page showing calibration profiles and print history metrics for this machine.
+        </div>
+      </div>
+      <button type="button" id="btn-report">Open Report</button>
+    </div>
+  </div>
+
   <!-- Print History -->
   <div class="card sys-card">
     <div style="font-weight:800;margin-bottom:6px">Print History</div>
@@ -63,26 +76,14 @@
       <div class="sys-row">
         <div>
           <div style="font-weight:600;margin-bottom:4px">Restore history from USB</div>
-          <div class="hint">Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, adds files, then restarts Moonraker.</div>
+          <div class="hint">
+            Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, adds files, then restarts Moonraker.
+          </div>
         </div>
         <button type="submit">Restore from USB</button>
       </div>
       <div class="sys-out mono" id="out-restore"></div>
     </form>
-  </div>
-
-  <!-- Calibration & Print Report -->
-  <div class="card sys-card">
-    <div class="sys-row">
-      <div>
-        <div style="font-weight:800;margin-bottom:6px">Calibration &amp; Print Report</div>
-        <div class="hint">
-          Opens a detailed HTML report with calibration profiles and print-history metrics.
-          You can print it or export as PDF from the browser.
-        </div>
-      </div>
-      <button type="button" id="btn-open-report">Open Report</button>
-    </div>
   </div>
 </div>
 
@@ -148,7 +149,9 @@
     arr.forEach(({if:ifname, mac, ipv4, state})=>{
       const wrap = document.createElement('div');
       wrap.style.marginBottom = '8px';
-      const ips = (ipv4 && ipv4.length) ? ipv4.map(ip=>`<span class="chip">${ip}</span>`).join(' ') : '<span class="dim">—</span>';
+      const ips = (ipv4 && ipv4.length)
+        ? ipv4.map(ip=>`<span class="chip">${ip}</span>`).join(' ')
+        : '<span class="dim">—</span>';
       const macChip = mac ? `<span class="chip">${mac}</span>` : '<span class="dim">—</span>';
       wrap.innerHTML = `
         <div class="iface">${ifname} <span class="dim">(${state||'unknown'})</span></div>
@@ -184,13 +187,13 @@
     }
   })();
 
-  // ---- Open Calibration & Print Report ----
-  const btnReport = document.getElementById('btn-open-report');
+  // ---- Calibration & Print Report button ----
+  const btnReport = document.getElementById('btn-report');
   if (btnReport){
     btnReport.addEventListener('click', () => {
-      // Path is relative to the main configurator page, which is usually /configurator/
-      // tabs/report.html should sit next to tabs/calibration.html
-      window.open('tabs/report.html', '_blank', 'noopener');
+      // report.html lives next to calibration.html in /opt/mconfig/www/tabs/
+      // The main index is /opt/mconfig/www/, so we need the tabs/ prefix here.
+      window.open('tabs/report.html', '_blank');
     });
   }
 })();

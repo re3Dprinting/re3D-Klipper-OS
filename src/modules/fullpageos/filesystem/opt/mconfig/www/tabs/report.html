@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=1024, initial-scale=1"/>
-<title>Calibration & Print Report</title>
+<title>Calibration &amp; Print Report</title>
 
 <style>
   /* ── Local style-guide tokens (mirrors Configurator theme) ─────────────── */
@@ -17,7 +17,7 @@
     --gray-050:#F2F2F2;
     --gray-100:#E6E6E6;
     --gray-200:#D9D9D9;
-    --gray-300:#CCCCCC;
+    --gray-300:#B3B3B3;
     --gray-400:#B3B3B3;
     --gray-500:#999999;
     --gray-600:#808080;
@@ -117,11 +117,24 @@
     color:var(--gray-300);
   }
 
-  /* Profile list */
+  .empty{
+    font-size:12px;
+    color:var(--gray-400);
+    font-style:italic;
+    padding:4px 0;
+  }
+
+  /* Profile list: exactly 2 cards per row on desktop */
   .profile-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    grid-template-columns:repeat(2, minmax(0,1fr));
     gap:10px;
+  }
+
+  @media (max-width:900px){
+    .profile-grid{
+      grid-template-columns:1fr;
+    }
   }
 
   .profile-card{
@@ -131,7 +144,7 @@
     padding:8px 10px;
     display:flex;
     flex-direction:column;
-    gap:6px;
+    gap:8px;
     font-size:12px;
   }
 
@@ -140,6 +153,7 @@
     justify-content:space-between;
     align-items:flex-start;
     gap:6px;
+    flex-wrap:wrap;
   }
 
   .profile-name{
@@ -152,22 +166,47 @@
     color:var(--gray-400);
   }
 
-  .profile-meta{
+  /* Left / Right extruder slots */
+  .profile-extruders{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:8px;
+  }
+
+  @media (max-width:600px){
+    .profile-extruders{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .extruder-slot{
+    border-radius:6px;
+    border:1px dashed var(--border);
+    padding:6px 8px;
+    min-height:80px;
     display:flex;
-    flex-wrap:wrap;
-    gap:6px;
+    flex-direction:column;
+    gap:4px;
+  }
+
+  .slot-title{
+    font-size:11px;
+    font-weight:600;
+    color:var(--gray-300);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+  }
+
+  .slot-subtitle{
+    font-size:11px;
+    color:var(--gray-400);
   }
 
   .kv-rows{
     display:grid;
-    grid-template-columns:repeat(2, minmax(0,1fr));
-    gap:4px 10px;
-  }
-
-  @media (max-width:600px){
-    .kv-rows{
-      grid-template-columns:1fr;
-    }
+    grid-template-columns:1fr;
+    gap:2px;
+    margin-top:2px;
   }
 
   .kv-row{
@@ -188,12 +227,15 @@
     flex:1;
   }
 
-  .note-text{
+  .kv-mono{
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  .slot-empty{
     font-size:11px;
-    color:var(--gray-300);
-    border-top:1px dashed var(--border);
-    padding-top:4px;
-    margin-top:2px;
+    color:var(--gray-500);
+    font-style:italic;
+    margin-top:4px;
   }
 
   /* Metrics summary */
@@ -231,66 +273,6 @@
     color:var(--gray-400);
   }
 
-  /* Simple bar chart */
-  .chart-wrap{
-    margin-top:6px;
-    background:#050609;
-    border-radius:8px;
-    border:1px solid var(--border);
-    padding:8px 10px;
-  }
-
-  .chart-bars{
-    display:flex;
-    align-items:flex-end;
-    gap:6px;
-    height:120px;
-  }
-
-  .chart-bar{
-    flex:1;
-    min-width:10px;
-    background:linear-gradient(to top, var(--brand-800), var(--brand));
-    border-radius:4px 4px 0 0;
-    position:relative;
-    overflow:hidden;
-  }
-
-  .chart-bar::after{
-    content:attr(data-value);
-    position:absolute;
-    bottom:2px;
-    left:50%;
-    transform:translateX(-50%);
-    font-size:9px;
-    color:#111;
-    font-weight:700;
-    text-shadow:0 0 4px rgba(0,0,0,0.4);
-  }
-
-  .chart-axis{
-    display:flex;
-    justify-content:space-between;
-    gap:4px;
-    margin-top:4px;
-  }
-
-  .chart-label{
-    flex:1;
-    text-align:center;
-    font-size:9px;
-    color:var(--gray-400);
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-
-  .chart-caption{
-    margin-top:4px;
-    font-size:10px;
-    color:var(--gray-400);
-  }
-
   /* Print-friendly tweaks */
   @media print{
     body{
@@ -304,8 +286,7 @@
       box-shadow:none;
     }
     .profile-card,
-    .metric-block,
-    .chart-wrap{
+    .metric-block{
       background:#FFFFFF;
     }
   }
@@ -320,8 +301,11 @@
           <div class="report-title">Calibration &amp; Print Report</div>
           <div class="report-subtitle">Quality and performance overview for this machine.</div>
         </div>
-        <div class="pill-row" id="hero-pill-row">
-          <!-- Filled by JS: machine, material, extruder, last-updated, basic usage -->
+        <div class="pill-row">
+          <div class="pill">
+            <span class="pill-label">Profiles</span>
+            <span class="pill-value" id="profile-count-badge">0</span>
+          </div>
         </div>
       </div>
     </section>
@@ -331,11 +315,11 @@
       <div>
         <div class="section-title">Calibration Profiles</div>
         <div class="section-sub">
-          Each profile corresponds to a machine + material + extruder combination and its tuned values.
+          Each profile corresponds to a machine + material + extruder + temperature combination and its tuned values.
         </div>
       </div>
-      <div class="profile-grid" id="profile-grid">
-        <!-- Profile cards injected by JS -->
+      <div class="profile-grid" id="profiles-container">
+        <div class="empty">Loading…</div>
       </div>
     </section>
 
@@ -348,417 +332,232 @@
         </div>
       </div>
 
-      <div class="metrics-row" id="metrics-row">
-        <!-- Metric blocks injected by JS -->
-      </div>
-
-      <div class="chart-wrap" id="print-chart-wrap" hidden>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
-          <div class="section-title" style="font-size:12px;">Print Hours by Period</div>
-          <div class="section-sub" style="font-size:10px;">Visual snapshot of activity over time.</div>
-        </div>
-        <div class="chart-bars" id="chart-bars">
-          <!-- Bars injected by JS -->
-        </div>
-        <div class="chart-axis" id="chart-axis">
-          <!-- Labels injected by JS -->
-        </div>
-        <div class="chart-caption" id="chart-caption">
-          <!-- Caption injected by JS -->
-        </div>
+      <div id="metrics-container">
+        <div class="empty">Loading…</div>
       </div>
     </section>
   </main>
 
 <script>
-(() => {
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
-  function safeText(v){
-    return (v === null || v === undefined) ? '' : String(v);
+  // --- Formatting helpers -----------------------------------------------
+  function fmtTemp(v){
+    if (v === null || v === undefined || v === "" || isNaN(v)) return "—";
+    if (typeof v === "string") v = parseFloat(v);
+    if (!isFinite(v)) return "—";
+    return v + " °C";
   }
 
-  function formatHours(h){
-    if (h == null || isNaN(h)) return '—';
-    var num = Number(h);
-    if (num < 1) return (num * 60).toFixed(0) + ' min';
-    if (num < 10) return num.toFixed(1) + ' h';
-    return num.toFixed(0) + ' h';
+  function fmtNum(v, digits){
+    if (v === null || v === undefined || v === "" || isNaN(v)) return "—";
+    if (typeof v === "string") v = parseFloat(v);
+    if (!isFinite(v)) return "—";
+    return v.toFixed(digits);
   }
 
-  function formatPct(p){
-    if (p == null || isNaN(p)) return '—';
-    return (Number(p) * 100).toFixed(1) + '%';
+  function fmtProfilesCount(n){
+    if (!n) return "0 profiles";
+    if (n === 1) return "1 profile";
+    return n + " profiles";
   }
 
-  function formatDateShort(iso){
-    if (!iso) return '—';
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString(undefined, {
-      year:'numeric', month:'short', day:'2-digit',
-      hour:'2-digit', minute:'2-digit'
-    });
-  }
-
-  function el(tag, className, text){
-    var e = document.createElement(tag);
-    if (className) e.className = className;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-
-  // -------------------------------------------------------------------------
-  // HERO / PILL ROW
-  // -------------------------------------------------------------------------
-  function renderHeroPills(profiles, metrics){
-    var row = document.getElementById('hero-pill-row');
-    if (!row) return;
-    row.innerHTML = '';
-
-    if (profiles && profiles.length){
-      var p0 = profiles[0];
-
-      function pill(label, value){
-        if (!value) return;
-        var p = el('div', 'pill');
-        var l = el('span', 'pill-label', label);
-        var v = el('span', 'pill-value', value);
-        p.appendChild(l);
-        p.appendChild(v);
-        row.appendChild(p);
-      }
-
-      pill('Machine', p0.machine || '—');
-      pill('Material', p0.material || '—');
-      pill('Extruder', p0.extruder || '—');
-
-      // Latest updated across profiles
-      var latest = profiles.reduce(function(acc, p){
-        if (!p.updated_at) return acc;
-        if (!acc) return p.updated_at;
-        return (p.updated_at > acc) ? p.updated_at : acc;
-      }, null);
-      if (latest){
-        pill('Last Calibrated', formatDateShort(latest));
-      }
+  // --- Helper to build extruder slot HTML --------------------------------
+  function buildExtruderSlot(extruderLabel, profile){
+    if (!profile){
+      return `
+        <div class="extruder-slot">
+          <div class="slot-title">${extruderLabel} Extruder</div>
+          <div class="slot-empty">No ${extruderLabel.toLowerCase()} extruder profile saved yet.</div>
+        </div>
+      `;
     }
 
-    if (metrics && metrics.summary){
-      var s = metrics.summary;
-      if (s.total_prints != null){
-        var p = el('div', 'pill');
-        p.appendChild(el('span', 'pill-label', 'Prints'));
-        p.appendChild(el('span', 'pill-value', String(s.total_prints)));
-        row.appendChild(p);
-      }
-      if (s.success_rate != null){
-        var p2 = el('div', 'pill');
-        p2.appendChild(el('span', 'pill-label', 'Success'));
-        p2.appendChild(el('span', 'pill-value', formatPct(s.success_rate)));
-        row.appendChild(p2);
-      }
-    }
+    const hotend = (profile.hotend !== undefined && profile.hotend !== null) ? profile.hotend : null;
+    const bed    = (profile.bed    !== undefined && profile.bed    !== null) ? profile.bed    : null;
+    const flow   = (profile.flow !== undefined && profile.flow !== null) ? profile.flow : null;
+    const pa     = (profile.pressure_advance !== undefined && profile.pressure_advance !== null)
+                    ? profile.pressure_advance : null;
+
+    const flowText = (flow === null ? '—' : fmtNum(flow, 3));
+    const paText   = (pa   === null ? '—' : fmtNum(pa, 4));
+
+    return `
+      <div class="extruder-slot">
+        <div class="slot-title">${extruderLabel} Extruder</div>
+        <div class="slot-subtitle">${profile.extruder || extruderLabel.toLowerCase()}</div>
+        <div class="kv-rows">
+          <div class="kv-row">
+            <div class="kv-label">Nozzle</div>
+            <div class="kv-val kv-mono">${fmtTemp(hotend)}</div>
+          </div>
+          <div class="kv-row">
+            <div class="kv-label">Bed</div>
+            <div class="kv-val kv-mono">${fmtTemp(bed)}</div>
+          </div>
+          <div class="kv-row">
+            <div class="kv-label">Flow Multiplier</div>
+            <div class="kv-val kv-mono">${flowText}</div>
+          </div>
+          <div class="kv-row">
+            <div class="kv-label">Pressure Advance (K)</div>
+            <div class="kv-val kv-mono">${paText}</div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
-  // -------------------------------------------------------------------------
-  // PROFILES
-  // Expected: { profiles:[ { machine, material, extruder,
-  //   hotend_temp, bed_temp, flow, flow_notes, pa_k, pa_notes, updated_at } ] }
-  // -------------------------------------------------------------------------
-  function renderProfiles(profiles){
-    var grid = document.getElementById('profile-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
+  // --- Calibration profiles ---------------------------------------------
+  async function loadCalibrationProfiles(){
+    const container = document.getElementById('profiles-container');
+    const badge     = document.getElementById('profile-count-badge');
 
-    if (!profiles || !profiles.length){
-      var empty = el('div', 'section-sub', 'No calibration profiles have been saved yet.');
-      empty.style.fontStyle = 'italic';
-      grid.appendChild(empty);
+    if (!container || !badge){
+      console.error('profiles-container or profile-count-badge missing in DOM');
       return;
     }
 
-    profiles.forEach(function(p){
-      var card = el('div', 'profile-card');
+    container.innerHTML = '<div class="empty">Loading…</div>';
+    badge.textContent   = '…';
 
-      // Header
-      var head = el('div', 'profile-header');
-      var left = el('div', '');
-      left.appendChild(el('div', 'profile-name',
-        (p.machine || 'Unknown machine') +
-        (p.material ? ' · ' + p.material : '')
-      ));
-      left.appendChild(el('div', 'profile-tagline',
-        (p.extruder ? ('Extruder: ' + p.extruder) : 'Extruder: —')
-      ));
+    try{
+      const r = await fetch('/cgi-bin/get_calibration_report.sh', {cache:'no-store'});
+      const j = await r.json();
+      const profiles = j.profiles || [];
 
-      var right = el('div', '');
-      if (p.updated_at){
-        var small = el('div', 'profile-tagline',
-          'Updated ' + formatDateShort(p.updated_at)
-        );
-        small.style.textAlign = 'right';
-        right.appendChild(small);
+      console.log('[report] profiles JSON:', profiles);
+
+      badge.textContent = fmtProfilesCount(profiles.length);
+
+      if (!profiles.length){
+        container.innerHTML = '<div class="empty">No calibration profiles have been saved yet.</div>';
+        return;
       }
 
-      head.appendChild(left);
-      head.appendChild(right);
-      card.appendChild(head);
+      // Group profiles by machine + material so left/right live on same row
+      const groups = new Map();
 
-      // Meta row
-      var meta = el('div', 'profile-meta');
-      var mHot = el('div', 'pill');
-      mHot.appendChild(el('span', 'pill-label', 'Nozzle'));
-      mHot.appendChild(el('span', 'pill-value',
-        p.hotend_temp != null ? (p.hotend_temp + ' °C') : '—'
-      ));
-      meta.appendChild(mHot);
+      profiles.forEach((pRaw) => {
+        const machine  = pRaw.machine  || 'Unknown machine';
+        const material = pRaw.material || 'Unspecified';
+        const extruder = (pRaw.extruder || '').toString().toLowerCase();
 
-      var mBed = el('div', 'pill');
-      mBed.appendChild(el('span', 'pill-label', 'Bed'));
-      mBed.appendChild(el('span', 'pill-value',
-        p.bed_temp != null ? (p.bed_temp + ' °C') : '—'
-      ));
-      meta.appendChild(mBed);
+        const key = machine + '||' + material;
 
-      card.appendChild(meta);
-
-      // KV rows
-      var kv = el('div', 'kv-rows');
-
-      function kvRow(label, val){
-        var row = el('div', 'kv-row');
-        row.appendChild(el('div', 'kv-label', label));
-        row.appendChild(el('div', 'kv-val', val));
-        kv.appendChild(row);
-      }
-
-      kvRow('Flow Multiplier',
-        p.flow != null && p.flow !== '' ? String(p.flow) : '—'
-      );
-      kvRow('Pressure Advance (K)',
-        p.pa_k != null && p.pa_k !== '' ? String(p.pa_k) : '—'
-      );
-      kvRow('Material',
-        p.material || '—'
-      );
-      kvRow('Extruder',
-        p.extruder || '—'
-      );
-
-      card.appendChild(kv);
-
-      // Notes
-      var notes = [];
-      if (p.flow_notes) notes.push('Flow: ' + p.flow_notes);
-      if (p.pa_notes)   notes.push('PA: ' + p.pa_notes);
-      if (notes.length){
-        var nEl = el('div', 'note-text', notes.join('  ·  '));
-        card.appendChild(nEl);
-      }
-
-      grid.appendChild(card);
-    });
-  }
-
-  // -------------------------------------------------------------------------
-  // METRICS + SIMPLE CHART
-  // Expected:
-  // { summary:{ total_prints, total_print_time_hours, avg_print_time_hours,
-  //             success_rate, last_print_finished, longest_print_hours, ... },
-  //   by_period:[ { label:"2025-11", hours: 12.3 }, ... ] }
-  // -------------------------------------------------------------------------
-  function renderMetrics(metrics){
-    var row = document.getElementById('metrics-row');
-    if (!row) return;
-    row.innerHTML = '';
-
-    if (!metrics || !metrics.summary){
-      var empty = el('div', 'section-sub', 'No print history metrics available yet.');
-      empty.style.fontStyle = 'italic';
-      row.appendChild(empty);
-      return;
-    }
-
-    var s = metrics.summary;
-
-    function metric(label, value, footnote){
-      var block = el('div', 'metric-block');
-      block.appendChild(el('div', 'metric-label', label));
-      block.appendChild(el('div', 'metric-value', value));
-      if (footnote){
-        block.appendChild(el('div', 'metric-footnote', footnote));
-      }
-      row.appendChild(block);
-    }
-
-    metric('Total Prints',
-      s.total_prints != null ? String(s.total_prints) : '—',
-      s.completed_prints != null && s.failed_prints != null
-        ? (s.completed_prints + ' completed · ' + s.failed_prints + ' failed')
-        : ''
-    );
-
-    metric('Total Print Time',
-      formatHours(s.total_print_time_hours),
-      s.avg_print_time_hours != null
-        ? 'Avg ' + formatHours(s.avg_print_time_hours) + ' per job'
-        : ''
-    );
-
-    metric('Success Rate',
-      formatPct(s.success_rate),
-      s.last_print_finished ? 'Last job ' + formatDateShort(s.last_print_finished) : ''
-    );
-
-    if (s.longest_print_hours != null){
-      metric('Longest Single Print',
-        formatHours(s.longest_print_hours),
-        s.longest_print_name ? s.longest_print_name : ''
-      );
-    }
-
-    var periods = metrics.by_period || [];
-    renderChart(periods);
-  }
-
-  function renderChart(periods){
-    var wrap = document.getElementById('print-chart-wrap');
-    var bars = document.getElementById('chart-bars');
-    var axis = document.getElementById('chart-axis');
-    var caption = document.getElementById('chart-caption');
-    if (!wrap || !bars || !axis || !caption) return;
-
-    if (!periods.length){
-      wrap.hidden = true;
-      return;
-    }
-
-    wrap.hidden = false;
-    bars.innerHTML = '';
-    axis.innerHTML = '';
-
-    var maxHours = periods.reduce(function(m, p){
-      var h = Number(p.hours || 0);
-      return h > m ? h : m;
-    }, 0);
-
-    if (maxHours <= 0){
-      wrap.hidden = true;
-      return;
-    }
-
-    periods.forEach(function(p){
-      var h = Number(p.hours || 0);
-      var pct = Math.max(4, (h / maxHours) * 100);
-
-      var bar = el('div', 'chart-bar');
-      bar.style.height = pct + '%';
-      bar.setAttribute('data-value', h.toFixed(1));
-
-      bars.appendChild(bar);
-
-      var lab = el('div', 'chart-label', p.label || '');
-      axis.appendChild(lab);
-    });
-
-    caption.textContent = 'Relative print hours per period (scaled to the busiest period).';
-  }
-
-  // -------------------------------------------------------------------------
-  // FETCH / MOCK DATA
-  // -------------------------------------------------------------------------
-  function fetchJson(url){
-    return fetch(url, { cache: 'no-store' })
-      .then(function(r){
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      });
-  }
-
-  function buildMockProfiles(){
-    var now = new Date().toISOString();
-    return {
-      profiles: [
-        {
-          machine: 'Gigabot 4 XLT',
-          material: 'PLA',
-          extruder: 'left',
-          hotend_temp: 220,
-          bed_temp: 60,
-          flow: 0.98,
-          flow_notes: 'Dialed in for 0.4 mm nozzle at 0.2 mm layer height.',
-          pa_k: 0.065,
-          pa_notes: 'Good corners at 80 mm/s.',
-          updated_at: now
-        },
-        {
-          machine: 'Gigabot 4 XLT',
-          material: 'PETG',
-          extruder: 'right',
-          hotend_temp: 245,
-          bed_temp: 75,
-          flow: 0.96,
-          flow_notes: 'Slight under-extrusion corrected.',
-          pa_k: 0.055,
-          pa_notes: 'Reduced ooze on sharp corners.',
-          updated_at: now
+        if (!groups.has(key)){
+          groups.set(key, {
+            machine,
+            material,
+            left: null,
+            right: null,
+            other: []
+          });
         }
-      ]
-    };
-  }
 
-  function buildMockMetrics(){
-    var now = new Date().toISOString();
-    return {
-      summary: {
-        total_prints: 42,
-        completed_prints: 39,
-        failed_prints: 3,
-        total_print_time_hours: 127.4,
-        avg_print_time_hours: 3.0,
-        success_rate: 39 / 42,
-        last_print_finished: now,
-        longest_print_hours: 18.2,
-        longest_print_name: 'Acceptance – Full Build Volume Test'
-      },
-      by_period: [
-        { label:'Sep', hours: 32.1 },
-        { label:'Oct', hours: 44.8 },
-        { label:'Nov', hours: 50.5 }
-      ]
-    };
-  }
+        const group = groups.get(key);
 
-  function init(){
-    var profilesPromise = fetchJson('/cgi-bin/get_calibration_report.sh')
-      .catch(function(){
-        return buildMockProfiles();
+        if (extruder === 'left'){
+          group.left = pRaw;
+        } else if (extruder === 'right'){
+          group.right = pRaw;
+        } else {
+          // If it's some other name, keep it in "other" (not rendered for now)
+          group.other.push(pRaw);
+        }
       });
 
-    var metricsPromise = fetchJson('/cgi-bin/get_print_history_metrics.sh')
-      .catch(function(){
-        return buildMockMetrics();
-      });
+      container.innerHTML = '';
 
-    Promise.all([profilesPromise, metricsPromise])
-      .then(function(results){
-        var profilesData = results[0] || {};
-        var metricsData  = results[1] || {};
-        var profiles     = profilesData.profiles || [];
+      Array.from(groups.values()).forEach((g) => {
+        const card = document.createElement('div');
+        card.className = 'profile-card';
 
-        renderProfiles(profiles);
-        renderMetrics(metricsData);
-        renderHeroPills(profiles, metricsData);
-      })
-      .catch(function(err){
-        console.error('Error building report:', err);
+        card.innerHTML = `
+          <div class="profile-header">
+            <div>
+              <div class="profile-name">${g.machine}${g.material ? ' · ' + g.material : ''}</div>
+              <div class="profile-tagline">
+                ${g.left ? 'Left' : '—'} / ${g.right ? 'Right' : '—'} extruder profiles
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-extruders">
+            ${buildExtruderSlot('Left', g.left)}
+            ${buildExtruderSlot('Right', g.right)}
+          </div>
+        `;
+
+        container.appendChild(card);
       });
+    }catch(err){
+      console.error(err);
+      container.innerHTML = '<div class="empty">Error loading calibration profiles: ' + err + '</div>';
+      badge.textContent   = 'error';
+    }
   }
 
-  init();
-})();
+  // --- Print metrics -----------------------------------------------------
+  async function loadPrintMetrics(){
+    const container = document.getElementById('metrics-container');
+    if (!container){
+      console.error('metrics-container missing in DOM');
+      return;
+    }
+
+    container.innerHTML = '<div class="empty">Loading…</div>';
+
+    try{
+      const r = await fetch('/cgi-bin/get_print_history_metrics.sh', {cache:'no-store'});
+      const j = await r.json();
+
+      const summary = j.summary || null;
+      if (!summary){
+        container.innerHTML = '<div class="empty">No print history metrics available yet.</div>';
+        return;
+      }
+
+      const total_time_h   = summary.total_time_hours ?? null;
+      const total_prints   = summary.total_prints ?? null;
+      const success_ratio  = summary.success_ratio ?? null;
+      const last_print_at  = summary.last_print_at || null;
+
+      container.innerHTML = `
+        <div class="metrics-row">
+          <div class="metric-block">
+            <div class="metric-label">Total Prints</div>
+            <div class="metric-value">${total_prints === null ? '—' : total_prints}</div>
+            <div class="metric-footnote">Completed jobs in history.</div>
+          </div>
+
+          <div class="metric-block">
+            <div class="metric-label">Total Print Time</div>
+            <div class="metric-value">${fmtNum(total_time_h, 1)} h</div>
+            <div class="metric-footnote">Accumulated across all recorded jobs.</div>
+          </div>
+
+          <div class="metric-block">
+            <div class="metric-label">Success Ratio</div>
+            <div class="metric-value">
+              ${success_ratio === null ? '—' : fmtNum(success_ratio * 100, 1) + '%'}
+            </div>
+            <div class="metric-footnote">Successful vs. failed/cancelled jobs.</div>
+          </div>
+        </div>
+        <div class="section-sub" style="margin-top:6px">
+          Last recorded print: <span class="kv-mono">${last_print_at || '—'}</span>
+        </div>
+      `;
+    }catch(err){
+      console.error(err);
+      container.innerHTML = '<div class="empty">Error loading print history metrics: ' + err + '</div>';
+    }
+  }
+
+  // --- Init --------------------------------------------------------------
+  (async () => {
+    await loadCalibrationProfiles();
+    await loadPrintMetrics();
+  })();
 </script>
 </body>
 </html>
