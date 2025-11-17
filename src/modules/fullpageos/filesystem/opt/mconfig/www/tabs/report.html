@@ -299,7 +299,7 @@
   /* Metrics summary */
   .metrics-row{
     display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
     gap:8px;
   }
 
@@ -311,6 +311,10 @@
     display:flex;
     flex-direction:column;
     gap:2px;
+  }
+
+  .metric-block--wide{
+    grid-column:1 / -1;
   }
 
   .metric-label{
@@ -331,6 +335,116 @@
     color:var(--gray-400);
   }
 
+  /* Status breakdown bar */
+  .status-bar{
+    margin-top:6px;
+    display:flex;
+    height:12px;
+    border-radius:999px;
+    overflow:hidden;
+    background:#050609;
+    border:1px solid var(--border);
+  }
+  .status-seg{
+    height:100%;
+  }
+  .status-completed{
+    background:linear-gradient(to right,#3fb950,#2ea043);
+  }
+  .status-error{
+    background:#da3633;
+  }
+  .status-cancelled{
+    background:#8957e5;
+  }
+  .status-shutdown{
+    background:#f5a623;
+  }
+  .status-other{
+    background:#57606a;
+  }
+
+  .status-legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px 10px;
+    margin-top:6px;
+    font-size:10px;
+    color:var(--gray-300);
+  }
+  .status-dot{
+    width:8px;
+    height:8px;
+    border-radius:999px;
+    margin-right:4px;
+    display:inline-block;
+  }
+  .status-dot.completed{ background:linear-gradient(to right,#3fb950,#2ea043); }
+  .status-dot.error{ background:#da3633; }
+  .status-dot.cancelled{ background:#8957e5; }
+  .status-dot.shutdown{ background:#f5a623; }
+  .status-dot.other{ background:#57606a; }
+
+  /* Simple bar chart for hours by period */
+  .chart-wrap{
+    margin-top:6px;
+    background:#050609;
+    border-radius:8px;
+    border:1px solid var(--border);
+    padding:8px 10px;
+  }
+
+  .chart-bars{
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+    height:120px;
+  }
+
+  .chart-bar{
+    flex:1;
+    min-width:10px;
+    background:linear-gradient(to top, var(--brand-800), var(--brand));
+    border-radius:4px 4px 0 0;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .chart-bar::after{
+    content:attr(data-value);
+    position:absolute;
+    bottom:2px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:9px;
+    color:#111;
+    font-weight:700;
+    text-shadow:0 0 4px rgba(0,0,0,0.4);
+  }
+
+  .chart-axis{
+    display:flex;
+    justify-content:space-between;
+    gap:4px;
+    margin-top:4px;
+  }
+
+  .chart-label{
+    flex:1;
+    text-align:center;
+    font-size:9px;
+    color:var(--gray-400);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .chart-caption{
+    margin-top:4px;
+    font-size:10px;
+    color:var(--gray-400);
+  }
+
   /* Print-friendly tweaks */
   @media print{
     body{
@@ -344,7 +458,8 @@
       box-shadow:none;
     }
     .profile-card,
-    .metric-block{
+    .metric-block,
+    .chart-wrap{
       background:#FFFFFF;
     }
     .profile-card::before{
@@ -389,7 +504,7 @@
       <div>
         <div class="section-title">Print History &amp; Metrics</div>
         <div class="section-sub">
-          Aggregated print time, run count, and success ratio from this machine’s recent usage.
+          Aggregated print time, run count, success ratio, and status breakdown from this machine’s usage.
         </div>
       </div>
 
@@ -432,6 +547,24 @@
       hour:'2-digit',
       minute:'2-digit'
     });
+  }
+
+  // Convert hours → "xh ym" style
+  function humanHours(h){
+    if (h == null || isNaN(h)) return "—";
+    var totalSec = Math.round(Number(h) * 3600);
+    if (!isFinite(totalSec) || totalSec < 0) return "—";
+
+    var hours = Math.floor(totalSec / 3600);
+    var mins  = Math.floor((totalSec % 3600) / 60);
+    var secs  = totalSec % 60;
+
+    var parts = [];
+    if (hours > 0) parts.push(hours + "h");
+    if (mins  > 0) parts.push(mins  + "m");
+    if (hours === 0 && mins === 0) parts.push(secs + "s");
+
+    return parts.join(" ");
   }
 
   // Decode \xHH sequences in notes (to mirror backend unescape_hex)
@@ -576,7 +709,7 @@
         } else if (extruder === 'right'){
           group.right = pRaw;
         } else {
-          group.other.push(pRaw); // kept but not rendered yet
+          group.other.push(pRaw);
         }
       });
 
@@ -621,6 +754,114 @@
     }
   }
 
+  // --- Render status breakdown bar --------------------------------------
+  function buildStatusBarHTML(breakdown, rates){
+    const total = (breakdown.completed || 0) +
+                  (breakdown.error || 0) +
+                  (breakdown.cancelled || 0) +
+                  (breakdown.klippy_shutdown || 0) +
+                  (breakdown.other || 0);
+
+    function segWidth(key){
+      const r = rates && typeof rates[key] === 'number' ? rates[key] : 0;
+      return Math.max(0, Math.min(100, r * 100));
+    }
+
+    function pctStr(key){
+      const r = rates && typeof rates[key] === 'number' ? rates[key] : 0;
+      return (r * 100).toFixed(1) + '%';
+    }
+
+    return `
+      <div class="metric-block metric-block--wide">
+        <div class="metric-label">Status Breakdown</div>
+        <div class="metric-footnote">
+          Distribution of all recorded jobs by final status.
+        </div>
+
+        <div class="status-bar">
+          <div class="status-seg status-completed" style="width:${segWidth('completed')}%"></div>
+          <div class="status-seg status-error" style="width:${segWidth('error')}%"></div>
+          <div class="status-seg status-cancelled" style="width:${segWidth('cancelled')}%"></div>
+          <div class="status-seg status-shutdown" style="width:${segWidth('klippy_shutdown')}%"></div>
+          <div class="status-seg status-other" style="width:${segWidth('other')}%"></div>
+        </div>
+
+        <div class="status-legend">
+          <div>
+            <span class="status-dot completed"></span>
+            Completed: ${(breakdown.completed || 0)} (${pctStr('completed')})
+          </div>
+          <div>
+            <span class="status-dot error"></span>
+            Error: ${(breakdown.error || 0)} (${pctStr('error')})
+          </div>
+          <div>
+            <span class="status-dot cancelled"></span>
+            Cancelled: ${(breakdown.cancelled || 0)} (${pctStr('cancelled')})
+          </div>
+          <div>
+            <span class="status-dot shutdown"></span>
+            Klippy Shutdown: ${(breakdown.klippy_shutdown || 0)} (${pctStr('klippy_shutdown')})
+          </div>
+          <div>
+            <span class="status-dot other"></span>
+            Other: ${(breakdown.other || 0)} (${pctStr('other')})
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // --- Render hours by period chart -------------------------------------
+  function buildPeriodChartHTML(periods){
+    if (!periods || !periods.length){
+      return '';
+    }
+
+    let maxHours = 0;
+    periods.forEach(function(p){
+      const h = Number(p.hours || 0);
+      if (h > maxHours) maxHours = h;
+    });
+    if (maxHours <= 0){
+      return '';
+    }
+
+    const barsHTML = periods.map(function(p){
+      const h = Number(p.hours || 0);
+      const pct = Math.max(4, (h / maxHours) * 100);
+      return `
+        <div class="chart-bar" style="height:${pct}%" data-value="${h.toFixed(1)}"></div>
+      `;
+    }).join("");
+
+    const axisHTML = periods.map(function(p){
+      return `<div class="chart-label">${p.label || ''}</div>`;
+    }).join("");
+
+    return `
+      <div class="metric-block metric-block--wide">
+        <div class="metric-label">Print Hours by Month</div>
+        <div class="metric-footnote">
+          Relative print hours in each recorded month (scaled to the busiest period).
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-bars">
+            ${barsHTML}
+          </div>
+          <div class="chart-axis">
+            ${axisHTML}
+          </div>
+          <div class="chart-caption">
+            Taller bars indicate months with more accumulated print time.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // --- Print metrics -----------------------------------------------------
   async function loadPrintMetrics(){
     const container = document.getElementById('metrics-container');
@@ -636,42 +877,134 @@
       const j = await r.json();
 
       const summary = j.summary || null;
+      const periods = j.by_period || [];
+
       if (!summary){
         container.innerHTML = '<div class="empty">No print history metrics available yet.</div>';
         return;
       }
 
-      const total_time_h   = summary.total_time_hours ?? null;
-      const total_prints   = summary.total_prints ?? null;
-      const success_ratio  = summary.success_ratio ?? null;
-      const last_print_at  = summary.last_print_at || null;
+      const total_time_h     = typeof summary.total_print_time_hours === 'number'
+                               ? summary.total_print_time_hours : null;
+      const total_prints     = typeof summary.total_prints === 'number'
+                               ? summary.total_prints : null;
+      const avg_time_h       = typeof summary.avg_print_time_hours === 'number'
+                               ? summary.avg_print_time_hours : null;
+      const success_ratio    = typeof summary.success_rate === 'number'
+                               ? summary.success_rate : null;
+      const longest_h        = typeof summary.longest_print_hours === 'number'
+                               ? summary.longest_print_hours : null;
+      const longest_name     = summary.longest_print_name || null;
+      const last_finished_iso= summary.last_print_finished || null;
+      const total_filament_m = typeof summary.total_filament_m === 'number'
+                               ? summary.total_filament_m : null;
+      const avg_filament_m   = typeof summary.avg_filament_m === 'number'
+                               ? summary.avg_filament_m : null;
+      const breakdown        = summary.status_breakdown || {};
+      const rates            = summary.status_rates || {};
 
-      container.innerHTML = `
+      const last_finished_str = last_finished_iso
+        ? (formatDateShort(last_finished_iso) || last_finished_iso)
+        : '—';
+
+      let html = '';
+
+      // Row 1: core metrics
+      html += `
         <div class="metrics-row">
           <div class="metric-block">
             <div class="metric-label">Total Prints</div>
-            <div class="metric-value">${total_prints === null ? '—' : total_prints}</div>
-            <div class="metric-footnote">Completed jobs in history.</div>
+            <div class="metric-value">
+              ${total_prints === null ? '—' : total_prints}
+            </div>
+            <div class="metric-footnote">
+              Total jobs recorded in history.
+            </div>
           </div>
 
           <div class="metric-block">
             <div class="metric-label">Total Print Time</div>
-            <div class="metric-value">${fmtNum(total_time_h, 1)} h</div>
-            <div class="metric-footnote">Accumulated across all recorded jobs.</div>
+            <div class="metric-value">
+              ${total_time_h === null ? '—' : humanHours(total_time_h)}
+            </div>
+            <div class="metric-footnote">
+              Accumulated print time across all jobs.
+            </div>
           </div>
 
           <div class="metric-block">
-            <div class="metric-label">Success Ratio</div>
+            <div class="metric-label">Average Print Time</div>
             <div class="metric-value">
-              ${success_ratio === null ? '—' : fmtNum(success_ratio * 100, 1) + '%'}
+              ${avg_time_h === null ? '—' : humanHours(avg_time_h)}
             </div>
-            <div class="metric-footnote">Successful vs. failed/cancelled jobs.</div>
+            <div class="metric-footnote">
+              Mean print time per job.
+            </div>
           </div>
         </div>
-        <div class="section-sub" style="margin-top:6px">
-          Last recorded print: <span class="kv-mono">${last_print_at || '—'}</span>
+      `;
+
+      // Row 2: success, longest, filament
+      html += `
+        <div class="metrics-row">
+          <div class="metric-block">
+            <div class="metric-label">Success Ratio</div>
+            <div class="metric-value">
+              ${
+                success_ratio === null
+                  ? '—'
+                  : (success_ratio * 100).toFixed(1) + '%'
+              }
+            </div>
+            <div class="metric-footnote">
+              Completed vs. failed / cancelled / shutdown.
+            </div>
+          </div>
+
+          <div class="metric-block">
+            <div class="metric-label">Longest Print</div>
+            <div class="metric-value">
+              ${longest_h === null ? '—' : humanHours(longest_h)}
+            </div>
+            <div class="metric-footnote">
+              ${longest_name ? longest_name : 'Longest recorded single job.'}
+            </div>
+          </div>
+
+          <div class="metric-block">
+            <div class="metric-label">Filament Usage</div>
+            <div class="metric-value">
+              ${total_filament_m === null ? '—' : total_filament_m.toFixed(1) + ' m'}
+            </div>
+            <div class="metric-footnote">
+              ${
+                avg_filament_m === null
+                  ? 'Total filament across history.'
+                  : 'Avg ' + avg_filament_m.toFixed(2) + ' m per job.'
+              }
+            </div>
+          </div>
         </div>
       `;
+
+      // Status breakdown (includes percentages: cancelled, shutdown, etc.)
+      html += buildStatusBarHTML(breakdown, rates);
+
+      // By-month chart
+      const chartHTML = buildPeriodChartHTML(periods);
+      if (chartHTML){
+        html += chartHTML;
+      }
+
+      // Last print footer
+      html += `
+        <div class="section-sub" style="margin-top:6px">
+          Last recorded print:
+          <span class="kv-mono">${last_finished_str}</span>
+        </div>
+      `;
+
+      container.innerHTML = html;
     }catch(err){
       console.error(err);
       container.innerHTML = '<div class="empty">Error loading print history metrics: ' + err + '</div>';
