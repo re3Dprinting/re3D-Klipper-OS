@@ -41,6 +41,29 @@
     color:var(--gray-050);
   }
 
+  /* ── Light mode overrides via CSS vars & base colors ──────────────────── */
+  body.theme-light{
+    --bg:#F5F5F5;
+    --bg-card:#FFFFFF;
+    --border:#DDDDDD;
+    --fg:#111111;
+
+    /* invert gray ramp for light UI */
+    --gray-050:#111111;
+    --gray-100:#333333;
+    --gray-200:#555555;
+    --gray-300:#666666;
+    --gray-400:#777777;
+    --gray-500:#888888;
+    --gray-600:#999999;
+    --gray-700:#AAAAAA;
+    --gray-800:#BBBBBB;
+    --gray-900:#CCCCCC;
+
+    background:radial-gradient(circle at top,#FFFFFF 0,#F5F5F5 40%,#F5F5F5 100%);
+    color:var(--gray-050);
+  }
+
   .report-shell{
     max-width:960px;
     margin:0 auto;
@@ -57,6 +80,10 @@
     flex-direction:column;
     gap:8px;
     box-shadow:0 8px 20px rgba(0,0,0,0.35);
+  }
+
+  body.theme-light .report-card{
+    box-shadow:0 4px 10px rgba(0,0,0,0.08);
   }
 
   .report-header{
@@ -89,6 +116,11 @@
     background:#050609;
   }
 
+  body.theme-light .pill{
+    background:#F5F5F5;
+    color:var(--gray-100);
+  }
+
   .pill-label{
     text-transform:uppercase;
     letter-spacing:0.04em;
@@ -115,6 +147,9 @@
   .pill-material{
     border-color:var(--brand-600);
     background:linear-gradient(135deg, #1b1505, #050609);
+  }
+  body.theme-light .pill-material{
+    background:linear-gradient(135deg,#FFF3C5,#FFE89A);
   }
 
   .section-title{
@@ -154,6 +189,11 @@
     box-shadow:0 6px 18px rgba(0,0,0,0.45);
     position:relative;
     overflow:hidden;
+  }
+
+  body.theme-light .profile-card{
+    background:#FFFFFF;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
   }
 
   /* Brand accent bar on left */
@@ -224,6 +264,10 @@
     flex-direction:column;
     gap:4px;
     background:rgba(5,6,9,0.85);
+  }
+
+  body.theme-light .extruder-slot{
+    background:#F9F9F9;
   }
 
   .slot-title{
@@ -313,6 +357,10 @@
     gap:2px;
   }
 
+  body.theme-light .metric-block{
+    background:#FFFFFF;
+  }
+
   .metric-block--wide{
     grid-column:1 / -1;
   }
@@ -345,6 +393,10 @@
     background:#050609;
     border:1px solid var(--border);
   }
+  body.theme-light .status-bar{
+    background:#F5F5F5;
+  }
+
   .status-seg{
     height:100%;
   }
@@ -392,6 +444,10 @@
     border-radius:8px;
     border:1px solid var(--border);
     padding:8px 10px;
+  }
+
+  body.theme-light .chart-wrap{
+    background:#FFFFFF;
   }
 
   .chart-bars{
@@ -445,30 +501,86 @@
     color:var(--gray-400);
   }
 
+  /* Theme toggle / Print buttons */
+  .theme-toggle{
+    border-radius:999px;
+    border:1px solid var(--border);
+    padding:3px 10px;
+    font-size:11px;
+    background:transparent;
+    color:var(--gray-200);
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+
+  .theme-toggle-icon{
+    font-size:12px;
+  }
+
+  body.theme-light .theme-toggle{
+    color:var(--gray-100);
+    background:#F5F5F5;
+  }
+
+  /* Utility for hiding in print */
+  .no-print{
+    display:inline-flex;
+  }
+
   /* Print-friendly tweaks */
   @media print{
-    body{
-      background:#FFFFFF;
-      color:#000000;
-      padding:10mm;
+    *{
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
+
+    html, body{
+      margin:0;
+      padding:0;
+      background:#FFFFFF !important;
+    }
+
+    body{
+      background:#FFFFFF !important;
+      color:#000000;
+      padding:8mm 10mm;
+    }
+
+    .report-shell{
+      max-width:100%;
+      gap:6mm;
+    }
+
     .report-card{
       background:#FFFFFF;
       border-color:#CCCCCC;
       box-shadow:none;
+      page-break-inside:avoid;
+      break-inside:avoid;
+      margin:0 0 6mm 0;
     }
+
     .profile-card,
     .metric-block,
     .chart-wrap{
       background:#FFFFFF;
+      box-shadow:none;
     }
+
     .profile-card::before{
       display:none;
+    }
+
+    /* Hide controls that are only for screen */
+    .no-print{
+      display:none !important;
     }
   }
 </style>
 </head>
-<body>
+<body class="theme-dark">
   <main class="report-shell">
     <!-- Hero / Header -->
     <section class="report-card">
@@ -482,6 +594,24 @@
             <span class="pill-label">Profiles</span>
             <span class="pill-value" id="profile-count-badge">0</span>
           </div>
+          <button
+            type="button"
+            class="theme-toggle no-print"
+            id="theme-toggle-btn"
+            aria-label="Toggle light/dark mode"
+          >
+            <span class="theme-toggle-icon" id="theme-toggle-icon">🌙</span>
+            <span id="theme-toggle-label">Dark mode</span>
+          </button>
+          <button
+            type="button"
+            class="theme-toggle no-print"
+            id="print-btn"
+            aria-label="Print this report"
+          >
+            <span class="theme-toggle-icon">🖨</span>
+            <span>Print</span>
+          </button>
         </div>
       </div>
     </section>
@@ -515,6 +645,52 @@
   </main>
 
 <script>
+  // --- Theme toggle ------------------------------------------------------
+  const THEME_KEY = 'report-theme';
+
+  function applyTheme(theme){
+    const body = document.body;
+    const label = document.getElementById('theme-toggle-label');
+    const icon  = document.getElementById('theme-toggle-icon');
+
+    if (theme === 'light'){
+      body.classList.remove('theme-dark');
+      body.classList.add('theme-light');
+      if (label) label.textContent = 'Light mode';
+      if (icon) icon.textContent = '☀️';
+    } else {
+      body.classList.remove('theme-light');
+      body.classList.add('theme-dark');
+      if (label) label.textContent = 'Dark mode';
+      if (icon) icon.textContent = '🌙';
+    }
+  }
+
+  function initThemeToggle(){
+    const saved = localStorage.getItem(THEME_KEY);
+    const initial = (saved === 'light' || saved === 'dark') ? saved : 'dark';
+    applyTheme(initial);
+
+    const btn = document.getElementById('theme-toggle-btn');
+    if (btn){
+      btn.addEventListener('click', () => {
+        const isLight = document.body.classList.contains('theme-light');
+        const next = isLight ? 'dark' : 'light';
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(next);
+      });
+    }
+  }
+
+  // --- Print button ------------------------------------------------------
+  function initPrintButton(){
+    const btn = document.getElementById('print-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      window.print();
+    });
+  }
+
   // --- Formatting helpers -----------------------------------------------
   function fmtTemp(v){
     if (v === null || v === undefined || v === "" || isNaN(v)) return "—";
@@ -1038,6 +1214,8 @@
 
   // --- Init --------------------------------------------------------------
   (async () => {
+    initThemeToggle();
+    initPrintButton();
     await loadCalibrationProfiles();
     await loadPrintMetrics();
   })();
