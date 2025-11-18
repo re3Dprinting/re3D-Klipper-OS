@@ -1,6 +1,6 @@
 #!/bin/sh
 # /cgi-bin/collect_logs.sh
-
+#test 
 set -e
 
 # adjust these to your system
