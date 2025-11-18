@@ -1,104 +1,227 @@
 <!-- tabs/system.html -->
 <style>
   /* Scoped to this tab only; uses your global tokens */
-  .sys-out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#0C0E12;
-    border:1px dashed var(--border);max-height:220px;overflow:auto;font-size:12px;color:var(--gray-200)
+  .sys-content{
+    display:grid;
+    grid-template-columns:minmax(0,1.05fr) minmax(0,1.05fr);
+    gap:12px;
+    align-items:flex-start;
   }
-  .sys-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
-  .sys-card{display:flex;flex-direction:column;gap:10px}
-  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
-  .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 10px}
-  .chip{display:inline-block;padding:2px 6px;border:1px solid var(--border);border-radius:8px;margin:2px 4px 2px 0}
-  .iface{font-weight:600;color:var(--gray-100)}
-  .dim{color:var(--gray-300)}
+  @media (max-width: 980px){
+    .sys-content{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .sys-section-label{
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--gray-400);
+    margin:0 0 4px 2px;
+  }
+
+  .sys-col{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .sys-card{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    background:#0C0E12;
+    border-radius:12px;
+    border:1px solid var(--border);
+    padding:10px 12px;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.6);
+  }
+
+  .sys-title{
+    font-weight:800;
+    margin-bottom:4px;
+    color:var(--gray-050);
+  }
+
+  .sys-subtitle{
+    font-size:11px;
+    color:var(--gray-400);
+  }
+
+  .sys-out{
+    margin-top:4px;
+    padding:8px 10px;
+    border-radius:10px;
+    background:#05070B;
+    border:1px dashed var(--border);
+    max-height:220px;
+    overflow:auto;
+    font-size:12px;
+    color:var(--gray-200);
+  }
+
+  .mono{
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  .kv{
+    display:grid;
+    grid-template-columns:max-content 1fr;
+    gap:6px 10px;
+  }
+
+  .chip{
+    display:inline-block;
+    padding:2px 6px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    margin:2px 4px 2px 0;
+  }
+
+  .iface{
+    font-weight:600;
+    color:var(--gray-100);
+  }
+
+  .dim{
+    color:var(--gray-300);
+  }
+
+  /* Print history sub-panels */
+  .ph-grid{
+    display:grid;
+    gap:8px;
+    margin-top:6px;
+  }
+
+  .ph-panel{
+    border-radius:10px;
+    border:1px dashed var(--border);
+    padding:8px 10px;
+    background:#05070B;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+
+  .ph-title{
+    font-weight:600;
+    color:var(--gray-050);
+    margin-bottom:2px;
+  }
+
+  .hint{
+    font-size:11px;
+    color:var(--gray-400);
+  }
+
+  /* Match the network tab's button row behavior */
+  .btn-row{
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:8px;
+  }
 </style>
 
-<div class="content" style="display:grid;gap:12px">
-  <!-- Reboot -->
-  <form class="card sys-card" action="/cgi-bin/reboot.sh" method="post" id="system-form">
-    <div class="sys-row">
-      <div>
-        <div style="font-weight:800;margin-bottom:6px">Reboot</div>
-        <div class="hint">Performs a clean reboot in ~2 seconds.</div>
-      </div>
-      <button type="submit">Reboot</button>
-    </div>
-    <div class="sys-out mono" id="out-system"></div>
-  </form>
+<div class="content sys-content">
+  <!-- Left column: system actions / network -->
+  <div class="sys-col">
+    <div class="sys-section-label">System</div>
 
-  <!-- OS / Configurator Update -->
-  <div class="card sys-card">
-    <div class="sys-row">
-      <div>
-        <div style="font-weight:800;margin-bottom:6px">OS &amp; Configurator Update</div>
-        <div class="hint">
-          Pulls the latest Configurator UI and machine configs from the re3D-Klipper-OS repository
-          and restarts relevant services.
-        </div>
+    <!-- Reboot -->
+    <form class="sys-card" action="/cgi-bin/reboot.sh" method="post" id="system-form">
+      <div class="sys-title">Reboot</div>
+      <div class="sys-subtitle">
+        Performs a clean reboot in ~2 seconds.
       </div>
-      <button type="button" id="btn-update">Run Update</button>
-    </div>
-    <div class="sys-out mono" id="out-update"></div>
-  </div>
-
-  <!-- Network Info -->
-  <div class="card sys-card">
-    <div style="font-weight:800;margin-bottom:6px">Network Info</div>
-    <div class="hint">Hostname, IPv4 addresses, and MAC per interface.</div>
-    <div class="sys-out mono" id="netinfo">
-      <div class="kv">
-        <div class="dim">Hostname</div><div id="ni-host">resolving…</div>
+      <div class="btn-row">
+        <button type="submit">Reboot</button>
       </div>
-      <div id="ni-ifs" style="margin-top:8px"></div>
-    </div>
-  </div>
-
-  <!-- Calibration & Print Report -->
-  <div class="card sys-card">
-    <div class="sys-row">
-      <div>
-        <div style="font-weight:800;margin-bottom:6px">Calibration &amp; Print Report</div>
-        <div class="hint">
-          Open a summary page showing calibration profiles and print history metrics for this machine.
-        </div>
-      </div>
-      <button type="button" id="btn-report">Open Report</button>
-    </div>
-  </div>
-
-  <!-- Print History -->
-  <div class="card sys-card">
-    <div style="font-weight:800;margin-bottom:6px">Print History</div>
-    <div class="hint">
-      Save/restore Moonraker’s print-history database and gcode files.<br/>
-    </div>
-
-    <!-- Save to USB -->
-    <form class="sys-card" action="/cgi-bin/save_history.sh" method="post" id="save-history-form">
-      <div class="sys-row">
-        <div>
-          <div style="font-weight:600;margin-bottom:4px">Save history to USB</div>
-          <div class="hint">Saves file bundle to USB drive.</div>
-        </div>
-        <button type="submit">Save to USB</button>
-      </div>
-      <div class="sys-out mono" id="out-save"></div>
+      <div class="sys-out mono" id="out-system"></div>
     </form>
 
-    <!-- Restore from USB -->
-    <form class="sys-card" action="/cgi-bin/restore_history.sh" method="post" id="restore-history-form">
-      <div class="sys-row">
-        <div>
-          <div style="font-weight:600;margin-bottom:4px">Restore history from USB</div>
-          <div class="hint">
-            Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, adds files, then restarts Moonraker.
+    <!-- OS / Configurator Update -->
+    <div class="sys-card">
+      <div class="sys-title">OS &amp; Configurator Update</div>
+      <div class="sys-subtitle">
+        Pulls the latest Configurator UI and machine configs from the re3D-Klipper-OS repository
+        and restarts relevant services.
+      </div>
+      <div class="btn-row">
+        <button type="button" id="btn-update">Run Update</button>
+      </div>
+      <div class="sys-out mono" id="out-update"></div>
+    </div>
+
+    <!-- Network Info -->
+    <div class="sys-card">
+      <div class="sys-title">Network Info</div>
+      <div class="sys-subtitle">
+        Hostname, IPv4 addresses, and MAC per interface.
+      </div>
+      <div class="sys-out mono" id="netinfo">
+        <div class="kv">
+          <div class="dim">Hostname</div><div id="ni-host">resolving…</div>
+        </div>
+        <div id="ni-ifs" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column: reports / history -->
+  <div class="sys-col">
+    <div class="sys-section-label">Reporting &amp; history</div>
+
+    <!-- Calibration & Print Report -->
+    <div class="sys-card">
+      <div class="sys-title">Calibration &amp; Print Report</div>
+      <div class="sys-subtitle">
+        Open a summary page showing calibration profiles and print history metrics for this machine.
+      </div>
+      <div class="btn-row">
+        <button type="button" id="btn-report">Open Report</button>
+      </div>
+    </div>
+
+    <!-- Print History -->
+    <div class="sys-card">
+      <div class="sys-title">Print History</div>
+      <div class="sys-subtitle">
+        Save/restore Moonraker’s print-history database and gcode files.
+      </div>
+
+      <div class="ph-grid">
+        <!-- Save to USB -->
+        <form class="ph-panel" action="/cgi-bin/save_history.sh" method="post" id="save-history-form">
+          <div>
+            <div class="ph-title">Save history to USB</div>
+            <div class="hint">Saves file bundle to USB drive.</div>
           </div>
-        </div>
-        <button type="submit">Restore from USB</button>
+          <div class="btn-row">
+            <button type="submit">Save to USB</button>
+          </div>
+          <div class="sys-out mono" id="out-save"></div>
+        </form>
+
+        <!-- Restore from USB -->
+        <form class="ph-panel" action="/cgi-bin/restore_history.sh" method="post" id="restore-history-form">
+          <div>
+            <div class="ph-title">Restore history from USB</div>
+            <div class="hint">
+              Backs up current DB as <code>moonraker-sql.db.bak-YYYYmmdd-HHMMSS</code>, adds files,
+              then restarts Moonraker.
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="submit">Restore from USB</button>
+          </div>
+          <div class="sys-out mono" id="out-restore"></div>
+        </form>
       </div>
-      <div class="sys-out mono" id="out-restore"></div>
-    </form>
+    </div>
   </div>
 </div>
 
