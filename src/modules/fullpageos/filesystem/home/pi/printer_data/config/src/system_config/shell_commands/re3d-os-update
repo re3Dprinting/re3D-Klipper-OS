@@ -23,24 +23,31 @@ if [ ! -d "${REPO_DIR}/.git" ]; then
   echo "${LOG_TAG} No repo found at ${REPO_DIR}, cloning..."
   mkdir -p "$(dirname "${REPO_DIR}")"
   git clone "${REPO_URL}" "${REPO_DIR}"
-  cd "${REPO_DIR}"
-else
-  echo "${LOG_TAG} Existing repo found, updating..."
-  cd "${REPO_DIR}"
-  git fetch origin
 fi
 
-# --- Move to requested branch/tag if possible ---
+cd "${REPO_DIR}"
+
+echo "${LOG_TAG} Fetching latest from origin..."
+git fetch origin
+
+# Throw away ANY local changes/untracked files – this is a deployment clone.
+echo "${LOG_TAG} Resetting local changes..."
+git reset --hard HEAD
+git clean -fd
+
+# --- Try to align to requested branch/tag ---
 if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
   echo "${LOG_TAG} Checking out origin/${BRANCH}..."
   git checkout -B "${BRANCH}" "origin/${BRANCH}"
+  git reset --hard "origin/${BRANCH}"
 elif git show-ref --verify --quiet "refs/tags/${BRANCH}"; then
   echo "${LOG_TAG} Checking out tag ${BRANCH}..."
   git checkout -f "refs/tags/${BRANCH}"
+  git reset --hard "refs/tags/${BRANCH}"
 else
   echo "${LOG_TAG} WARNING: Branch or tag '${BRANCH}' not found; staying on current HEAD."
 fi
-
+chmod 755 "${REAL_SCRIPT}" || true
 # --- Hand off to real updater inside repo ---
 if [ ! -x "${REAL_SCRIPT}" ]; then
   echo "${LOG_TAG} ERROR: ${REAL_SCRIPT} not found or not executable."
