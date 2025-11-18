@@ -361,20 +361,13 @@
     </div>
   </div>
 
-  <!-- Step 3: Summary -->
+  <!-- Step 3: Reports & Profiles -->
   <div class="step is-last">
     <div class="rail"><div class="dot" aria-hidden="true">3</div></div>
-    <div class="card cal-card" aria-label="Step 3 — Summary">
-      <div style="font-weight:800;margin-bottom:6px">Step 3 — Summary</div>
-      <div class="cal-out mono" id="summary-body" style="white-space:pre">
-; Summary will appear here.
-; Klipper + slicer suggestions (preview only).
-      </div>
-      <div class="cal-row">
-        <div class="hint">
-          Export or copy these values into your configs. A future reports page can aggregate all runs per material profile.
-        </div>
-        <button type="button" id="btn-summary">Refresh Summary</button>
+    <div class="card cal-card" aria-label="Step 3 — Reports & Profiles">
+      <div style="font-weight:800;margin-bottom:6px">Step 3 — Reports & Profiles</div>
+      <div class="hint">
+        To see calibration profiles and print metrics, go to the <strong>System</strong> tab and click <strong>Open Report</strong>.
       </div>
     </div>
   </div>
@@ -618,42 +611,6 @@
       postToCgi(cfg.url, full, cfg.out);
     });
   });
-
-  // --- summary preview (local only) ---
-  var btnSummary = document.getElementById('btn-summary');
-  if (btnSummary){
-    btnSummary.addEventListener('click', function(){
-      var paKEl    = document.getElementById('pa-k');
-      var ipaKEl   = document.getElementById('ipa-k');
-      var flowEl   = document.getElementById('flow-mult');
-      var iflowEl  = document.getElementById('iflow-mult');
-
-      var paK   = paKEl   ? paKEl.value.trim()   : '';
-      if (!paK && ipaKEl) paK = ipaKEl.value.trim();
-
-      var flow  = flowEl  ? flowEl.value.trim()  : '';
-      if (!flow && iflowEl) flow = iflowEl.value.trim();
-
-      var lines = [];
-      lines.push('; === Calibration Summary (preview) ===');
-      lines.push('; Temperature Tower: (omitted)');
-      lines.push('');
-      lines.push('; --- Klipper ---');
-      lines.push(paK ? ('SET_PRESSURE_ADVANCE ADVANCE=' + paK)
-                     : '; SET_PRESSURE_ADVANCE ADVANCE=<K>');
-      lines.push('; Add to [extruder]: ' + (paK ? ('pressure_advance: ' + paK)
-                                               : 'pressure_advance: <K>'));
-      lines.push('');
-      lines.push('; --- Slicer ---');
-      lines.push(flow ? ('; Flow (Extrusion Multiplier): ' + flow)
-                      : '; Flow (Extrusion Multiplier): <value>');
-      lines.push('');
-      lines.push('; Retraction: test disabled in this UI.');
-
-      var sumBody = document.getElementById('summary-body');
-      if (sumBody) sumBody.textContent = lines.join('\n');
-    });
-  }
 
   // Initial load of saved globals on page load
   loadGlobalsFromServer();
