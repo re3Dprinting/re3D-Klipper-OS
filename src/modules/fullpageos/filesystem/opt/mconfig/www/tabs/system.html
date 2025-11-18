@@ -245,19 +245,10 @@
 
   // OS / Configurator Update
   const btnUpdate = document.getElementById('btn-update');
-  const outUpdate = document.getElementById('out-update');
-  if (btnUpdate && outUpdate){
-    btnUpdate.addEventListener('click', async ()=>{
+  if (btnUpdate){
+    btnUpdate.addEventListener('click', () => {
       if (!confirm('Run OS & Configurator update now?\n\nThis may restart Klipper, Moonraker, and the web UI.')) return;
-      outUpdate.textContent = 'Running update…';
-      try{
-        // /cgi-bin/os_update.sh should run `re3d-os-update` and print logs as plain text
-        const r = await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
-        const t = await r.text();
-        outUpdate.textContent = (t || 'Update completed.').trim();
-      }catch(err){
-        outUpdate.textContent = 'Error: ' + err;
-      }
+      window.location.href = '/tabs/updating.html?start=1';
     });
   }
 

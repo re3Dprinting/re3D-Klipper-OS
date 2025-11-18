@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>System Update</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      color-scheme: dark;
+      --bg: #05060a;
+      --card: #0c0e12;
+      --border: #262a33;
+      --accent: #facc6b;
+      --accent-soft:#f9d67c;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+
+    html, body{
+      width:100%;
+      height:100%;
+    }
+
+    body{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:radial-gradient(circle at top, #111827 0, #020617 55%, #000 100%);
+      color:var(--text);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      /* tuned for 1024x720: a bit more padding but still no scroll */
+      padding:24px 32px;
+      overflow:hidden;
+    }
+
+    .shell{
+      width:100%;
+      max-width:700px;            /* fills nicely on 1024px wide screen */
+      background:var(--card);
+      border-radius:18px;
+      border:1px solid var(--border);
+      padding:24px 24px 20px 24px;
+      box-shadow:0 18px 40px rgba(0,0,0,.7);
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .title-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    h1{
+      font-size:20px;             /* slightly larger for readability */
+      font-weight:700;
+    }
+
+    p{
+      font-size:14px;
+      color:var(--muted);
+      line-height:1.4;
+    }
+
+    .status{
+      font-size:15px;
+      font-weight:600;
+      margin-bottom:2px;
+    }
+
+    .row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-top:2px;
+    }
+
+    .spinner{
+      width:20px;
+      height:20px;
+      border-radius:999px;
+      border:2px solid rgba(148,163,184,.35);
+      border-top-color:var(--accent);
+      animation:spin .8s linear infinite;
+      flex-shrink:0;
+    }
+    @keyframes spin{
+      to{transform:rotate(360deg);}
+    }
+
+    /* Progress bar block */
+    .progress-block{
+      margin-top:8px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .bar{
+      flex:1;
+      height:10px;
+      border-radius:999px;
+      background:rgba(15,23,42,.9);
+      border:1px solid rgba(15,23,42,1);
+      overflow:hidden;
+      box-shadow:0 0 0 1px rgba(0,0,0,.4) inset;
+    }
+    .bar > div{
+      height:100%;
+      width:0%;
+      background:linear-gradient(90deg,var(--accent-soft),var(--accent));
+      transition:width .35s ease;
+    }
+    #pnum{
+      min-width:42px;
+      text-align:right;
+      font-size:13px;
+      color:var(--muted);
+      font-variant-numeric:tabular-nums;
+    }
+
+    .mono{
+      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size:13px;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px dashed var(--border);
+      background:#020617;
+      color:#e5e7eb;
+      /* tuned to fit under the text on 720px height without scrolling body */
+      max-height:260px;
+      overflow:auto;
+      margin-top:6px;
+      white-space:pre-wrap;
+    }
+
+    .dot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:#22c55e;
+      flex-shrink:0;
+    }
+    .dot.warn{background:#f97316;}
+    .dot.idle{background:#6b7280;}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="title-row">
+      <div class="dot idle" id="dot"></div>
+      <div>
+        <h1 id="status-label">Preparing update…</h1>
+      </div>
+    </div>
+
+    <p id="status-detail">
+      Do not power off the machine. Services like Klipper, Moonraker, and this web UI may restart during the update.
+    </p>
+
+    <div class="row">
+      <div class="status" id="status-short">Waiting for updater to start…</div>
+      <div class="spinner" id="spinner"></div>
+    </div>
+
+    <!-- Placeholder progress bar -->
+    <div class="progress-block">
+      <div class="bar"><div id="pbar"></div></div>
+      <div id="pnum">0%</div>
+    </div>
+
+    <div class="mono" id="log">
+Starting update process…
+This screen will stay open while the system updates. It will automatically return to the Configurator after the machine reboots.
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    const statusLabel  = document.getElementById('status-label');
+    const statusDetail = document.getElementById('status-detail');
+    const statusShort  = document.getElementById('status-short');
+    const logBox       = document.getElementById('log');
+    const spinner      = document.getElementById('spinner');
+    const dot          = document.getElementById('dot');
+    const pbar         = document.getElementById('pbar');
+    const pnum         = document.getElementById('pnum');
+    const params       = new URLSearchParams(location.search);
+
+    const shouldStart = params.get('start') === '1';
+
+    let started             = false;
+    let seenRunning         = false;
+    let seenRebootReq       = false;
+    let watchingReboot      = false;
+    let sawDownDuringReboot = false;
+
+    // fake progress
+    let progressValue       = 0;
+    let progressTimer       = null;
+    let progressStarted     = false;
+
+    function appendLog(line){
+      logBox.textContent += "\n" + line;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function setProgress(val){
+      const v = Math.max(0, Math.min(100, Math.round(val)));
+      progressValue = v;
+      pbar.style.width = v + '%';
+      pnum.textContent = v + '%';
+    }
+
+    function startFakeProgress(){
+      if (progressStarted) return;
+      progressStarted = true;
+      setProgress(5);
+
+      progressTimer = setInterval(() => {
+        if (seenRebootReq) {
+          clearInterval(progressTimer);
+          return;
+        }
+        // ease up to 90% while running
+        if (progressValue < 90){
+          const step = 3 + Math.random()*5; // 3–8%
+          setProgress(Math.min(90, progressValue + step));
+        }
+      }, 1200);
+    }
+
+    function completeProgress(){
+      if (progressTimer) clearInterval(progressTimer);
+      setProgress(100);
+    }
+
+    async function startUpdateOnce(){
+      if (!shouldStart || started) return;
+      started = true;
+      appendLog("Sending update command to the system…");
+      try{
+        // This request may drop when services restart; that's fine.
+        await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
+      }catch(e){
+        appendLog("Update command sent (connection may close while services restart).");
+      }
+    }
+
+    function setStatusRunning(){
+      dot.classList.remove('idle');
+      dot.style.background = '#22c55e';
+      spinner.style.visibility = 'visible';
+      statusLabel.textContent  = 'Updating system…';
+      statusDetail.textContent = 'Do not close this tab or power off the machine while the update is running.';
+      statusShort.textContent  = 'Update is in progress.';
+      startFakeProgress();
+    }
+
+    function setStatusRebootRequiredUI(){
+      seenRebootReq = true;
+      dot.classList.add('warn');
+      dot.style.background = '#f97316';
+      spinner.style.visibility = 'hidden';
+      statusLabel.textContent  = 'Update complete – power cycle required';
+      statusDetail.textContent = 'Please turn the machine off, wait a few seconds, then turn it back on. This page will automatically return to the Configurator once the system is back online.';
+      statusShort.textContent  = 'Waiting for you to power cycle the machine.';
+      appendLog("Update finished; waiting for manual power cycle.");
+      completeProgress();
+    }
+
+    async function pollStatus(){
+      if (seenRebootReq) return; // once we know update is done, we stop watching the file
+
+      try{
+        const r = await fetch('/update.txt?ts=' + Date.now(), { cache:'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const text = (await r.text()).trim().toLowerCase();
+
+        if (text === 'running'){
+          seenRunning = true;
+          setStatusRunning();
+        } else if (text === 'reboot_required'){
+          // Update finished; user still needs to power cycle
+          setStatusRebootRequiredUI();
+          startWatchingForManualReboot();
+          return;
+        } else if (text === 'error'){
+          dot.style.background = '#ef4444';
+          spinner.style.visibility = 'hidden';
+          statusLabel.textContent  = 'Update failed';
+          statusDetail.textContent = 'An error occurred during the update. Check system logs for details.';
+          statusShort.textContent  = 'Update error.';
+          appendLog("Update script reported an error state.");
+          completeProgress();
+          return;
+        }
+      }catch(e){
+        // During update, the endpoint may bounce; keep polling.
+      }finally{
+        if (!seenRebootReq){
+          setTimeout(pollStatus, 3000);
+        }
+      }
+    }
+
+    function startWatchingForManualReboot(){
+      if (watchingReboot) return;
+      watchingReboot = true;
+
+      // We only consider the system "rebooted" once:
+      // 1) we've seen it go DOWN at least once, then
+      // 2) it comes back UP.
+      async function pingLoop(){
+        try{
+          const r = await fetch('/?ts=' + Date.now(), { cache:'no-store' });
+
+          if (r.ok){
+            if (sawDownDuringReboot){
+              // It was down and is now back → reboot completed
+              window.location.href = '/';
+              return;
+            }
+            // Still up but we haven't seen it go down yet → user hasn't power cycled.
+          }else{
+            // Non-200 – treat as down too
+            sawDownDuringReboot = true;
+          }
+        }catch(e){
+          // Network error or host unreachable → system likely off / rebooting
+          sawDownDuringReboot = true;
+        }
+
+        setTimeout(pingLoop, 4000);
+      }
+
+      pingLoop();
+    }
+
+    // Kick everything off
+    startUpdateOnce();
+    pollStatus();
+  })();
+  </script>
+</body>
+</html>
