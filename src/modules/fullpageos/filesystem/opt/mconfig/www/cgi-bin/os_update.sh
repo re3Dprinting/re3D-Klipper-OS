@@ -1,6 +1,5 @@
 #!/bin/bash
 STATE_FILE="/opt/mconfig/www/update.txt"
-REBOOT_CGI="/opt/mconfig/www/cgi-bin/reboot.sh"
 
 # CGI header
 echo "Content-Type: text/plain"
@@ -18,14 +17,14 @@ rc=$?
 echo "$LOG"
 
 if [ "$rc" -eq 0 ]; then
-  # Mark that we’re about to reboot
+  # Mark that we’re about to reboot (you can keep "reboot_required" if your JS expects that)
   echo "rebooting" > "$STATE_FILE"
   echo
   echo "Update completed successfully. Rebooting in 5 seconds..."
 
-  # Call existing reboot.sh in the background so CGI can finish cleanly
-  # If reboot.sh itself needs sudo, configure that *inside* reboot.sh
-  ( sleep 5; "$REBOOT_CGI" >/dev/null 2>&1 ) &
+  # Reboot in the background so CGI can finish and the browser gets this text
+  # If you need sudo, use: ( sleep 5; sudo /sbin/reboot ) &
+  ( sleep 5; /sbin/reboot ) &
 else
   echo "error" > "$STATE_FILE"
   echo
