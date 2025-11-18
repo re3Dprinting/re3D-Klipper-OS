@@ -26,7 +26,7 @@ if [ "$rc" -eq 0 ]; then
   echo "Update completed successfully. Rebooting in 10 seconds..."
 
   # Reboot in the background after a short delay so the UI can update
-  ( sleep 10; "$REBOOT_CGI" >/dev/null 2>&1 ) &
+  ( sleep 5; "$REBOOT_CGI" >/dev/null 2>&1 ) &
 else
   echo "error" > "$STATE_FILE"
   echo "Update failed with exit code $rc."
