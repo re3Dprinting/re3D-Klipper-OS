@@ -27,6 +27,21 @@
     <div class="sys-out mono" id="out-system"></div>
   </form>
 
+  <!-- OS / Configurator Update -->
+  <div class="card sys-card">
+    <div class="sys-row">
+      <div>
+        <div style="font-weight:800;margin-bottom:6px">OS &amp; Configurator Update</div>
+        <div class="hint">
+          Pulls the latest Configurator UI and machine configs from the re3D-Klipper-OS repository
+          and restarts relevant services.
+        </div>
+      </div>
+      <button type="button" id="btn-update">Run Update</button>
+    </div>
+    <div class="sys-out mono" id="out-update"></div>
+  </div>
+
   <!-- Network Info -->
   <div class="card sys-card">
     <div style="font-weight:800;margin-bottom:6px">Network Info</div>
@@ -102,6 +117,24 @@
         const t = await r.text();
         out.textContent = (t||'Reboot command sent.').trim();
       }catch(err){ out.textContent = 'Error: '+err; }
+    });
+  }
+
+  // OS / Configurator Update
+  const btnUpdate = document.getElementById('btn-update');
+  const outUpdate = document.getElementById('out-update');
+  if (btnUpdate && outUpdate){
+    btnUpdate.addEventListener('click', async ()=>{
+      if (!confirm('Run OS & Configurator update now?\n\nThis may restart Klipper, Moonraker, and the web UI.')) return;
+      outUpdate.textContent = 'Running update…';
+      try{
+        // /cgi-bin/os_update.sh should run `re3d-os-update` and print logs as plain text
+        const r = await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
+        const t = await r.text();
+        outUpdate.textContent = (t || 'Update completed.').trim();
+      }catch(err){
+        outUpdate.textContent = 'Error: ' + err;
+      }
     });
   }
 

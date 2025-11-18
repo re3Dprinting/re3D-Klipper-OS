@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BRANCH="${1:-devel}"   # default branch/tag to track
+REPO_DIR="/opt/re3d-os-src"
+REAL_SCRIPT="${REPO_DIR}/tools/re3d-os-update.sh"
+LOG_TAG="[re3D-OS bootstrap]"
+
+echo "${LOG_TAG} Using branch/tag: ${BRANCH}"
+echo "${LOG_TAG} Repo dir:   ${REPO_DIR}"
+echo "${LOG_TAG} Real script:${REAL_SCRIPT}"
+
+if [ ! -d "${REPO_DIR}/.git" ]; then
+  echo "${LOG_TAG} ERROR: ${REPO_DIR} is missing or is not a git repo."
+  exit 1
+fi
+
+cd "${REPO_DIR}"
+
+echo "${LOG_TAG} Fetching latest from origin..."
+git fetch origin
+
+echo "${LOG_TAG} Resetting repo to origin/${BRANCH}..."
+git reset --hard "origin/${BRANCH}"
+
+if [ ! -x "${REAL_SCRIPT}" ]; then
+  echo "${LOG_TAG} ERROR: ${REAL_SCRIPT} not found or not executable."
+  exit 1
+fi
+
+echo "${LOG_TAG} Handing off to ${REAL_SCRIPT}..."
+exec "${REAL_SCRIPT}" "${BRANCH}"

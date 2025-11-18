@@ -23,6 +23,16 @@ set -e
 CACHE_ROOT="/host_cache"
 USER_HOME="/home/${BASE_USER}"
 
+# --- Make repo available on the image for runtime updates ---
+if [ -d /opt/re3d-os-src/.git ]; then
+  echo "[re3D-OS] /opt/re3d-os-src already exists; skipping repo copy."
+else
+  echo "[re3D-OS] Copying /src → /opt/re3d-os-src (includes .git)..."
+  mkdir -p /opt
+  cp -a /src /opt/re3d-os-src
+fi
+# --- end re3D-OS repo block ---
+
 seed_dir () {
   local src="$1"     # e.g. /host_cache/klipper
   local dst="$2"     # e.g. /home/pi/klipper
@@ -757,6 +767,7 @@ chmod 0755 /opt/mconfig/www/cgi-bin/net_info.sh      || true
 chmod 0755 /opt/mconfig/www/cgi-bin/print_*.sh      || true
 chmod 0755 /opt/mconfig/www/cgi-bin/submit_*.sh       || true
 chmod 0755 /opt/mconfig/www/cgi-bin/get_*.sh       || true
+chmod 0755 /opt/mconfig/www/cgi-bin/os_*.sh       || true
 chmod 0777 /opt/mconfig/www/gcode/gen || true
 chown -R root:root /opt/mconfig
 
