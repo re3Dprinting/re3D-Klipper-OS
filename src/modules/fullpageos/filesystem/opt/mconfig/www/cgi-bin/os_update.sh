@@ -23,5 +23,5 @@ if [ "$rc" -eq 0 ]; then
 else
   echo "error" > "$STATE_FILE"
 fi
-
-exit "$rc"
+sleep 5
+exit "$rc" && reboot
