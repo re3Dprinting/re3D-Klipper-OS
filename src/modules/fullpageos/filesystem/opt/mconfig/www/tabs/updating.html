@@ -238,15 +238,19 @@ This screen will stay open while the system updates. It will automatically retur
     }
 
     async function startUpdateOnce(){
-      if (!shouldStart || started) return;
-      started = true;
-      appendLog("Sending update command to the system…");
-      try{
+    if (!shouldStart || started) return;
+    started = true;
+
+    // Show updating state immediately, don’t wait for poll
+    setStatusRunning();
+
+    appendLog("Sending update command to the system…");
+    try {
         // This request may drop when services restart; that's fine.
         await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
-      }catch(e){
+    } catch(e) {
         appendLog("Update command sent (connection may close while services restart).");
-      }
+    }
     }
 
     function setStatusRunning(){
@@ -282,11 +286,11 @@ This screen will stay open while the system updates. It will automatically retur
         if (text === 'running'){
           seenRunning = true;
           setStatusRunning();
-        } else if (text === 'reboot_required'){
-          // Update finished; user still needs to power cycle
-          setStatusRebootRequiredUI();
-          startWatchingForManualReboot();
-          return;
+        } else if (text === 'rebooting'){
+            seenRebootReq = true;
+            setStatusRebootRequiredUI();
+            startWatchingForManualReboot();
+            return;
         } else if (text === 'error'){
           dot.style.background = '#ef4444';
           spinner.style.visibility = 'hidden';
