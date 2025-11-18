@@ -39,7 +39,7 @@ if [ -d "${SRC_MCONFIG}" ]; then
 else
   echo "${LOG_TAG} WARNING: Source ${SRC_MCONFIG} not found, skipping Configurator sync."
 fi
-
+chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh || true
 # -------- 2) Klipper configs: /home/pi/printer_data/.../fff -----------
 
 if [ -d "${SRC_FFF}" ]; then
