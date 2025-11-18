@@ -23,13 +23,18 @@ set -e
 CACHE_ROOT="/host_cache"
 USER_HOME="/home/${BASE_USER}"
 
-# --- Make repo available on the image for runtime updates ---
+# --- Make repo available on the image for runtime updates (if /src exists) ---
 if [ -d /opt/re3d-os-src/.git ]; then
   echo "[re3D-OS] /opt/re3d-os-src already exists; skipping repo copy."
 else
-  echo "[re3D-OS] Copying /src → /opt/re3d-os-src (includes .git)..."
-  mkdir -p /opt
-  cp -a /src /opt/re3d-os-src
+  if [ -d /src/.git ]; then
+    echo "[re3D-OS] Copying /src → /opt/re3d-os-src (includes .git)..."
+    mkdir -p /opt
+    cp -a /src /opt/re3d-os-src
+  else
+    echo "[re3D-OS] WARNING: /src not found in chroot; skipping embedded repo."
+    echo "[re3D-OS]          You will need to clone to /opt/re3d-os-src on the live system."
+  fi
 fi
 # --- end re3D-OS repo block ---
 

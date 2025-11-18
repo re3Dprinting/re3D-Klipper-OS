@@ -3,6 +3,7 @@ set -euo pipefail
 
 BRANCH="${1:-devel}"   # default branch/tag to track
 REPO_DIR="/opt/re3d-os-src"
+REPO_URL="https://github.com/re3Dprinting/re3D-Klipper-OS.git"
 REAL_SCRIPT="${REPO_DIR}/tools/re3d-os-update.sh"
 LOG_TAG="[re3D-OS bootstrap]"
 
@@ -10,19 +11,37 @@ echo "${LOG_TAG} Using branch/tag: ${BRANCH}"
 echo "${LOG_TAG} Repo dir:   ${REPO_DIR}"
 echo "${LOG_TAG} Real script:${REAL_SCRIPT}"
 
-if [ ! -d "${REPO_DIR}/.git" ]; then
-  echo "${LOG_TAG} ERROR: ${REPO_DIR} is missing or is not a git repo."
+# --- Ensure git is available ---
+if ! command -v git >/dev/null 2>&1; then
+  echo "${LOG_TAG} ERROR: 'git' is not installed."
+  echo "${LOG_TAG}        Install it with: sudo apt-get update && sudo apt-get install -y git"
   exit 1
 fi
 
-cd "${REPO_DIR}"
+# --- Ensure repo exists (clone on first run) ---
+if [ ! -d "${REPO_DIR}/.git" ]; then
+  echo "${LOG_TAG} No repo found at ${REPO_DIR}, cloning..."
+  mkdir -p "$(dirname "${REPO_DIR}")"
+  git clone "${REPO_URL}" "${REPO_DIR}"
+  cd "${REPO_DIR}"
+else
+  echo "${LOG_TAG} Existing repo found, updating..."
+  cd "${REPO_DIR}"
+  git fetch origin
+fi
 
-echo "${LOG_TAG} Fetching latest from origin..."
-git fetch origin
+# --- Move to requested branch/tag if possible ---
+if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
+  echo "${LOG_TAG} Checking out origin/${BRANCH}..."
+  git checkout -B "${BRANCH}" "origin/${BRANCH}"
+elif git show-ref --verify --quiet "refs/tags/${BRANCH}"; then
+  echo "${LOG_TAG} Checking out tag ${BRANCH}..."
+  git checkout -f "refs/tags/${BRANCH}"
+else
+  echo "${LOG_TAG} WARNING: Branch or tag '${BRANCH}' not found; staying on current HEAD."
+fi
 
-echo "${LOG_TAG} Resetting repo to origin/${BRANCH}..."
-git reset --hard "origin/${BRANCH}"
-
+# --- Hand off to real updater inside repo ---
 if [ ! -x "${REAL_SCRIPT}" ]; then
   echo "${LOG_TAG} ERROR: ${REAL_SCRIPT} not found or not executable."
   exit 1
