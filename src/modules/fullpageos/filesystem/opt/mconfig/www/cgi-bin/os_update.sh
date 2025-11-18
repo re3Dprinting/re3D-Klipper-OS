@@ -1,6 +1,6 @@
 #!/bin/bash
 STATE_FILE="/opt/mconfig/www/update.txt"
-REBOOT_CGI="/cgi-bin/reboot.sh"   # adjust if your reboot script lives elsewhere
+REBOOT_CGI="/opt/mconfig/www/cgi-bin/reboot.sh"   # adjust if your reboot script lives elsewhere
 
 # CGI header
 echo "Content-Type: text/plain"
