@@ -335,7 +335,7 @@
     color:var(--gray-400);
   }
 
-  /* Status breakdown bar */
+  /* Status breakdown bar (time-based) */
   .status-bar{
     margin-top:6px;
     display:flex;
@@ -349,10 +349,7 @@
     height:100%;
   }
 
-  /* Theme-aligned palette:
-     - completed: brand accent
-     - others: muted, desaturated variants that don't clash
-  */
+  /* Theme-aligned palette */
   .status-completed{
     background:linear-gradient(to right, var(--brand-700), var(--brand));
   }
@@ -361,9 +358,6 @@
   }
   .status-cancelled{
     background:linear-gradient(to right, #343447, #4a4a63);  /* cool gray-violet */
-  }
-  .status-shutdown{
-    background:linear-gradient(to right, #473929, #6a5438);  /* warm gray/amber */
   }
   .status-other{
     background:linear-gradient(to right, #2c3138, #3b414b);  /* neutral gray */
@@ -386,11 +380,9 @@
     display:inline-block;
   }
 
-  /* Match legend dots to segments */
   .status-dot.completed{ background:linear-gradient(to right, var(--brand-700), var(--brand)); }
   .status-dot.error{ background:linear-gradient(to right, #5b2f35, #7b3b44); }
   .status-dot.cancelled{ background:linear-gradient(to right, #343447, #4a4a63); }
-  .status-dot.shutdown{ background:linear-gradient(to right, #473929, #6a5438); }
   .status-dot.other{ background:linear-gradient(to right, #2c3138, #3b414b); }
 
   /* Simple bar chart for hours by period */
@@ -512,7 +504,7 @@
       <div>
         <div class="section-title">Print History &amp; Metrics</div>
         <div class="section-sub">
-          Aggregated print time, run count, success ratio, and status breakdown from this machine’s usage.
+          Time spent on completed, cancelled/shutdown, and error jobs, plus additional usage metrics.
         </div>
       </div>
 
@@ -547,7 +539,7 @@
   function formatDateShort(iso){
     if (!iso) return null;
     var d = new Date(iso);
-    if (isNaN(d.getTime())) return iso; // fall back to raw if weird
+    if (isNaN(d.getTime())) return iso;
     return d.toLocaleString(undefined, {
       year:'numeric',
       month:'short',
@@ -762,68 +754,68 @@
     }
   }
 
-  // --- Render status breakdown bar --------------------------------------
-  function buildStatusBarHTML(breakdown, rates){
-    const total = (breakdown.completed || 0) +
-                  (breakdown.error || 0) +
-                  (breakdown.cancelled || 0) +
-                  (breakdown.klippy_shutdown || 0) +
-                  (breakdown.other || 0);
+  // --- Status breakdown bar (time-based) --------------------------------
+  function buildStatusBarHTML(counts, timeHours){
+    const c = counts || {};
+    const t = timeHours || {};
 
-    function segWidth(key){
-      const r = rates && typeof rates[key] === 'number' ? rates[key] : 0;
-      return total === 0
-        ? 0
-        : Math.max(0, Math.min(100, r * 100));
+    const hCompleted = t.completed || 0;
+    const hError     = t.error || 0;
+    const hCancelled = t.cancelled || 0;
+    const hOther     = t.other || 0;
+
+    const totalH = hCompleted + hError + hCancelled + hOther;
+
+    function share(h){
+      if (!totalH || totalH <= 0) return 0;
+      return h / totalH;
     }
 
-    function pctStr(key){
-      const r = rates && typeof rates[key] === 'number' ? rates[key] : 0;
-      return (r * 100).toFixed(1) + '%';
+    function pct(h){
+      return (share(h) * 100).toFixed(1) + '%';
+    }
+
+    function width(h){
+      return Math.max(0, Math.min(100, share(h) * 100));
     }
 
     return `
       <div class="metric-block metric-block--wide">
-        <div class="metric-label">Status Breakdown</div>
+        <div class="metric-label">Time Breakdown by Status</div>
         <div class="metric-footnote">
-          Distribution of all recorded jobs by final status.
+          Share of total print time spent on completed, cancelled/shutdown, and error jobs.
         </div>
 
         <div class="status-bar">
-          <div class="status-seg status-completed" style="width:${segWidth('completed')}%"></div>
-          <div class="status-seg status-error" style="width:${segWidth('error')}%"></div>
-          <div class="status-seg status-cancelled" style="width:${segWidth('cancelled')}%"></div>
-          <div class="status-seg status-shutdown" style="width:${segWidth('klippy_shutdown')}%"></div>
-          <div class="status-seg status-other" style="width:${segWidth('other')}%"></div>
+          <div class="status-seg status-completed" style="width:${width(hCompleted)}%"></div>
+          <div class="status-seg status-error" style="width:${width(hError)}%"></div>
+          <div class="status-seg status-cancelled" style="width:${width(hCancelled)}%"></div>
+          <div class="status-seg status-other" style="width:${width(hOther)}%"></div>
         </div>
 
         <div class="status-legend">
           <div>
             <span class="status-dot completed"></span>
-            Completed: ${(breakdown.completed || 0)} (${pctStr('completed')})
-          </div>
-          <div>
-            <span class="status-dot error"></span>
-            Error: ${(breakdown.error || 0)} (${pctStr('error')})
+            Completed: ${(c.completed || 0)} jobs · ${pct(hCompleted)} of time (${humanHours(hCompleted)})
           </div>
           <div>
             <span class="status-dot cancelled"></span>
-            Cancelled: ${(breakdown.cancelled || 0)} (${pctStr('cancelled')})
+            Cancelled (incl. shutdown): ${(c.cancelled || 0)} jobs · ${pct(hCancelled)} of time (${humanHours(hCancelled)})
           </div>
           <div>
-            <span class="status-dot shutdown"></span>
-            Klippy Shutdown: ${(breakdown.klippy_shutdown || 0)} (${pctStr('klippy_shutdown')})
+            <span class="status-dot error"></span>
+            Error: ${(c.error || 0)} jobs · ${pct(hError)} of time (${humanHours(hError)})
           </div>
           <div>
             <span class="status-dot other"></span>
-            Other: ${(breakdown.other || 0)} (${pctStr('other')})
+            Other: ${(c.other || 0)} jobs · ${pct(hOther)} of time (${humanHours(hOther)})
           </div>
         </div>
       </div>
     `;
   }
 
-  // --- Render hours by period chart -------------------------------------
+  // --- Hours by period chart ---------------------------------------------
   function buildPeriodChartHTML(periods){
     if (!periods || !periods.length){
       return '';
@@ -900,8 +892,6 @@
                                ? summary.total_prints : null;
       const avg_time_h       = typeof summary.avg_print_time_hours === 'number'
                                ? summary.avg_print_time_hours : null;
-      const success_ratio    = typeof summary.success_rate === 'number'
-                               ? summary.success_rate : null;
       const longest_h        = typeof summary.longest_print_hours === 'number'
                                ? summary.longest_print_hours : null;
       const longest_name     = summary.longest_print_name || null;
@@ -910,16 +900,20 @@
                                ? summary.total_filament_m : null;
       const avg_filament_m   = typeof summary.avg_filament_m === 'number'
                                ? summary.avg_filament_m : null;
-      const breakdown        = summary.status_breakdown || {};
-      const rates            = summary.status_rates || {};
+      const counts           = summary.status_breakdown || {};
+      const timeHours        = summary.status_time_hours || {};
 
       const last_finished_str = last_finished_iso
         ? (formatDateShort(last_finished_iso) || last_finished_iso)
         : '—';
 
+      const completed_time_h = timeHours.completed || 0;
+      const cancelled_time_h = timeHours.cancelled || 0;
+      const error_time_h     = timeHours.error || 0;
+
       let html = '';
 
-      // Row 1: core metrics
+      // Row 1: core totals
       html += `
         <div class="metrics-row">
           <div class="metric-block">
@@ -954,23 +948,44 @@
         </div>
       `;
 
-      // Row 2: success, longest, filament
+      // Row 2: time comparison by status (Completed / Cancelled+Shutdown / Error)
       html += `
         <div class="metrics-row">
           <div class="metric-block">
-            <div class="metric-label">Success Ratio</div>
+            <div class="metric-label">Completed Print Time</div>
             <div class="metric-value">
-              ${
-                success_ratio === null
-                  ? '—'
-                  : (success_ratio * 100).toFixed(1) + '%'
-              }
+              ${humanHours(completed_time_h)}
             </div>
             <div class="metric-footnote">
-              Completed vs. failed / cancelled / shutdown.
+              Time spent on successfully completed jobs.
             </div>
           </div>
 
+          <div class="metric-block">
+            <div class="metric-label">Cancelled / Shutdown Time</div>
+            <div class="metric-value">
+              ${humanHours(cancelled_time_h)}
+            </div>
+            <div class="metric-footnote">
+              Time spent on cancelled jobs, including Klippy shutdowns.
+            </div>
+          </div>
+
+          <div class="metric-block">
+            <div class="metric-label">Error Time</div>
+            <div class="metric-value">
+              ${humanHours(error_time_h)}
+            </div>
+            <div class="metric-footnote">
+              Time spent on jobs that ended in an error state.
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Row 3: longest print & filament usage
+      html += `
+        <div class="metrics-row">
           <div class="metric-block">
             <div class="metric-label">Longest Print</div>
             <div class="metric-value">
@@ -997,8 +1012,8 @@
         </div>
       `;
 
-      // Status breakdown (includes percentages: cancelled, shutdown, etc.)
-      html += buildStatusBarHTML(breakdown, rates);
+      // Time-based status breakdown bar
+      html += buildStatusBarHTML(counts, timeHours);
 
       // By-month chart
       const chartHTML = buildPeriodChartHTML(periods);
