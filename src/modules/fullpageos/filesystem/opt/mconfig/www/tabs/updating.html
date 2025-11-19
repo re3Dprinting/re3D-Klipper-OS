@@ -30,7 +30,6 @@
       background:radial-gradient(circle at top, #111827 0, #020617 55%, #000 100%);
       color:var(--text);
       font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      /* tuned for 1024x720: a bit more padding but still no scroll */
       padding:24px 32px;
       overflow:hidden;
       transition:background 0.4s ease;
@@ -38,11 +37,11 @@
 
     .shell{
       width:100%;
-      max-width:700px;            /* fills nicely on 1024px wide screen */
+      max-width:760px;            /* a bit larger for bigger logo */
       background:var(--card);
       border-radius:18px;
       border:1px solid var(--border);
-      padding:24px 24px 20px 24px;
+      padding:24px 26px 20px 26px;
       box-shadow:0 18px 40px rgba(0,0,0,.7);
       display:flex;
       flex-direction:column;
@@ -51,9 +50,10 @@
 
     .title-row{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:space-between;
       gap:10px;
+      margin-bottom:2px;
     }
 
     .title-left{
@@ -63,13 +63,14 @@
     }
 
     .logo{
-      height:26px;
+      height:46px;
       width:auto;
-      opacity:0.9;
+      opacity:0.95;
+      object-fit:contain;
     }
 
     h1{
-      font-size:20px;             /* slightly larger for readability */
+      font-size:20px;
       font-weight:700;
     }
 
@@ -90,7 +91,7 @@
       align-items:center;
       justify-content:space-between;
       gap:12px;
-      margin-top:2px;
+      margin-top:4px;
     }
 
     .spinner{
@@ -160,10 +161,9 @@
       border:1px dashed var(--border);
       background:#020617;
       color:#e5e7eb;
-      /* tuned to fit under the text on 720px height without scrolling body */
       max-height:260px;
       overflow:auto;
-      margin-top:6px;
+      margin-top:8px;
       white-space:pre-wrap;
     }
 
@@ -260,7 +260,6 @@ The printer will reboot automatically when updates are complete. This page will 
     let hasExternalProgress = false; // true when update_progress.txt is driving the bar
 
     function resetUIForNewRun(){
-      // Called when this update run is starting
       progressValue = 0;
       pbar.style.width = '0%';
       pnum.textContent = '0%';
@@ -302,7 +301,6 @@ The printer will reboot automatically when updates are complete. This page will 
           progressTimer = null;
           return;
         }
-        // ease up to 90% while running
         if (progressValue < 90){
           const step = 3 + Math.random()*5; // 3–8%
           setProgress(Math.min(90, progressValue + step));
@@ -322,15 +320,11 @@ The printer will reboot automatically when updates are complete. This page will 
       if (!shouldStart || started) return;
       started = true;
 
-      // We know this is a *new* update run → clear any stale UI remnants
       resetUIForNewRun();
-
-      // Show updating state immediately, don’t wait for poll
       setStatusRunning();
 
       appendLog("Sending update command to the system…");
       try {
-        // This request may drop when services restart; that's fine.
         await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
       } catch(e) {
         appendLog("Update command sent (connection may close while services restart).");
@@ -359,7 +353,6 @@ The printer will reboot automatically when updates are complete. This page will 
       dot.style.background = getComputedStyle(document.documentElement)
         .getPropertyValue('--warn') || '#f97316';
 
-      // Spinner keeps spinning so page feels alive
       spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Update complete – printer is rebooting';
       statusDetail.textContent =
@@ -371,7 +364,7 @@ The printer will reboot automatically when updates are complete. This page will 
     }
 
     async function pollStatus(){
-      if (seenRebootReq) return; // once we know update is done, we stop watching the status file
+      if (seenRebootReq) return;
 
       try{
         const r = await fetch('/update.txt?ts=' + Date.now(), { cache:'no-store' });
@@ -385,10 +378,8 @@ The printer will reboot automatically when updates are complete. This page will 
             setStatusRunning();
           }
         } else if (text === 'rebooting'){
-          // If we haven't seen "running" yet in this session AND we're in start=1 mode,
-          // treat this as stale from a previous run and ignore it.
           if (!seenRunning && shouldStart) {
-            // ignore stale state
+            // stale from previous run, ignore
           } else {
             setStatusRebootPhaseUI();
             startWatchingForReboot();
@@ -396,7 +387,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         } else if (text === 'error'){
           if (!seenRunning && shouldStart) {
-            // stale error from a prior run; ignore until this run actually starts
+            // stale error from prior run
           } else {
             dot.classList.add('warn');
             dot.style.background = '#ef4444';
@@ -411,7 +402,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // During update, the endpoint may bounce; keep polling.
+        // keep polling
       }finally{
         if (!seenRebootReq){
           setTimeout(pollStatus, 3000);
@@ -419,12 +410,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
-    // Poll a running log file written by the updater (e.g. /opt/mconfig/www/update_log.txt)
     async function pollLog(){
       if (seenRebootReq) return;
 
-      // Ignore logs until this run is actually in "running" state, so we don't
-      // briefly show the last run's log.
       if (!seenRunning && shouldStart) {
         setTimeout(pollLog, 2000);
         return;
@@ -439,7 +427,6 @@ The printer will reboot automatically when updates are complete. This page will 
           logBox.scrollTop = logBox.scrollHeight;
         }
       }catch(e){
-        // If file doesn't exist yet or bounces during reboot, just ignore and retry
       }finally{
         if (!seenRebootReq){
           setTimeout(pollLog, 2000);
@@ -447,12 +434,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
-    // Poll a progress file (0–100) written by the updater (e.g. /opt/mconfig/www/update_progress.txt)
     async function pollProgress(){
       if (seenRebootReq) return;
 
-      // Ignore progress until the update is actually "running" to avoid flashing
-      // the last run's 100% before this run starts.
       if (!seenRunning && shouldStart) {
         setTimeout(pollProgress, 2000);
         return;
@@ -475,7 +459,6 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // If the progress file isn't there yet or is stale, we'll just keep fake progress until it appears.
       }finally{
         if (!seenRebootReq){
           setTimeout(pollProgress, 2000);
@@ -487,26 +470,19 @@ The printer will reboot automatically when updates are complete. This page will 
       if (watchingReboot) return;
       watchingReboot = true;
 
-      // We only consider the system "rebooted" once:
-      // 1) we've seen it go DOWN at least once, then
-      // 2) it comes back UP.
       async function pingLoop(){
         try{
           const r = await fetch('/?ts=' + Date.now(), { cache:'no-store' });
 
           if (r.ok){
             if (sawDownDuringReboot){
-              // It was down and is now back → reboot completed
               window.location.href = '/';
               return;
             }
-            // Still up but we haven't seen it go down yet → reboot not occurred yet.
           }else{
-            // Non-200 – treat as down too
             sawDownDuringReboot = true;
           }
         }catch(e){
-          // Network error or host unreachable → system likely off / rebooting
           sawDownDuringReboot = true;
         }
 
@@ -516,7 +492,6 @@ The printer will reboot automatically when updates are complete. This page will 
       pingLoop();
     }
 
-    // Kick everything off
     if (shouldStart) {
       resetUIForNewRun();
     }
