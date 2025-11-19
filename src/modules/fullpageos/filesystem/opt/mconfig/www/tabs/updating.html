@@ -14,6 +14,7 @@
       --accent-soft:#f9d67c;
       --text: #f9fafb;
       --muted: #9ca3af;
+      --warn:#f97316;
     }
     *{box-sizing:border-box;margin:0;padding:0}
 
@@ -32,6 +33,7 @@
       /* tuned for 1024x720: a bit more padding but still no scroll */
       padding:24px 32px;
       overflow:hidden;
+      transition:background 0.4s ease;
     }
 
     .shell{
@@ -86,7 +88,15 @@
       border-top-color:var(--accent);
       animation:spin .8s linear infinite;
       flex-shrink:0;
+      transition:border-top-color 0.25s ease, transform 0.25s ease;
     }
+
+    body.rebooting .spinner{
+      border-top-color:var(--warn);
+      animation-duration:.6s;
+      transform:scale(1.05);
+    }
+
     @keyframes spin{
       to{transform:rotate(360deg);}
     }
@@ -106,13 +116,27 @@
       border:1px solid rgba(15,23,42,1);
       overflow:hidden;
       box-shadow:0 0 0 1px rgba(0,0,0,.4) inset;
+      position:relative;
     }
     .bar > div{
       height:100%;
       width:0%;
       background:linear-gradient(90deg,var(--accent-soft),var(--accent));
       transition:width .35s ease;
+      background-size:120% 100%;
     }
+
+    /* Shimmer animation while rebooting at 100% so it feels alive */
+    body.rebooting .bar > div{
+      animation:bar-shimmer 1.4s linear infinite;
+      background-size:200% 100%;
+    }
+
+    @keyframes bar-shimmer{
+      0%{ background-position:0% 0; }
+      100%{ background-position:100% 0; }
+    }
+
     #pnum{
       min-width:42px;
       text-align:right;
@@ -216,8 +240,9 @@ The printer will reboot automatically when updates are complete. This page will 
       logBox.scrollTop = logBox.scrollHeight;
 
       statusShort.textContent = 'Waiting for updater to start…';
-      seenRunning = false;
+      seenRunning  = false;
       seenRebootReq = false;
+      document.body.classList.remove('rebooting');
     }
 
     function appendLog(line){
@@ -288,6 +313,7 @@ The printer will reboot automatically when updates are complete. This page will 
         'It will automatically reboot when the update is complete, and this page will automatically return to the Configurator after the printer comes back online.';
       statusShort.textContent  = 'Update is in progress.';
       appendLog("Update script is now running.");
+      document.body.classList.remove('rebooting');
       startFakeProgress();
     }
 
@@ -295,13 +321,15 @@ The printer will reboot automatically when updates are complete. This page will 
       seenRebootReq = true;
       dot.classList.add('warn');
       dot.style.background = '#f97316';
-      spinner.style.visibility = 'hidden';
+      // Keep spinner visible (now orange + slightly faster) to show it's alive
+      spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Update complete – printer is rebooting';
       statusDetail.textContent =
         'The printer is restarting to apply the update. This page will automatically return to the Configurator once the printer is back online.';
-      statusShort.textContent  = 'Waiting for the printer to come back up…';
+      statusShort.textContent  = 'Rebooting printer…';
       appendLog("Update finished; printer is rebooting automatically.");
       completeProgress();
+      document.body.classList.add('rebooting');  // triggers shimmer on the full bar
     }
 
     async function pollStatus(){
@@ -333,12 +361,13 @@ The printer will reboot automatically when updates are complete. This page will 
             // stale error from a prior run; ignore until this run actually starts
           } else {
             dot.style.background = '#ef4444';
-            spinner.style.visibility = 'hidden';
+            spinner.style.visibility = 'visible';
             statusLabel.textContent  = 'Update failed';
             statusDetail.textContent = 'An error occurred during the update. Check system logs for details.';
             statusShort.textContent  = 'Update error.';
             appendLog("Update script reported an error state.");
             completeProgress();
+            document.body.classList.remove('rebooting');
             return;
           }
         }
