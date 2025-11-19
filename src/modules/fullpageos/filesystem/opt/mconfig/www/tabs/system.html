@@ -131,18 +131,6 @@
   <div class="sys-col">
     <div class="sys-section-label">System</div>
 
-    <!-- Reboot -->
-    <form class="sys-card" action="/cgi-bin/reboot.sh" method="post" id="system-form">
-      <div class="sys-title">Reboot</div>
-      <div class="sys-subtitle">
-        Performs a clean reboot in ~2 seconds.
-      </div>
-      <div class="btn-row">
-        <button type="submit">Reboot</button>
-      </div>
-      <div class="sys-out mono" id="out-system"></div>
-    </form>
-
     <!-- OS / Configurator Update -->
     <div class="sys-card">
       <div class="sys-title">OS &amp; Configurator Update</div>
@@ -227,22 +215,6 @@
 
 <script>
 (() => {
-  // Reboot
-  const form = document.getElementById('system-form');
-  const out  = document.getElementById('out-system');
-  if (form && out){
-    form.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      if(!confirm('Reboot now?')) return;
-      out.textContent = 'Rebooting…';
-      try{
-        const r = await fetch('/cgi-bin/reboot.sh',{method:'POST'});
-        const t = await r.text();
-        out.textContent = (t||'Reboot command sent.').trim();
-      }catch(err){ out.textContent = 'Error: '+err; }
-    });
-  }
-
   // OS / Configurator Update
   const btnUpdate = document.getElementById('btn-update');
   if (btnUpdate){
