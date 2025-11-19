@@ -63,7 +63,7 @@
     }
 
     .logo{
-      height:46px;
+      height:46px; /* your chosen size */
       width:auto;
       opacity:0.95;
       object-fit:contain;
@@ -115,6 +115,7 @@
       align-items:center;
       gap:10px;
     }
+
     .bar{
       flex:1;
       height:10px;
@@ -250,14 +251,21 @@ The printer will reboot automatically when updates are complete. This page will 
     let watchingReboot      = false;
     let sawDownDuringReboot = false;
 
-    // Split UI vs backend running state
-    let uiRunning            = false; // we flip this as soon as we fire the updater
-    let backendRunningSeen   = false; // only becomes true once update.txt says "running"
+    // UI vs backend state
+    let uiRunning           = false; // we turn this on as soon as we fire the updater
+    let backendRunningSeen  = false; // becomes true when we see either status=running or fresh log/progress
 
+    // Progress handling
     let progressValue       = 0;
     let progressTimer       = null;
     let progressStarted     = false;
     let hasExternalProgress = false;
+    let progressBaseline    = null;  // first raw value read from update_progress.txt
+    let progressSeenFirst   = false;
+
+    // Log baseline so we can detect “new” log output
+    let logBaseline         = null;
+    let logBaselineSeen     = false;
 
     function resetUIForNewRun(){
       progressValue = 0;
@@ -281,6 +289,18 @@ The printer will reboot automatically when updates are complete. This page will 
       sawDownDuringReboot = false;
       uiRunning           = false;
       backendRunningSeen  = false;
+
+      progressStarted     = false;
+      hasExternalProgress = false;
+      progressBaseline    = null;
+      progressSeenFirst   = false;
+      logBaseline         = null;
+      logBaselineSeen     = false;
+
+      if (progressTimer){
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
 
       document.body.classList.remove('rebooting');
       dot.classList.add('idle');
@@ -351,7 +371,7 @@ The printer will reboot automatically when updates are complete. This page will 
       started = true;
 
       resetUIForNewRun();
-      // Immediately put UI into "running" mode so it never hangs at "waiting…"
+      // Immediately show “updating” so we never hang visually at “waiting…”
       setStatusRunningUI();
 
       appendLog("Sending update command to the system…");
@@ -388,22 +408,18 @@ The printer will reboot automatically when updates are complete. This page will 
         const text = raw.toLowerCase();
 
         if (text === 'running'){
-          // This confirms the backend has started this run.
-          if (!backendRunningSeen){
-            backendRunningSeen = true;
-            // If for some reason UI wasn't already in running mode, flip it now.
-            setStatusRunningUI();
-          }
+          // Backend explicitly says it’s running for this session
+          backendRunningSeen = true;
+          setStatusRunningUI();
         } else if (text === 'rebooting'){
-          // Only trust reboot state if we've confirmed backend "running" this session
+          // Only trust rebooting if we’ve seen some running activity
           if (backendRunningSeen){
             setStatusRebootPhaseUI();
             startWatchingForReboot();
             return;
           }
         } else if (text === 'error'){
-          // Only treat error as real if we've confirmed a backend "running" this session;
-          // otherwise it's probably stale from a prior run.
+          // Only treat error as real if we’ve seen running/log/progress from this session
           if (backendRunningSeen){
             dot.classList.add('warn');
             dot.style.background = '#ef4444';
@@ -419,7 +435,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // keep polling; during reboot this can fail
+        // keep polling (during reboot this may fail)
       }finally{
         if (!seenRebootReq){
           setTimeout(pollStatus, 3000);
@@ -427,20 +443,29 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
-    // Show log only after backendRunningSeen = true, so we don't flash old logs
+    // We use log changes as another proof that this run actually started
     async function pollLog(){
-      if (seenRebootReq || !backendRunningSeen){
-        setTimeout(pollLog, 2000);
+      if (seenRebootReq){
         return;
       }
 
       try{
         const r = await fetch('/update_log.txt?ts=' + Date.now(), { cache:'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        const text = await r.text();
-        if (text && text.trim().length){
-          logBox.textContent = text.trimEnd();
-          logBox.scrollTop = logBox.scrollHeight;
+        const text = (await r.text()) ?? '';
+
+        if (!logBaselineSeen){
+          // First read: remember whatever’s there as baseline, don’t show it yet.
+          logBaseline = text;
+          logBaselineSeen = true;
+        }else{
+          if (text !== logBaseline && text.trim().length){
+            // Log content changed after we kicked off this run → treat as new run activity
+            backendRunningSeen = true;
+            setStatusRunningUI();
+            logBox.textContent = text.trimEnd();
+            logBox.scrollTop = logBox.scrollHeight;
+          }
         }
       }catch(e){
         // ignore and retry
@@ -451,10 +476,8 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
-    // Read progress only after backendRunningSeen = true
     async function pollProgress(){
-      if (seenRebootReq || !backendRunningSeen){
-        setTimeout(pollProgress, 2000);
+      if (seenRebootReq){
         return;
       }
 
@@ -462,19 +485,30 @@ The printer will reboot automatically when updates are complete. This page will 
         const r = await fetch('/update_progress.txt?ts=' + Date.now(), { cache:'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const text = (await r.text()).trim();
-        if (text !== ''){
+
+        if (!progressSeenFirst){
+          // First value we see (could be stale 100 from last run) → baseline only.
+          progressBaseline  = text;
+          progressSeenFirst = true;
+          return;
+        }
+
+        // After baseline: only use the value if it changes from baseline.
+        if (text !== '' && text !== progressBaseline){
           const v = parseInt(text, 10);
           if (!isNaN(v)){
+            backendRunningSeen = true;    // we’ve seen live progress for THIS run
             hasExternalProgress = true;
             if (progressTimer){
               clearInterval(progressTimer);
               progressTimer = null;
             }
+            setStatusRunningUI();
             setProgress(v);
           }
         }
       }catch(e){
-        // ignore; fake progress continues until real numbers appear
+        // ignore; fake progress keeps going until we see real numbers
       }finally{
         if (!seenRebootReq){
           setTimeout(pollProgress, 2000);
@@ -513,6 +547,7 @@ The printer will reboot automatically when updates are complete. This page will 
       startUpdateOnce();
     }
 
+    // Start background polling loops
     pollStatus();
     pollLog();
     pollProgress();
