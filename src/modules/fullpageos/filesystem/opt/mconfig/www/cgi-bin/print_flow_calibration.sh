@@ -9,7 +9,12 @@ echo ""
 AUTO_PRINT="${AUTO_PRINT:-1}"
 MOONRAKER_URL="${MOONRAKER_URL:-http://localhost:7125}"
 API_KEY="${API_KEY:-}"
+DEBUG="${DEBUG:-0}"      # 1 = verbose logs, 0 = quiet
 umask 0002
+
+log() {
+  [ "$DEBUG" = "1" ] && echo "$@"
+}
 
 # ---- HELPERS ---------------------------------------------------------------
 urldecode() {
@@ -157,8 +162,8 @@ mv -f "$TMP_FILE" "$OUT_FILE" || {
   exit 0
 }
 
-echo "Generated: $OUT_FILE"
-echo "URL: /gcode/gen/$(basename "$OUT_FILE")"
+log "Generated: $OUT_FILE"
+log "URL: /gcode/gen/$(basename "$OUT_FILE")"
 
 # ---- FIND MOST RECENT GENERATED FILE ---------------------------------------
 LATEST="$(ls -t "$OUT_DIR"/*.gcode 2>/dev/null | head -n1)"
@@ -168,7 +173,7 @@ if [ -z "$LATEST" ]; then
   exit 0
 fi
 
-echo "Latest: $LATEST"
+log "Latest: $LATEST"
 
 # ---- AUTO-PRINT VIA MOONRAKER ---------------------------------------------
 if [ "$AUTO_PRINT" != "1" ]; then
@@ -188,20 +193,21 @@ START_URL="$MOONRAKER_URL/printer/print/start"
 API_KEY_HDR=""
 [ -n "$API_KEY" ] && API_KEY_HDR="-H X-Api-Key: $API_KEY"
 
-echo "Uploading to Moonraker: $UPLOAD_URL"
+log "Uploading to Moonraker: $UPLOAD_URL"
 UPLOAD_RES="$(curl -sS -X POST $API_KEY_HDR -H 'Expect:' -F "file=@$LATEST" "$UPLOAD_URL" 2>&1)"
 UPLOAD_RC=$?
-echo "Upload response: $UPLOAD_RES"
+log "Upload response: $UPLOAD_RES"
 [ $UPLOAD_RC -eq 0 ] || { echo "Error: upload failed ($UPLOAD_RC)"; exit 0; }
 
 # JSON-escape backslashes and quotes in the filename
 JSON_FILENAME="$(printf '%s' "$BASENAME" | sed 's/\\/\\\\/g; s/\"/\\\"/g')"
 JSON_PAYLOAD="{\"filename\":\"$JSON_FILENAME\"}"
 
-echo "Starting print: $START_URL  (filename=$JSON_FILENAME)"
+log "Starting print: $START_URL  (filename=$JSON_FILENAME)"
 START_RES="$(printf '%s' "$JSON_PAYLOAD" | curl -sS -X POST $API_KEY_HDR -H 'Content-Type: application/json' --data-binary @- "$START_URL" 2>&1)"
 START_RC=$?
-echo "Start response: $START_RES"
+log "Start response: $START_RES"
 [ $START_RC -eq 0 ] || { echo "Error: start print failed ($START_RC)"; exit 0; }
 
+# Final minimal success line
 echo "OK: Uploaded and started $BASENAME"
