@@ -216,6 +216,8 @@ The printer will reboot automatically when updates are complete. This page will 
       logBox.scrollTop = logBox.scrollHeight;
 
       statusShort.textContent = 'Waiting for updater to start…';
+      seenRunning = false;
+      seenRebootReq = false;
     }
 
     function appendLog(line){
@@ -308,28 +310,37 @@ The printer will reboot automatically when updates are complete. This page will 
       try{
         const r = await fetch('/update.txt?ts=' + Date.now(), { cache:'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        const text = (await r.text()).trim().toLowerCase();
+        const raw = (await r.text()).trim();
+        const text = raw.toLowerCase();
 
         if (text === 'running'){
           if (!seenRunning){
             seenRunning = true;
-            // First time we see "running" for this session:
-            // ensure UI is in "active run" mode.
             setStatusRunning();
           }
         } else if (text === 'rebooting'){
-          setStatusRebootPhaseUI();
-          startWatchingForReboot();
-          return;
+          // If we haven't seen "running" yet in this session AND we're in start=1 mode,
+          // treat this as stale from a previous run and ignore it.
+          if (!seenRunning && shouldStart) {
+            // ignore stale state
+          } else {
+            setStatusRebootPhaseUI();
+            startWatchingForReboot();
+            return;
+          }
         } else if (text === 'error'){
-          dot.style.background = '#ef4444';
-          spinner.style.visibility = 'hidden';
-          statusLabel.textContent  = 'Update failed';
-          statusDetail.textContent = 'An error occurred during the update. Check system logs for details.';
-          statusShort.textContent  = 'Update error.';
-          appendLog("Update script reported an error state.");
-          completeProgress();
-          return;
+          if (!seenRunning && shouldStart) {
+            // stale error from a prior run; ignore until this run actually starts
+          } else {
+            dot.style.background = '#ef4444';
+            spinner.style.visibility = 'hidden';
+            statusLabel.textContent  = 'Update failed';
+            statusDetail.textContent = 'An error occurred during the update. Check system logs for details.';
+            statusShort.textContent  = 'Update error.';
+            appendLog("Update script reported an error state.");
+            completeProgress();
+            return;
+          }
         }
       }catch(e){
         // During update, the endpoint may bounce; keep polling.
@@ -346,7 +357,7 @@ The printer will reboot automatically when updates are complete. This page will 
 
       // Ignore logs until this run is actually in "running" state, so we don't
       // briefly show the last run's log.
-      if (!seenRunning) {
+      if (!seenRunning && shouldStart) {
         setTimeout(pollLog, 2000);
         return;
       }
@@ -374,7 +385,7 @@ The printer will reboot automatically when updates are complete. This page will 
 
       // Ignore progress until the update is actually "running" to avoid flashing
       // the last run's 100% before this run starts.
-      if (!seenRunning) {
+      if (!seenRunning && shouldStart) {
         setTimeout(pollProgress, 2000);
         return;
       }
@@ -396,7 +407,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // If the progress file isn't there yet, just fall back to fake progress
+        // If the progress file isn't there yet or is stale, we'll just keep fake progress until it appears.
       }finally{
         if (!seenRebootReq){
           setTimeout(pollProgress, 2000);
