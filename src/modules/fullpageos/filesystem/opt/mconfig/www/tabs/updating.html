@@ -157,7 +157,7 @@
     </div>
 
     <p id="status-detail">
-      Do not power off the machine. Services like Klipper, Moonraker, and this web UI may restart during the update.
+      Do not power off the machine. This printer will automatically reboot when the update is complete; you may briefly lose connection while it restarts.
     </p>
 
     <div class="row">
@@ -165,7 +165,7 @@
       <div class="spinner" id="spinner"></div>
     </div>
 
-    <!-- Placeholder progress bar -->
+    <!-- Progress bar -->
     <div class="progress-block">
       <div class="bar"><div id="pbar"></div></div>
       <div id="pnum">0%</div>
@@ -173,7 +173,7 @@
 
     <div class="mono" id="log">
 Starting update process…
-This screen will stay open while the system updates. It will automatically return to the Configurator after the machine reboots.
+This screen will stay open while the system updates. The printer will reboot when updates are complete, and this page will automatically return to the Configurator once it comes back online.
     </div>
   </div>
 
@@ -197,10 +197,11 @@ This screen will stay open while the system updates. It will automatically retur
     let watchingReboot      = false;
     let sawDownDuringReboot = false;
 
-    // fake progress
+    // progress handling
     let progressValue       = 0;
     let progressTimer       = null;
     let progressStarted     = false;
+    let hasExternalProgress = false; // true when update_progress.txt is driving the bar
 
     function appendLog(line){
       logBox.textContent += "\n" + line;
@@ -215,13 +216,14 @@ This screen will stay open while the system updates. It will automatically retur
     }
 
     function startFakeProgress(){
-      if (progressStarted) return;
+      if (progressStarted || hasExternalProgress) return;
       progressStarted = true;
       setProgress(5);
 
       progressTimer = setInterval(() => {
-        if (seenRebootReq) {
+        if (seenRebootReq || hasExternalProgress) {
           clearInterval(progressTimer);
+          progressTimer = null;
           return;
         }
         // ease up to 90% while running
@@ -233,24 +235,27 @@ This screen will stay open while the system updates. It will automatically retur
     }
 
     function completeProgress(){
-      if (progressTimer) clearInterval(progressTimer);
+      if (progressTimer){
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
       setProgress(100);
     }
 
     async function startUpdateOnce(){
-    if (!shouldStart || started) return;
-    started = true;
+      if (!shouldStart || started) return;
+      started = true;
 
-    // Show updating state immediately, don’t wait for poll
-    setStatusRunning();
+      // Show updating state immediately, don’t wait for poll
+      setStatusRunning();
 
-    appendLog("Sending update command to the system…");
-    try {
+      appendLog("Sending update command to the system…");
+      try {
         // This request may drop when services restart; that's fine.
         await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
-    } catch(e) {
+      } catch(e) {
         appendLog("Update command sent (connection may close while services restart).");
-    }
+      }
     }
 
     function setStatusRunning(){
@@ -258,25 +263,26 @@ This screen will stay open while the system updates. It will automatically retur
       dot.style.background = '#22c55e';
       spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Updating system…';
-      statusDetail.textContent = 'Do not close this tab or power off the machine while the update is running.';
+      statusDetail.textContent = 'Do not power off the machine. The printer will reboot automatically when the update completes.';
       statusShort.textContent  = 'Update is in progress.';
+      appendLog("Update script is now running.");
       startFakeProgress();
     }
 
-    function setStatusRebootRequiredUI(){
+    function setStatusRebootPhaseUI(){
       seenRebootReq = true;
       dot.classList.add('warn');
       dot.style.background = '#f97316';
       spinner.style.visibility = 'hidden';
-      statusLabel.textContent  = 'Update complete – power cycle required';
-      statusDetail.textContent = 'Please turn the machine off, wait a few seconds, then turn it back on. This page will automatically return to the Configurator once the system is back online.';
-      statusShort.textContent  = 'Waiting for you to power cycle the machine.';
-      appendLog("Update finished; waiting for manual power cycle.");
+      statusLabel.textContent  = 'Update complete – printer is rebooting';
+      statusDetail.textContent = 'The printer is restarting to apply the update. This page will automatically return to the Configurator once the system is back online.';
+      statusShort.textContent  = 'Waiting for the printer to come back up…';
+      appendLog("Update finished; printer is rebooting.");
       completeProgress();
     }
 
     async function pollStatus(){
-      if (seenRebootReq) return; // once we know update is done, we stop watching the file
+      if (seenRebootReq) return; // once we know update is done, we stop watching the status file
 
       try{
         const r = await fetch('/update.txt?ts=' + Date.now(), { cache:'no-store' });
@@ -284,13 +290,14 @@ This screen will stay open while the system updates. It will automatically retur
         const text = (await r.text()).trim().toLowerCase();
 
         if (text === 'running'){
-          seenRunning = true;
-          setStatusRunning();
+          if (!seenRunning){
+            seenRunning = true;
+            setStatusRunning();
+          }
         } else if (text === 'rebooting'){
-            seenRebootReq = true;
-            setStatusRebootRequiredUI();
-            startWatchingForManualReboot();
-            return;
+          setStatusRebootPhaseUI();
+          startWatchingForReboot();
+          return;
         } else if (text === 'error'){
           dot.style.background = '#ef4444';
           spinner.style.visibility = 'hidden';
@@ -310,7 +317,57 @@ This screen will stay open while the system updates. It will automatically retur
       }
     }
 
-    function startWatchingForManualReboot(){
+    // Poll a running log file written by the updater (e.g. /opt/mconfig/www/update_log.txt)
+    async function pollLog(){
+      if (seenRebootReq) return;
+
+      try{
+        const r = await fetch('/update_log.txt?ts=' + Date.now(), { cache:'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const text = await r.text();
+        if (text && text.trim().length){
+          logBox.textContent = text.trimEnd();
+          logBox.scrollTop = logBox.scrollHeight;
+        }
+      }catch(e){
+        // If file doesn't exist yet or bounces during reboot, just ignore and retry
+      }finally{
+        if (!seenRebootReq){
+          setTimeout(pollLog, 2000);
+        }
+      }
+    }
+
+    // Poll a progress file (0–100) written by the updater (e.g. /opt/mconfig/www/update_progress.txt)
+    async function pollProgress(){
+      if (seenRebootReq) return;
+
+      try{
+        const r = await fetch('/update_progress.txt?ts=' + Date.now(), { cache:'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const text = (await r.text()).trim();
+        if (text !== ''){
+          const v = parseInt(text, 10);
+          if (!isNaN(v)){
+            hasExternalProgress = true;
+            progressStarted = true;
+            if (progressTimer){
+              clearInterval(progressTimer);
+              progressTimer = null;
+            }
+            setProgress(v);
+          }
+        }
+      }catch(e){
+        // If the progress file isn't there yet, just fall back to fake progress
+      }finally{
+        if (!seenRebootReq){
+          setTimeout(pollProgress, 2000);
+        }
+      }
+    }
+
+    function startWatchingForReboot(){
       if (watchingReboot) return;
       watchingReboot = true;
 
@@ -327,7 +384,7 @@ This screen will stay open while the system updates. It will automatically retur
               window.location.href = '/';
               return;
             }
-            // Still up but we haven't seen it go down yet → user hasn't power cycled.
+            // Still up but we haven't seen it go down yet → reboot not occurred yet.
           }else{
             // Non-200 – treat as down too
             sawDownDuringReboot = true;
@@ -346,6 +403,8 @@ This screen will stay open while the system updates. It will automatically retur
     // Kick everything off
     startUpdateOnce();
     pollStatus();
+    pollLog();
+    pollProgress();
   })();
   </script>
 </body>
