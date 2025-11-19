@@ -246,10 +246,13 @@ The printer will reboot automatically when updates are complete. This page will 
     const shouldStart = params.get('start') === '1';
 
     let started             = false;
-    let seenRunning         = false;
     let seenRebootReq       = false;
     let watchingReboot      = false;
     let sawDownDuringReboot = false;
+
+    // Split UI vs backend running state
+    let uiRunning            = false; // we flip this as soon as we fire the updater
+    let backendRunningSeen   = false; // only becomes true once update.txt says "running"
 
     let progressValue       = 0;
     let progressTimer       = null;
@@ -267,9 +270,17 @@ The printer will reboot automatically when updates are complete. This page will 
         "This page will stay open and then return to the Configurator once the printer is back online.";
       logBox.scrollTop = logBox.scrollHeight;
 
+      statusLabel.textContent = 'Preparing update…';
+      statusDetail.innerHTML =
+        '<strong>Do not power off this printer.</strong> ' +
+        'It will automatically reboot when the update is complete, and this page will automatically return to the Configurator after the printer comes back online.';
       statusShort.textContent = 'Waiting for updater to start…';
-      seenRunning  = false;
-      seenRebootReq = false;
+
+      seenRebootReq       = false;
+      watchingReboot      = false;
+      sawDownDuringReboot = false;
+      uiRunning           = false;
+      backendRunningSeen  = false;
 
       document.body.classList.remove('rebooting');
       dot.classList.add('idle');
@@ -315,22 +326,9 @@ The printer will reboot automatically when updates are complete. This page will 
       setProgress(100);
     }
 
-    async function startUpdateOnce(){
-      if (!shouldStart || started) return;
-      started = true;
-
-      resetUIForNewRun();
-
-      appendLog("Sending update command to the system…");
-      try {
-        await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
-      } catch(e) {
-        appendLog("Update command sent (connection may close while services restart).");
-      }
-    }
-
-    function setStatusRunning(){
-      seenRunning = true;
+    function setStatusRunningUI(){
+      if (uiRunning) return;
+      uiRunning = true;
 
       dot.classList.remove('idle');
       dot.classList.remove('warn');
@@ -346,6 +344,22 @@ The printer will reboot automatically when updates are complete. This page will 
       document.body.classList.remove('rebooting');
 
       startFakeProgress();
+    }
+
+    async function startUpdateOnce(){
+      if (!shouldStart || started) return;
+      started = true;
+
+      resetUIForNewRun();
+      // Immediately put UI into "running" mode so it never hangs at "waiting…"
+      setStatusRunningUI();
+
+      appendLog("Sending update command to the system…");
+      try {
+        await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
+      } catch(e) {
+        appendLog("Update command sent (connection may close while services restart).");
+      }
     }
 
     function setStatusRebootPhaseUI(){
@@ -374,19 +388,23 @@ The printer will reboot automatically when updates are complete. This page will 
         const text = raw.toLowerCase();
 
         if (text === 'running'){
-          if (!seenRunning){
-            setStatusRunning();
+          // This confirms the backend has started this run.
+          if (!backendRunningSeen){
+            backendRunningSeen = true;
+            // If for some reason UI wasn't already in running mode, flip it now.
+            setStatusRunningUI();
           }
         } else if (text === 'rebooting'){
-          // Only accept rebooting after we've seen running in this session
-          if (seenRunning){
+          // Only trust reboot state if we've confirmed backend "running" this session
+          if (backendRunningSeen){
             setStatusRebootPhaseUI();
             startWatchingForReboot();
             return;
           }
         } else if (text === 'error'){
-          // Only treat error as real if we've seen running; otherwise assume stale from a prior run
-          if (seenRunning){
+          // Only treat error as real if we've confirmed a backend "running" this session;
+          // otherwise it's probably stale from a prior run.
+          if (backendRunningSeen){
             dot.classList.add('warn');
             dot.style.background = '#ef4444';
             spinner.style.visibility = 'visible';
@@ -401,7 +419,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // keep polling
+        // keep polling; during reboot this can fail
       }finally{
         if (!seenRebootReq){
           setTimeout(pollStatus, 3000);
@@ -409,9 +427,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
-    // Only show log after we've confirmed this run is "running"
+    // Show log only after backendRunningSeen = true, so we don't flash old logs
     async function pollLog(){
-      if (seenRebootReq || !seenRunning){
+      if (seenRebootReq || !backendRunningSeen){
         setTimeout(pollLog, 2000);
         return;
       }
@@ -433,9 +451,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
-    // Only read progress after we've confirmed this run is "running"
+    // Read progress only after backendRunningSeen = true
     async function pollProgress(){
-      if (seenRebootReq || !seenRunning){
+      if (seenRebootReq || !backendRunningSeen){
         setTimeout(pollProgress, 2000);
         return;
       }
@@ -456,7 +474,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // ignore, fake progress keeps going until we see real numbers
+        // ignore; fake progress continues until real numbers appear
       }finally{
         if (!seenRebootReq){
           setTimeout(pollProgress, 2000);
