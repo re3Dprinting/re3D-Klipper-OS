@@ -762,17 +762,7 @@ install -d -m 0755 /opt/mconfig/www/cgi-bin
 
 # 3) Permissions/ownership (in case VCS dropped +x)
 #    Adjust the glob if your filenames differ.
-chmod 0755 /opt/mconfig/www/cgi-bin/_cgi_common.sh || true
-chmod 0755 /opt/mconfig/www/cgi-bin/set_*.sh       || true
-chmod 0755 /opt/mconfig/www/cgi-bin/collect_logs.sh || true
-chmod 0755 /opt/mconfig/www/cgi-bin/reboot.sh      || true
-chmod 0755 /opt/mconfig/www/cgi-bin/save_history.sh      || true
-chmod 0755 /opt/mconfig/www/cgi-bin/restore_history.sh      || true
-chmod 0755 /opt/mconfig/www/cgi-bin/net_info.sh      || true
-chmod 0755 /opt/mconfig/www/cgi-bin/print_*.sh      || true
-chmod 0755 /opt/mconfig/www/cgi-bin/submit_*.sh       || true
-chmod 0755 /opt/mconfig/www/cgi-bin/get_*.sh       || true
-chmod 0755 /opt/mconfig/www/cgi-bin/os_*.sh       || true
+chmod 0755 /opt/mconfig/www/cgi-bin/*.sh || true
 chmod 0777 /opt/mconfig/www/gcode/gen || true
 chown -R root:root /opt/mconfig
 
