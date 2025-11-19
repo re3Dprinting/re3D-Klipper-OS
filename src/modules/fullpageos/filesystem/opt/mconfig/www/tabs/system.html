@@ -124,6 +124,25 @@
     justify-content:flex-end;
     gap:8px;
   }
+
+  /* Modal (matches Machine tab style) */
+  .modal-wrap{
+    position:fixed; inset:0; display:grid; place-items:center;
+    background:rgba(0,0,0,.45); backdrop-filter:saturate(.8) blur(2px); z-index:999;
+  }
+  .modal{
+    width:min(520px, calc(100vw - 32px));
+    background:var(--panel-outer);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:0 10px 40px rgba(0,0,0,.45);
+    display:grid; gap:12px; padding:14px;
+  }
+  .modal h3{margin:0; font-size:16px; font-weight:900; color:var(--fg);}
+  .modal p{margin:0; color:var(--muted); font-size:13px; line-height:1.45;}
+  .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:4px;}
+  .btn-ghost{background:transparent; color:var(--fg); border:1px solid var(--border);}
+  .btn-ghost:hover{background:#24272c}
 </style>
 
 <div class="content sys-content">
@@ -213,14 +232,78 @@
   </div>
 </div>
 
+<!-- Update Modal (styled like Machine tab reboot modal) -->
+<div class="modal-wrap" id="update-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
+    <h3 id="update-title">Run OS &amp; Configurator update?</h3>
+    <p>
+      This will pull the latest Configurator UI and machine configs and may restart
+      Klipper, Moonraker, and the web UI.
+    </p>
+    <div class="actions">
+      <button class="btn-ghost" id="update-cancel" type="button">Cancel</button>
+      <button id="update-run" type="button">Run update</button>
+    </div>
+    <div class="hint mono" id="update-status"></div>
+  </div>
+</div>
+
 <script>
 (() => {
-  // OS / Configurator Update
+  // ---- Update Modal wiring (Machine-tab style) ----
+  const updateModal = document.getElementById('update-modal');
+  const updateRunBtn = document.getElementById('update-run');
+  const updateCancelBtn = document.getElementById('update-cancel');
+  const updateStatus = document.getElementById('update-status');
+
+  function openUpdateModal(){
+    if (!updateModal) return;
+    updateModal.hidden = false;
+    if (updateStatus) updateStatus.textContent = '';
+    if (updateRunBtn) updateRunBtn.focus();
+    document.addEventListener('keydown', escUpdateCloser);
+  }
+
+  function closeUpdateModal(){
+    if (!updateModal) return;
+    updateModal.hidden = true;
+    document.removeEventListener('keydown', escUpdateCloser);
+  }
+
+  function escUpdateCloser(e){
+    if (e.key === 'Escape'){
+      closeUpdateModal();
+    }
+  }
+
+  if (updateCancelBtn){
+    updateCancelBtn.addEventListener('click', closeUpdateModal);
+  }
+
+  if (updateModal){
+    updateModal.addEventListener('click', (e)=>{
+      if (e.target === updateModal){
+        closeUpdateModal();
+      }
+    });
+  }
+
+  if (updateRunBtn){
+    updateRunBtn.addEventListener('click', () => {
+      // Optional micro-status before redirect
+      if (updateStatus) updateStatus.textContent = 'Starting update…';
+      updateRunBtn.disabled = true;
+      if (updateCancelBtn) updateCancelBtn.disabled = true;
+      // Preserve the existing update behavior
+      window.location.href = '/tabs/updating.html?start=1';
+    });
+  }
+
+  // OS / Configurator Update trigger button
   const btnUpdate = document.getElementById('btn-update');
   if (btnUpdate){
     btnUpdate.addEventListener('click', () => {
-      if (!confirm('Run OS & Configurator update now?\n\nThis may restart Klipper, Moonraker, and the web UI.')) return;
-      window.location.href = '/tabs/updating.html?start=1';
+      openUpdateModal();
     });
   }
 
