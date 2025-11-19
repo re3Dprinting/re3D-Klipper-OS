@@ -203,6 +203,21 @@ The printer will reboot automatically when updates are complete. This page will 
     let progressStarted     = false;
     let hasExternalProgress = false; // true when update_progress.txt is driving the bar
 
+    function resetUIForNewRun(){
+      // Called when this update run is starting
+      progressValue = 0;
+      pbar.style.width = '0%';
+      pnum.textContent = '0%';
+
+      logBox.textContent =
+        "Starting update process…\n" +
+        "The printer will reboot automatically when updates are complete. " +
+        "This page will stay open and then return to the Configurator once the printer is back online.";
+      logBox.scrollTop = logBox.scrollHeight;
+
+      statusShort.textContent = 'Waiting for updater to start…';
+    }
+
     function appendLog(line){
       logBox.textContent += "\n" + line;
       logBox.scrollTop = logBox.scrollHeight;
@@ -245,6 +260,9 @@ The printer will reboot automatically when updates are complete. This page will 
     async function startUpdateOnce(){
       if (!shouldStart || started) return;
       started = true;
+
+      // We know this is a *new* update run → clear any stale UI remnants
+      resetUIForNewRun();
 
       // Show updating state immediately, don’t wait for poll
       setStatusRunning();
@@ -295,6 +313,8 @@ The printer will reboot automatically when updates are complete. This page will 
         if (text === 'running'){
           if (!seenRunning){
             seenRunning = true;
+            // First time we see "running" for this session:
+            // ensure UI is in "active run" mode.
             setStatusRunning();
           }
         } else if (text === 'rebooting'){
@@ -324,6 +344,13 @@ The printer will reboot automatically when updates are complete. This page will 
     async function pollLog(){
       if (seenRebootReq) return;
 
+      // Ignore logs until this run is actually in "running" state, so we don't
+      // briefly show the last run's log.
+      if (!seenRunning) {
+        setTimeout(pollLog, 2000);
+        return;
+      }
+
       try{
         const r = await fetch('/update_log.txt?ts=' + Date.now(), { cache:'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -344,6 +371,13 @@ The printer will reboot automatically when updates are complete. This page will 
     // Poll a progress file (0–100) written by the updater (e.g. /opt/mconfig/www/update_progress.txt)
     async function pollProgress(){
       if (seenRebootReq) return;
+
+      // Ignore progress until the update is actually "running" to avoid flashing
+      // the last run's 100% before this run starts.
+      if (!seenRunning) {
+        setTimeout(pollProgress, 2000);
+        return;
+      }
 
       try{
         const r = await fetch('/update_progress.txt?ts=' + Date.now(), { cache:'no-store' });
@@ -404,6 +438,9 @@ The printer will reboot automatically when updates are complete. This page will 
     }
 
     // Kick everything off
+    if (shouldStart) {
+      resetUIForNewRun();
+    }
     startUpdateOnce();
     pollStatus();
     pollLog();
