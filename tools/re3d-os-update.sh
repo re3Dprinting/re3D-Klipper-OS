@@ -70,25 +70,8 @@ if [ ! -d "${REPO_DIR}/.git" ]; then
   exit 1
 fi
 
-# ---------- 0) APT update / upgrade ----------
-log "${LOG_TAG} Running apt update / upgrade (this may take a while)..."
-set_progress 10
-
-# non-interactive apt so it doesn't hang on prompts
-export DEBIAN_FRONTEND=noninteractive
-
-log "${LOG_TAG} apt-get update..."
-apt-get update >> "${LOG_FILE}" 2>&1
-
-set_progress 25
-log "${LOG_TAG} apt-get upgrade -y..."
-apt-get -y upgrade >> "${LOG_FILE}" 2>&1
-
-set_progress 30
-log "${LOG_TAG} apt update/upgrade complete."
-
 # ---------- 1) Configurator: /opt/mconfig/www ----------
-set_progress 45
+set_progress 20
 
 if [ -d "${SRC_MCONFIG}" ]; then
   log "${LOG_TAG} Syncing Configurator UI (preserving calibration_data)..."
@@ -105,7 +88,7 @@ log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
 
 # ---------- 2) Klipper configs: FFF ----------
-set_progress 60
+set_progress 40
 
 if [ -d "${SRC_FFF}" ]; then
   log "${LOG_TAG} Syncing FFF configs..."
@@ -118,7 +101,7 @@ else
 fi
 
 # ---------- 3) Klipper configs: FGF ----------
-set_progress 75
+set_progress 60
 
 if [ -d "${SRC_FGF}" ]; then
   log "${LOG_TAG} Syncing FGF configs..."
@@ -131,7 +114,7 @@ else
 fi
 
 # ---------- 4) Reload services ----------
-set_progress 90
+set_progress 80
 
 log "${LOG_TAG} Reloading services (best-effort)..."
 systemctl daemon-reload || true
