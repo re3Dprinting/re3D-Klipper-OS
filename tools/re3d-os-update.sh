@@ -31,15 +31,18 @@ fi
 # ----------------- 1) Configurator: /opt/mconfig/www -----------------
 
 if [ -d "${SRC_MCONFIG}" ]; then
-  echo "${LOG_TAG} Syncing Configurator UI..."
-  # For web assets we usually want an exact mirror
+  echo "${LOG_TAG} Syncing Configurator UI (preserving calibration_data)..."
+  # Exact mirror of web assets, but do NOT touch calibration_data contents
   rsync -a --delete \
+    --exclude 'calibration_data/' \
     "${SRC_MCONFIG}/" \
     "${DST_MCONFIG}/"
 else
   echo "${LOG_TAG} WARNING: Source ${SRC_MCONFIG} not found, skipping Configurator sync."
 fi
+
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh || true
+
 # -------- 2) Klipper configs: /home/pi/printer_data/.../fff -----------
 
 if [ -d "${SRC_FFF}" ]; then
