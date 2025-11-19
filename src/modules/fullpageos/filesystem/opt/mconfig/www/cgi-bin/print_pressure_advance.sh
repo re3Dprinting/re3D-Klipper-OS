@@ -9,8 +9,13 @@ echo ""
 AUTO_PRINT="${AUTO_PRINT:-1}"                       # 1 = auto-print, 0 = just generate
 MOONRAKER_URL="${MOONRAKER_URL:-http://localhost:7125}"
 API_KEY="${API_KEY:-}"   # e.g., export API_KEY="your-moonraker-key"
+DEBUG="${DEBUG:-0}"      # 1 = verbose logs, 0 = quiet
 
 umask 0002   # cooperative perms
+
+log() {
+  [ "$DEBUG" = "1" ] && echo "$@"
+}
 
 # ---- HELPERS ---------------------------------------------------------------
 urldecode() {
@@ -88,11 +93,11 @@ mkdir -p "$OUT_DIR"
 [ -z "$EXTRUDER"   ] && EXTRUDER="$(load_global_from_file EXTRUDER "$GLOBALS_FILE")"
 
 # Uncomment for debugging if needed:
-# echo "DEBUG: BODY=[$BODY]"
-# echo "DEBUG: HOTEND_TEMP=[$HOTEND_TEMP]"
-# echo "DEBUG: BED_TEMP=[$BED_TEMP]"
-# echo "DEBUG: MACHINE=[$MACHINE]"
-# echo "DEBUG: EXTRUDER=[$EXTRUDER]"
+# log "DEBUG: BODY=[$BODY]"
+# log "DEBUG: HOTEND_TEMP=[$HOTEND_TEMP]"
+# log "DEBUG: BED_TEMP=[$BED_TEMP]"
+# log "DEBUG: MACHINE=[$MACHINE]"
+# log "DEBUG: EXTRUDER=[$EXTRUDER]"
 
 # ---- VALIDATE --------------------------------------------------------------
 is_number "$HOTEND_TEMP" || { echo "Error: hotend_temp must be a number (e.g., 220 or 220.5)"; exit 0; }
@@ -105,7 +110,7 @@ TOOL_SELECT="0"
 case "$EXTRUDER" in
   left|L|Left|T0|0)   TOOL_SELECT="0" ;;
   right|R|Right|T1|1) TOOL_SELECT="1" ;;
-  *) TOOL_SELECT="0" ;;
+  *)                  TOOL_SELECT="0" ;;
 esac
 
 # ---- TEMPLATE SELECTION ----------------------------------------------------
@@ -129,7 +134,9 @@ if [ ! -f "$TEMPLATE" ]; then
   exit 0
 fi
 
-if ! grep -q '{hotend_temp}' "$TEMPLATE" || ! grep -q '{bed_temp}' "$TEMPLATE" || ! grep -q '{tool_select}' "$TEMPLATE"; then
+if ! grep -q '{hotend_temp}' "$TEMPLATE" || \
+   ! grep -q '{bed_temp}' "$TEMPLATE" || \
+   ! grep -q '{tool_select}' "$TEMPLATE"; then
   echo "Error: template missing one or more placeholders: {tool_select} {bed_temp} {hotend_temp}"
   echo "Template: $TEMPLATE"
   exit 0
@@ -162,8 +169,8 @@ mv -f "$TMP_FILE" "$OUT_FILE" || {
   exit 0
 }
 
-echo "Generated: $OUT_FILE"
-echo "URL: /gcode/gen/$(basename "$OUT_FILE")"
+log "Generated: $OUT_FILE"
+log "URL: /gcode/gen/$(basename "$OUT_FILE")"
 
 # ---- FIND MOST RECENT GENERATED FILE --------------------------------------
 LATEST="$(ls -t "$OUT_DIR"/*.gcode 2>/dev/null | head -n1)"
@@ -171,7 +178,7 @@ if [ -z "$LATEST" ]; then
   echo "Error: no generated files found in $OUT_DIR"
   exit 0
 fi
-echo "Latest: $LATEST"
+log "Latest: $LATEST"
 
 # ---- AUTO-PRINT VIA MOONRAKER ---------------------------------------------
 if [ "$AUTO_PRINT" != "1" ]; then
@@ -191,20 +198,21 @@ START_URL="$MOONRAKER_URL/printer/print/start"
 API_KEY_HDR=""
 [ -n "$API_KEY" ] && API_KEY_HDR="-H X-Api-Key: $API_KEY"
 
-echo "Uploading to Moonraker: $UPLOAD_URL"
+log "Uploading to Moonraker: $UPLOAD_URL"
 UPLOAD_RES="$(curl -sS -X POST $API_KEY_HDR -H 'Expect:' -F "file=@$LATEST" "$UPLOAD_URL" 2>&1)"
 UPLOAD_RC=$?
-echo "Upload response: $UPLOAD_RES"
+log "Upload response: $UPLOAD_RES"
 [ $UPLOAD_RC -eq 0 ] || { echo "Error: upload failed ($UPLOAD_RC)"; exit 0; }
 
 # JSON-escape backslashes and quotes in the filename
 JSON_FILENAME="$(printf '%s' "$BASENAME" | sed 's/\\/\\\\/g; s/\"/\\\"/g')"
 JSON_PAYLOAD="{\"filename\":\"$JSON_FILENAME\"}"
 
-echo "Starting print: $START_URL  (filename=$JSON_FILENAME)"
+log "Starting print: $START_URL  (filename=$JSON_FILENAME)"
 START_RES="$(printf '%s' "$JSON_PAYLOAD" | curl -sS -X POST $API_KEY_HDR -H 'Content-Type: application/json' --data-binary @- "$START_URL" 2>&1)"
 START_RC=$?
-echo "Start response: $START_RES"
+log "Start response: $START_RES"
 [ $START_RC -eq 0 ] || { echo "Error: start print failed ($START_RC)"; exit 0; }
 
+# Final minimal success line
 echo "OK: Uploaded and started $BASENAME"
