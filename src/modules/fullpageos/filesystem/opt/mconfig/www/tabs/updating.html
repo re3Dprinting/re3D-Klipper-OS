@@ -157,7 +157,7 @@
     </div>
 
     <p id="status-detail">
-      Do not power off the machine. This printer will automatically reboot when the update is complete; you may briefly lose connection while it restarts.
+      <strong>Do not power off this printer.</strong> It will automatically reboot when the update is complete, and this page will automatically return to the Configurator after the printer comes back online.
     </p>
 
     <div class="row">
@@ -173,7 +173,7 @@
 
     <div class="mono" id="log">
 Starting update process…
-This screen will stay open while the system updates. The printer will reboot when updates are complete, and this page will automatically return to the Configurator once it comes back online.
+The printer will reboot automatically when updates are complete. This page will stay open and then return to the Configurator once the printer is back online.
     </div>
   </div>
 
@@ -263,7 +263,9 @@ This screen will stay open while the system updates. The printer will reboot whe
       dot.style.background = '#22c55e';
       spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Updating system…';
-      statusDetail.textContent = 'Do not power off the machine. The printer will reboot automatically when the update completes.';
+      statusDetail.innerHTML   =
+        '<strong>Do not power off this printer.</strong> ' +
+        'It will automatically reboot when the update is complete, and this page will automatically return to the Configurator after the printer comes back online.';
       statusShort.textContent  = 'Update is in progress.';
       appendLog("Update script is now running.");
       startFakeProgress();
@@ -275,9 +277,10 @@ This screen will stay open while the system updates. The printer will reboot whe
       dot.style.background = '#f97316';
       spinner.style.visibility = 'hidden';
       statusLabel.textContent  = 'Update complete – printer is rebooting';
-      statusDetail.textContent = 'The printer is restarting to apply the update. This page will automatically return to the Configurator once the system is back online.';
+      statusDetail.textContent =
+        'The printer is restarting to apply the update. This page will automatically return to the Configurator once the printer is back online.';
       statusShort.textContent  = 'Waiting for the printer to come back up…';
-      appendLog("Update finished; printer is rebooting.");
+      appendLog("Update finished; printer is rebooting automatically.");
       completeProgress();
     }
 

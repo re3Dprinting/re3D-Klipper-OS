@@ -1,82 +1,148 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH="${1:-devel}"   # passed from bootstrap (not strictly required here)
+BRANCH="${1:-devel}"
 LOG_TAG="[re3D-OS update]"
 
 REPO_DIR="/opt/re3d-os-src"
 
-# Source locations INSIDE the repo clone on the Pi
+# ---------------- UI STATUS FILES ----------------
+UI_DIR="/opt/mconfig/www"
+STATUS_FILE="${UI_DIR}/update.txt"
+LOG_FILE="${UI_DIR}/update_log.txt"
+PROGRESS_FILE="${UI_DIR}/update_progress.txt"
+
+# Clean old UI files
+rm -f "$STATUS_FILE" "$LOG_FILE" "$PROGRESS_FILE" || true
+touch "$STATUS_FILE" "$LOG_FILE" "$PROGRESS_FILE"
+
+log() {
+    echo "$*" | tee -a "$LOG_FILE"
+}
+
+set_status() {
+    echo "$1" > "$STATUS_FILE"
+    log "STATE → $1"
+}
+
+set_progress() {
+    echo "$1" > "$PROGRESS_FILE"
+}
+
+# Initial state
+set_status "running"
+set_progress 0
+log "==========================================="
+log "Starting Updater (branch: $BRANCH)"
+log "Repo location: $REPO_DIR"
+log "==========================================="
+
+# ---------------- SOURCE LOCATIONS ----------------
 SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
 SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
 
-# Target locations on the LIVE system
+# ---------------- DEST LOCATIONS ------------------
 DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 
-echo "${LOG_TAG} =========================================="
-echo "${LOG_TAG} Running real updater from repo"
-echo "${LOG_TAG} Branch/tag: ${BRANCH}"
-echo "${LOG_TAG} Repo dir:   ${REPO_DIR}"
-echo "${LOG_TAG} ------------------------------------------"
-
-# Safety checks for repo clone
+# SAFETY CHECK
 if [ ! -d "${REPO_DIR}/.git" ]; then
-  echo "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
+  log "ERROR: Repo directory missing .git"
+  set_status "error"
   exit 1
 fi
 
-# ----------------- 1) Configurator: /opt/mconfig/www -----------------
+# --------------------------------------------------
+# Step runner with progress + logging
+# --------------------------------------------------
+run_step() {
+    local pct="$1"
+    shift
+    local msg="$*"
 
+    log ""
+    log "--- $msg ---"
+    set_progress "$pct"
+
+    if ! eval "$@"; then
+        log "ERROR during: $msg"
+        set_status "error"
+        exit 1
+    fi
+}
+
+# --------------------------------------------------
+# 1) Prepare repo
+# --------------------------------------------------
+run_step 5  "Fetching repo updates" \
+"git -C \"$REPO_DIR\" fetch --all --prune"
+
+run_step 10 "Resetting repo to origin/$BRANCH" \
+"git -C \"$REPO_DIR\" reset --hard origin/$BRANCH"
+
+# --------------------------------------------------
+# 2) Sync Configurator (preserving calibration_data)
+# --------------------------------------------------
 if [ -d "${SRC_MCONFIG}" ]; then
-  echo "${LOG_TAG} Syncing Configurator UI (preserving calibration_data)..."
-  # Exact mirror of web assets, but do NOT touch calibration_data contents
-  rsync -a --delete \
-    --exclude 'calibration_data/' \
-    "${SRC_MCONFIG}/" \
-    "${DST_MCONFIG}/"
+  run_step 30 "Syncing Configurator UI" \
+  "rsync -a --delete --exclude 'calibration_data/' \"$SRC_MCONFIG/\" \"$DST_MCONFIG/\""
 else
-  echo "${LOG_TAG} WARNING: Source ${SRC_MCONFIG} not found, skipping Configurator sync."
+  log "WARNING: SRC_MCONFIG not found. Skipping."
 fi
 
-chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh || true
+run_step 35 "Fixing cgi-bin permissions" \
+"chmod -R 755 \"$DST_MCONFIG/cgi-bin\"/*.sh || true"
 
-# -------- 2) Klipper configs: /home/pi/printer_data/.../fff -----------
-
+# --------------------------------------------------
+# 3) Sync FFF configs
+# --------------------------------------------------
 if [ -d "${SRC_FFF}" ]; then
-  echo "${LOG_TAG} Syncing FFF configs..."
-  # NO --delete here so we don't blow away any local-only configs
-  rsync -a \
-    "${SRC_FFF}/" \
-    "${DST_FFF}/"
+  run_step 50 "Syncing FFF configs" \
+  "rsync -a \"$SRC_FFF/\" \"$DST_FFF/\""
 else
-  echo "${LOG_TAG} WARNING: Source ${SRC_FFF} not found, skipping FFF configs."
+  log "WARNING: SRC_FFF not found."
 fi
 
-# -------- 3) Klipper configs: /home/pi/printer_data/.../fgf -----------
-
+# --------------------------------------------------
+# 4) Sync FGF configs
+# --------------------------------------------------
 if [ -d "${SRC_FGF}" ]; then
-  echo "${LOG_TAG} Syncing FGF configs..."
-  # Same: conservative, no --delete
-  rsync -a \
-    "${SRC_FGF}/" \
-    "${DST_FGF}/"
+  run_step 60 "Syncing FGF configs" \
+  "rsync -a \"$SRC_FGF/\" \"$DST_FGF/\""
 else
-  echo "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
+  log "WARNING: SRC_FGF not found."
 fi
 
-# ----------------- 4) Reload services (simple) ----------------
+# --------------------------------------------------
+# 5) Restart services
+# --------------------------------------------------
+run_step 70 "Reloading systemd" \
+"systemctl daemon-reload || true"
 
-echo "${LOG_TAG} Reloading services (best-effort)..."
-systemctl daemon-reload || true
+SERVICES="klipper moonraker mainsail nginx crowsnest"
+pct=72
 
-for svc in klipper moonraker mainsail nginx crowsnest; do
-  if systemctl list-unit-files | grep -q "^${svc}.service"; then
-    echo "${LOG_TAG} Restarting ${svc}.service ..."
-    systemctl restart "${svc}.service" || true
-  fi
+for svc in $SERVICES; do
+  run_step $pct "Restarting $svc.service" \
+  "systemctl restart \"$svc.service\" || true"
+  pct=$((pct + 5))
 done
 
-echo "${LOG_TAG} Update complete."
+set_progress 95
+log "All services restarted."
+
+# --------------------------------------------------
+# 6) Mark complete → reboot
+# --------------------------------------------------
+log ""
+log "===== UPDATE COMPLETE — REBOOTING ====="
+set_progress 100
+set_status "rebooting"
+
+# Give UI a moment to read final state
+sleep 3
+
+log "Rebooting now..."
+/sbin/reboot
