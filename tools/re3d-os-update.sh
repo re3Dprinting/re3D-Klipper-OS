@@ -6,21 +6,22 @@ LOG_TAG="[re3D-OS update]"
 
 REPO_DIR="/opt/re3d-os-src"
 
-# ---------------- Log / status files (NOT in repo) ----------------
-LOG_DIR="/home/pi/printer_data/logs"
-mkdir -p "${LOG_DIR}"
+# ---------- UI log/status files (live web dir, not repo src) ----------
+UI_DIR="/opt/mconfig/www"
+STATUS_FILE="${UI_DIR}/update.txt"
+LOG_FILE="${UI_DIR}/update_log.txt"
+PROGRESS_FILE="${UI_DIR}/update_progress.txt"
 
-STATUS_FILE="${LOG_DIR}/update_status.txt"
-LOG_FILE="${LOG_DIR}/update_log.txt"
-PROGRESS_FILE="${LOG_DIR}/update_progress.txt"
+# Make sure the dir exists (it should on a running system)
+mkdir -p "${UI_DIR}"
 
-# Reset log files each run
+# Reset UI files each run
 : > "${STATUS_FILE}"
 : > "${LOG_FILE}"
 : > "${PROGRESS_FILE}"
 
 log() {
-  # Log to console AND to file
+  # Log to console AND append to UI log
   echo "$*" | tee -a "${LOG_FILE}"
 }
 
@@ -33,7 +34,6 @@ set_progress() {
   echo "$1" > "${PROGRESS_FILE}"
 }
 
-# Simple error trap: mark status as error if anything fails
 on_error() {
   local code=$1
   local line=$2
@@ -42,7 +42,7 @@ on_error() {
 }
 trap 'on_error $? $LINENO' ERR
 
-# ---------------- Paths inside repo / on system ----------------
+# ---------- Source / destination paths ----------
 # Source locations INSIDE the repo clone on the Pi
 SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
@@ -53,7 +53,7 @@ DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 
-# ---------------- Start ----------------
+# ---------- Start ----------
 set_status "running"
 set_progress 0
 
@@ -63,14 +63,14 @@ log "${LOG_TAG} Branch/tag: ${BRANCH}"
 log "${LOG_TAG} Repo dir:   ${REPO_DIR}"
 log "${LOG_TAG} ------------------------------------------"
 
-# Safety checks for repo clone
+# Safety check for repo clone (bootstrap already cloned / checked out devel)
 if [ ! -d "${REPO_DIR}/.git" ]; then
   log "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
   set_status "error"
   exit 1
 fi
 
-# ----------------- 1) Configurator: /opt/mconfig/www -----------------
+# ---------- 1) Configurator: /opt/mconfig/www ----------
 set_progress 20
 
 if [ -d "${SRC_MCONFIG}" ]; then
@@ -87,7 +87,7 @@ fi
 log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
 
-# ----------------- 2) Klipper configs: FFF -----------------
+# ---------- 2) Klipper configs: FFF ----------
 set_progress 40
 
 if [ -d "${SRC_FFF}" ]; then
@@ -100,7 +100,7 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FFF} not found, skipping FFF configs."
 fi
 
-# ----------------- 3) Klipper configs: FGF -----------------
+# ---------- 3) Klipper configs: FGF ----------
 set_progress 60
 
 if [ -d "${SRC_FGF}" ]; then
@@ -113,7 +113,7 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
 fi
 
-# ----------------- 4) Reload services (simple) ----------------
+# ---------- 4) Reload services ----------
 set_progress 80
 
 log "${LOG_TAG} Reloading services (best-effort)..."
@@ -131,7 +131,7 @@ done
 set_progress 95
 log "${LOG_TAG} Services reload complete."
 
-# ----------------- 5) Done → reboot ----------------
+# ---------- 5) Done → reboot ----------
 set_progress 100
 log "${LOG_TAG} Update complete. Printer will reboot now."
 set_status "rebooting"
