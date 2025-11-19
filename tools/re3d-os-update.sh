@@ -1,150 +1,143 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH="${1:-devel}"
+BRANCH="${1:-devel}"   # passed from bootstrap (not strictly required here)
 LOG_TAG="[re3D-OS update]"
 
 REPO_DIR="/opt/re3d-os-src"
 
-# ---------------- RUNTIME STATE (NOT IN GIT) ----------------
-STATE_DIR="/tmp/re3d-os-update"
-STATUS_FILE="${STATE_DIR}/status"
-LOG_FILE="${STATE_DIR}/log"
-PROGRESS_FILE="${STATE_DIR}/progress"
+# ---------------- Log / status files (NOT in repo) ----------------
+LOG_DIR="/home/pi/printer_data/logs"
+mkdir -p "${LOG_DIR}"
 
-mkdir -p "$STATE_DIR"
+STATUS_FILE="${LOG_DIR}/update_status.txt"
+LOG_FILE="${LOG_DIR}/update_log.txt"
+PROGRESS_FILE="${LOG_DIR}/update_progress.txt"
 
-# Clean old state files
-rm -f "$STATUS_FILE" "$LOG_FILE" "$PROGRESS_FILE" || true
-touch "$STATUS_FILE" "$LOG_FILE" "$PROGRESS_FILE"
+# Reset log files each run
+: > "${STATUS_FILE}"
+: > "${LOG_FILE}"
+: > "${PROGRESS_FILE}"
 
 log() {
-    echo "$*" | tee -a "$LOG_FILE"
+  # Log to console AND to file
+  echo "$*" | tee -a "${LOG_FILE}"
 }
 
 set_status() {
-    echo "$1" > "$STATUS_FILE"
-    log "STATE → $1"
+  echo "$1" > "${STATUS_FILE}"
+  log "${LOG_TAG} STATE → $1"
 }
 
 set_progress() {
-    echo "$1" > "$PROGRESS_FILE"
+  echo "$1" > "${PROGRESS_FILE}"
 }
 
-# Initial state
-set_status "running"
-set_progress 0
-log "==========================================="
-log "Starting Updater (branch: $BRANCH)"
-log "Repo location: $REPO_DIR"
-log "==========================================="
+# Simple error trap: mark status as error if anything fails
+on_error() {
+  local code=$1
+  local line=$2
+  log "${LOG_TAG} ERROR: script failed at line ${line} with exit code ${code}"
+  set_status "error"
+}
+trap 'on_error $? $LINENO' ERR
 
-# ---------------- SOURCE LOCATIONS ----------------
+# ---------------- Paths inside repo / on system ----------------
+# Source locations INSIDE the repo clone on the Pi
 SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
-SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf}"
+SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
 
-# ---------------- DEST LOCATIONS ------------------
+# Target locations on the LIVE system
 DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 
-# SAFETY CHECK
+# ---------------- Start ----------------
+set_status "running"
+set_progress 0
+
+log "${LOG_TAG} =========================================="
+log "${LOG_TAG} Running real updater from repo"
+log "${LOG_TAG} Branch/tag: ${BRANCH}"
+log "${LOG_TAG} Repo dir:   ${REPO_DIR}"
+log "${LOG_TAG} ------------------------------------------"
+
+# Safety checks for repo clone
 if [ ! -d "${REPO_DIR}/.git" ]; then
-  log "ERROR: Repo directory missing .git"
+  log "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
   set_status "error"
   exit 1
 fi
 
-# --------------------------------------------------
-# Step runner with progress + logging
-# --------------------------------------------------
-run_step() {
-    local pct="$1"
-    shift
-    local msg="$*"
+# ----------------- 1) Configurator: /opt/mconfig/www -----------------
+set_progress 20
 
-    log ""
-    log "--- $msg ---"
-    set_progress "$pct"
-
-    if ! eval "$@"; then
-        log "ERROR during: $msg"
-        set_status "error"
-        exit 1
-    fi
-}
-
-# --------------------------------------------------
-# 1) Prepare repo
-# --------------------------------------------------
-run_step 5  "Fetching repo updates" \
-"git -C \"$REPO_DIR\" fetch --all --prune"
-
-run_step 10 "Resetting repo to origin/$BRANCH" \
-"git -C \"$REPO_DIR\" reset --hard origin/$BRANCH"
-
-# --------------------------------------------------
-# 2) Sync Configurator (preserving calibration_data)
-# --------------------------------------------------
 if [ -d "${SRC_MCONFIG}" ]; then
-  run_step 30 "Syncing Configurator UI" \
-  "rsync -a --delete --exclude 'calibration_data/' \"$SRC_MCONFIG/\" \"$DST_MCONFIG/\""
+  log "${LOG_TAG} Syncing Configurator UI (preserving calibration_data)..."
+  # Exact mirror, but do NOT touch calibration_data contents
+  rsync -a --delete \
+    --exclude 'calibration_data/' \
+    "${SRC_MCONFIG}/" \
+    "${DST_MCONFIG}/"
 else
-  log "WARNING: SRC_MCONFIG not found. Skipping."
+  log "${LOG_TAG} WARNING: Source ${SRC_MCONFIG} not found, skipping Configurator sync."
 fi
 
-run_step 35 "Fixing cgi-bin permissions" \
-"chmod -R 755 \"$DST_MCONFIG/cgi-bin\"/*.sh || true"
+log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
+chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
 
-# --------------------------------------------------
-# 3) Sync FFF configs
-# --------------------------------------------------
+# ----------------- 2) Klipper configs: FFF -----------------
+set_progress 40
+
 if [ -d "${SRC_FFF}" ]; then
-  run_step 50 "Syncing FFF configs" \
-  "rsync -a \"$SRC_FFF/\" \"$DST_FFF/\""
+  log "${LOG_TAG} Syncing FFF configs..."
+  # NO --delete here so we don't blow away any local-only configs
+  rsync -a \
+    "${SRC_FFF}/" \
+    "${DST_FFF}/"
 else
-  log "WARNING: SRC_FFF not found."
+  log "${LOG_TAG} WARNING: Source ${SRC_FFF} not found, skipping FFF configs."
 fi
 
-# --------------------------------------------------
-# 4) Sync FGF configs
-# --------------------------------------------------
+# ----------------- 3) Klipper configs: FGF -----------------
+set_progress 60
+
 if [ -d "${SRC_FGF}" ]; then
-  run_step 60 "Syncing FGF configs" \
-  "rsync -a \"$SRC_FGF/\" \"$DST_FGF/\""
+  log "${LOG_TAG} Syncing FGF configs..."
+  # Same: conservative, no --delete
+  rsync -a \
+    "${SRC_FGF}/" \
+    "${DST_FGF}/"
 else
-  log "WARNING: SRC_FGF not found."
+  log "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
 fi
 
-# --------------------------------------------------
-# 5) Restart services
-# --------------------------------------------------
-run_step 70 "Reloading systemd" \
-"systemctl daemon-reload || true"
+# ----------------- 4) Reload services (simple) ----------------
+set_progress 80
 
-SERVICES="klipper moonraker mainsail nginx crowsnest"
-pct=72
+log "${LOG_TAG} Reloading services (best-effort)..."
+systemctl daemon-reload || true
 
-for svc in $SERVICES; do
-  run_step $pct "Restarting $svc.service" \
-  "systemctl restart \"$svc.service\" || true"
-  pct=$((pct + 5))
+for svc in klipper moonraker mainsail nginx crowsnest; do
+  if systemctl list-unit-files | grep -q "^${svc}.service"; then
+    log "${LOG_TAG} Restarting ${svc}.service ..."
+    systemctl restart "${svc}.service" || true
+  else
+    log "${LOG_TAG} ${svc}.service not found, skipping."
+  fi
 done
 
 set_progress 95
-log "All services restarted."
+log "${LOG_TAG} Services reload complete."
 
-# --------------------------------------------------
-# 6) Mark complete → reboot
-# --------------------------------------------------
-log ""
-log "===== UPDATE COMPLETE — REBOOTING ====="
+# ----------------- 5) Done → reboot ----------------
 set_progress 100
+log "${LOG_TAG} Update complete. Printer will reboot now."
 set_status "rebooting"
 
-# Give UI a moment to read final state (via CGI readers)
+# Give the UI a moment to read final status/progress
 sleep 3
 
-log "Rebooting now..."
+log "${LOG_TAG} Rebooting..."
 /sbin/reboot
