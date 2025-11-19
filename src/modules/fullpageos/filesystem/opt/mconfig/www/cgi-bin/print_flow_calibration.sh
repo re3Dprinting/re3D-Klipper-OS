@@ -81,16 +81,16 @@ mkdir -p "$OUT_DIR"
 
 case "$MACHINE" in
   "Gigabot 4")
-    TEMPLATE="$GCODE_DIR/tmpl.GB4-FLOW.gcode"
+    TEMPLATE="$GCODE_DIR/tmpl.GB4-Flow.gcode"
     ;;
   "Gigabot 4 XLT")
-    TEMPLATE="$GCODE_DIR/tmpl.GB4XLT-FLOW.gcode"
+    TEMPLATE="$GCODE_DIR/tmpl.GB4XLT-Flow.gcode"
     ;;
   "Terabot 4")
-    TEMPLATE="$GCODE_DIR/tmpl.TB4-FLOW.gcode"
+    TEMPLATE="$GCODE_DIR/tmpl.TB4-Flow.gcode"
     ;;
   *)
-    TEMPLATE="$GCODE_DIR/tmpl.GB4-FLOW.gcode"
+    TEMPLATE="$GCODE_DIR/tmpl.GB4-Flow.gcode"
     ;;
 esac
 
