@@ -37,7 +37,7 @@
 
     .shell{
       width:100%;
-      max-width:760px;            /* a bit larger for bigger logo */
+      max-width:760px;
       background:var(--card);
       border-radius:18px;
       border:1px solid var(--border);
@@ -61,13 +61,13 @@
       align-items:center;
       gap:10px;
     }
+
     .logo{
-      height:58px;    /* bumped up from 46px */
+      height:58px;    /* slightly bigger logo */
       width:auto;
       opacity:0.95;
       object-fit:contain;
     }
-
 
     h1{
       font-size:20px;
@@ -109,7 +109,6 @@
       to{transform:rotate(360deg);}
     }
 
-    /* Progress bar block */
     .progress-block{
       margin-top:8px;
       display:flex;
@@ -221,7 +220,6 @@
       <div class="spinner" id="spinner"></div>
     </div>
 
-    <!-- Progress bar -->
     <div class="progress-block">
       <div class="bar"><div id="pbar"></div></div>
       <div id="pnum">0%</div>
@@ -253,11 +251,10 @@ The printer will reboot automatically when updates are complete. This page will 
     let watchingReboot      = false;
     let sawDownDuringReboot = false;
 
-    // progress handling
     let progressValue       = 0;
     let progressTimer       = null;
     let progressStarted     = false;
-    let hasExternalProgress = false; // true when update_progress.txt is driving the bar
+    let hasExternalProgress = false;
 
     function resetUIForNewRun(){
       progressValue = 0;
@@ -302,7 +299,7 @@ The printer will reboot automatically when updates are complete. This page will 
           return;
         }
         if (progressValue < 90){
-          const step = 3 + Math.random()*5; // 3–8%
+          const step = 3 + Math.random()*5;
           setProgress(Math.min(90, progressValue + step));
         }
       }, 1200);
@@ -350,8 +347,8 @@ The printer will reboot automatically when updates are complete. This page will 
     function setStatusRebootPhaseUI(){
       seenRebootReq = true;
       dot.classList.add('warn');
-      dot.style.background = getComputedStyle(document.documentElement)
-        .getPropertyValue('--warn') || '#f97316';
+      dot.style.background =
+        getComputedStyle(document.documentElement).getPropertyValue('--warn') || '#f97316';
 
       spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Update complete – printer is rebooting';
@@ -360,7 +357,7 @@ The printer will reboot automatically when updates are complete. This page will 
       statusShort.textContent  = 'Rebooting printer…';
       appendLog("Update finished; printer is rebooting automatically.");
       completeProgress();
-      document.body.classList.add('rebooting');  // triggers dot pulse + bar shimmer
+      document.body.classList.add('rebooting');
     }
 
     async function pollStatus(){
@@ -369,7 +366,7 @@ The printer will reboot automatically when updates are complete. This page will 
       try{
         const r = await fetch('/update.txt?ts=' + Date.now(), { cache:'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        const raw = (await r.text()).trim();
+        const raw  = (await r.text()).trim();
         const text = raw.toLowerCase();
 
         if (text === 'running'){
@@ -378,6 +375,7 @@ The printer will reboot automatically when updates are complete. This page will 
             setStatusRunning();
           }
         } else if (text === 'rebooting'){
+          // Only treat this as fresh if we've actually seen "running" this session.
           if (!seenRunning && shouldStart) {
             // stale from previous run, ignore
           } else {
@@ -386,20 +384,18 @@ The printer will reboot automatically when updates are complete. This page will 
             return;
           }
         } else if (text === 'error'){
-          if (!seenRunning && shouldStart) {
-            // stale error from prior run
-          } else {
-            dot.classList.add('warn');
-            dot.style.background = '#ef4444';
-            spinner.style.visibility = 'visible';
-            statusLabel.textContent  = 'Update failed';
-            statusDetail.textContent = 'An error occurred during the update. Check system logs for details.';
-            statusShort.textContent  = 'Update error.';
-            appendLog("Update script reported an error state.");
-            completeProgress();
-            document.body.classList.remove('rebooting');
-            return;
-          }
+          // Always treat error as real so we don't get stuck at 90%
+          dot.classList.add('warn');
+          dot.style.background = '#ef4444';
+          spinner.style.visibility = 'visible';
+          statusLabel.textContent  = 'Update failed';
+          statusDetail.textContent = 'An error occurred during the update. Check the log below for details.';
+          statusShort.textContent  = 'Update error.';
+          appendLog("Update script reported an error state.");
+          completeProgress();
+          document.body.classList.remove('rebooting');
+          seenRebootReq = true; // stop polling after error
+          return;
         }
       }catch(e){
         // keep polling
@@ -410,13 +406,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
+    // Always poll log so we show early errors from the updater script
     async function pollLog(){
       if (seenRebootReq) return;
-
-      if (!seenRunning && shouldStart) {
-        setTimeout(pollLog, 2000);
-        return;
-      }
 
       try{
         const r = await fetch('/update_log.txt?ts=' + Date.now(), { cache:'no-store' });
@@ -427,6 +419,7 @@ The printer will reboot automatically when updates are complete. This page will 
           logBox.scrollTop = logBox.scrollHeight;
         }
       }catch(e){
+        // ignore and retry
       }finally{
         if (!seenRebootReq){
           setTimeout(pollLog, 2000);
@@ -436,11 +429,6 @@ The printer will reboot automatically when updates are complete. This page will 
 
     async function pollProgress(){
       if (seenRebootReq) return;
-
-      if (!seenRunning && shouldStart) {
-        setTimeout(pollProgress, 2000);
-        return;
-      }
 
       try{
         const r = await fetch('/update_progress.txt?ts=' + Date.now(), { cache:'no-store' });
@@ -459,6 +447,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
+        // ignore, fake progress will keep running
       }finally{
         if (!seenRebootReq){
           setTimeout(pollProgress, 2000);
