@@ -6,13 +6,15 @@ LOG_TAG="[re3D-OS update]"
 
 REPO_DIR="/opt/re3d-os-src"
 
-# ---------------- UI STATUS FILES ----------------
-UI_DIR="/opt/mconfig/www"
-STATUS_FILE="${UI_DIR}/update.txt"
-LOG_FILE="${UI_DIR}/update_log.txt"
-PROGRESS_FILE="${UI_DIR}/update_progress.txt"
+# ---------------- RUNTIME STATE (NOT IN GIT) ----------------
+STATE_DIR="/tmp/re3d-os-update"
+STATUS_FILE="${STATE_DIR}/status"
+LOG_FILE="${STATE_DIR}/log"
+PROGRESS_FILE="${STATE_DIR}/progress"
 
-# Clean old UI files
+mkdir -p "$STATE_DIR"
+
+# Clean old state files
 rm -f "$STATUS_FILE" "$LOG_FILE" "$PROGRESS_FILE" || true
 touch "$STATUS_FILE" "$LOG_FILE" "$PROGRESS_FILE"
 
@@ -40,7 +42,7 @@ log "==========================================="
 # ---------------- SOURCE LOCATIONS ----------------
 SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
-SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
+SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf}"
 
 # ---------------- DEST LOCATIONS ------------------
 DST_MCONFIG="/opt/mconfig/www"
@@ -141,7 +143,7 @@ log "===== UPDATE COMPLETE — REBOOTING ====="
 set_progress 100
 set_status "rebooting"
 
-# Give UI a moment to read final state
+# Give UI a moment to read final state (via CGI readers)
 sleep 3
 
 log "Rebooting now..."
