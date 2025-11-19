@@ -113,19 +113,15 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
 fi
 
-# ---------- 4) Reload services ----------
+# ---------- 4) Reload services (best-effort, no "not found" noise) ----------
 set_progress 80
 
 log "${LOG_TAG} Reloading services (best-effort)..."
 systemctl daemon-reload || true
 
 for svc in klipper moonraker mainsail nginx crowsnest; do
-  if systemctl list-unit-files | grep -q "^${svc}.service"; then
-    log "${LOG_TAG} Restarting ${svc}.service ..."
-    systemctl restart "${svc}.service" || true
-  else
-    log "${LOG_TAG} ${svc}.service not found, skipping."
-  fi
+  log "${LOG_TAG} Restarting ${svc}.service (best-effort)..."
+  systemctl restart "${svc}.service" || true
 done
 
 set_progress 96
