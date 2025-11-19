@@ -88,13 +88,7 @@
       border-top-color:var(--accent);
       animation:spin .8s linear infinite;
       flex-shrink:0;
-      transition:border-top-color 0.25s ease, transform 0.25s ease;
-    }
-
-    body.rebooting .spinner{
-      border-top-color:var(--warn);
-      animation-duration:.6s;
-      transform:scale(1.05);
+      transition:border-top-color 0.25s ease;
     }
 
     @keyframes spin{
@@ -166,9 +160,31 @@
       border-radius:999px;
       background:#22c55e;
       flex-shrink:0;
+      transition:background-color 0.25s ease;
     }
-    .dot.warn{background:#f97316;}
     .dot.idle{background:#6b7280;}
+    .dot.warn{background:var(--warn);}
+
+    /* Reboot pulse on the status dot */
+    body.rebooting #dot{
+      animation:dot-pulse 1.5s ease-out infinite;
+      box-shadow:0 0 0 0 rgba(249,115,22,0.45);
+    }
+
+    @keyframes dot-pulse{
+      0%{
+        transform:scale(1);
+        box-shadow:0 0 0 0 rgba(249,115,22,0.45);
+      }
+      70%{
+        transform:scale(1.08);
+        box-shadow:0 0 0 10px rgba(249,115,22,0);
+      }
+      100%{
+        transform:scale(1);
+        box-shadow:0 0 0 0 rgba(249,115,22,0);
+      }
+    }
   </style>
 </head>
 <body>
@@ -243,6 +259,8 @@ The printer will reboot automatically when updates are complete. This page will 
       seenRunning  = false;
       seenRebootReq = false;
       document.body.classList.remove('rebooting');
+      dot.classList.add('idle');
+      dot.classList.remove('warn');
     }
 
     function appendLog(line){
@@ -305,7 +323,9 @@ The printer will reboot automatically when updates are complete. This page will 
 
     function setStatusRunning(){
       dot.classList.remove('idle');
+      dot.classList.remove('warn');
       dot.style.background = '#22c55e';
+
       spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Updating system…';
       statusDetail.innerHTML   =
@@ -320,8 +340,10 @@ The printer will reboot automatically when updates are complete. This page will 
     function setStatusRebootPhaseUI(){
       seenRebootReq = true;
       dot.classList.add('warn');
-      dot.style.background = '#f97316';
-      // Keep spinner visible (now orange + slightly faster) to show it's alive
+      dot.style.background = getComputedStyle(document.documentElement)
+        .getPropertyValue('--warn') || '#f97316';
+
+      // Spinner keeps spinning so page feels alive
       spinner.style.visibility = 'visible';
       statusLabel.textContent  = 'Update complete – printer is rebooting';
       statusDetail.textContent =
@@ -329,7 +351,7 @@ The printer will reboot automatically when updates are complete. This page will 
       statusShort.textContent  = 'Rebooting printer…';
       appendLog("Update finished; printer is rebooting automatically.");
       completeProgress();
-      document.body.classList.add('rebooting');  // triggers shimmer on the full bar
+      document.body.classList.add('rebooting');  // triggers dot pulse + bar shimmer
     }
 
     async function pollStatus(){
@@ -360,6 +382,7 @@ The printer will reboot automatically when updates are complete. This page will 
           if (!seenRunning && shouldStart) {
             // stale error from a prior run; ignore until this run actually starts
           } else {
+            dot.classList.add('warn');
             dot.style.background = '#ef4444';
             spinner.style.visibility = 'visible';
             statusLabel.textContent  = 'Update failed';
