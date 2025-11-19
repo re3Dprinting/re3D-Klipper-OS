@@ -52,7 +52,20 @@
     .title-row{
       display:flex;
       align-items:center;
+      justify-content:space-between;
       gap:10px;
+    }
+
+    .title-left{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .logo{
+      height:26px;
+      width:auto;
+      opacity:0.9;
     }
 
     h1{
@@ -190,10 +203,13 @@
 <body>
   <div class="shell">
     <div class="title-row">
-      <div class="dot idle" id="dot"></div>
-      <div>
-        <h1 id="status-label">Preparing update…</h1>
+      <div class="title-left">
+        <div class="dot idle" id="dot"></div>
+        <div>
+          <h1 id="status-label">Preparing update…</h1>
+        </div>
       </div>
+      <img src="../img/re3d-logo.png" alt="re:3D logo" class="logo">
     </div>
 
     <p id="status-detail">
