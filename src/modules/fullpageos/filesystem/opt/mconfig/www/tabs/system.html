@@ -28,15 +28,11 @@
     gap:10px;
   }
 
+  /* Let .card provide background, border, radius, etc. */
   .sys-card{
     display:flex;
     flex-direction:column;
     gap:8px;
-    background:var(--panel-outer); /* match other cards */
-    border-radius:12px;
-    border:1px solid var(--border);
-    padding:10px 12px;
-    box-shadow:0 0 0 1px rgba(0,0,0,0.6);
   }
 
   .sys-title{
@@ -54,7 +50,7 @@
     margin-top:4px;
     padding:8px 10px;
     border-radius:10px;
-    background:#0C0E12; /* match network .out background */
+    background:#0C0E12; /* same as network .out */
     border:1px dashed var(--border);
     max-height:220px;
     overflow:auto;
@@ -151,7 +147,7 @@
     <div class="sys-section-label">System</div>
 
     <!-- OS / Configurator Update -->
-    <div class="sys-card">
+    <div class="card sys-card">
       <div class="sys-title">OS &amp; Configurator Update</div>
       <div class="sys-subtitle">
         Pulls the latest Configurator UI and machine configs from the re3D-Klipper-OS repository
@@ -164,7 +160,7 @@
     </div>
 
     <!-- Network Info -->
-    <div class="sys-card">
+    <div class="card sys-card">
       <div class="sys-title">Network Info</div>
       <div class="sys-subtitle">
         Hostname, IPv4 addresses, and MAC per interface.
@@ -183,7 +179,7 @@
     <div class="sys-section-label">Reporting &amp; history</div>
 
     <!-- Calibration & Print Report -->
-    <div class="sys-card">
+    <div class="card sys-card">
       <div class="sys-title">Calibration &amp; Print Report</div>
       <div class="sys-subtitle">
         Open a summary page showing calibration profiles and print history metrics for this machine.
@@ -194,7 +190,7 @@
     </div>
 
     <!-- Print History -->
-    <div class="sys-card">
+    <div class="card sys-card">
       <div class="sys-title">Print History</div>
       <div class="sys-subtitle">
         Save/restore Moonraker’s print-history database and gcode files.
@@ -290,11 +286,9 @@
 
   if (updateRunBtn){
     updateRunBtn.addEventListener('click', () => {
-      // Optional micro-status before redirect
       if (updateStatus) updateStatus.textContent = 'Starting update…';
       updateRunBtn.disabled = true;
       if (updateCancelBtn) updateCancelBtn.disabled = true;
-      // Preserve the existing update behavior
       window.location.href = '/tabs/updating.html?start=1';
     });
   }
@@ -366,7 +360,6 @@
 
   (async ()=>{
     try{
-      // Prefer the richer JSON endpoint if available
       const r = await fetch('/cgi-bin/net_info.sh', {cache:'no-store'});
       if (r.ok){
         const j = await r.json();
@@ -376,7 +369,6 @@
       }
       throw new Error('net_info.sh not available');
     }catch(_){
-      // Fallback: legacy single-IP CGI (host_ip.sh)
       try{
         const r2 = await fetch('/cgi-bin/host_ip.sh', {cache:'no-store'});
         const t  = r2.ok ? (await r2.text()).trim() : '';
@@ -393,8 +385,6 @@
   const btnReport = document.getElementById('btn-report');
   if (btnReport){
     btnReport.addEventListener('click', () => {
-      // report.html lives next to calibration.html in /opt/mconfig/www/tabs/
-      // The main index is /opt/mconfig/www/, so we need the tabs/ prefix here.
       window.open('tabs/report.html', '_blank');
     });
   }
