@@ -133,6 +133,7 @@
       background-size:120% 100%;
     }
 
+    /* Shimmer animation while rebooting at 100% */
     body.rebooting .bar > div{
       animation:bar-shimmer 1.4s linear infinite;
       background-size:200% 100%;
@@ -176,6 +177,7 @@
     .dot.idle{background:#6b7280;}
     .dot.warn{background:var(--warn);}
 
+    /* Reboot pulse on the status dot */
     body.rebooting #dot{
       animation:dot-pulse 1.5s ease-out infinite;
       box-shadow:0 0 0 0 rgba(249,115,22,0.45);
@@ -254,10 +256,6 @@ The printer will reboot automatically when updates are complete. This page will 
     let progressStarted     = false;
     let hasExternalProgress = false;
 
-    let baselineStatus = null;
-    let canShowLog = false;
-    let canShowProgress = false;
-
     function resetUIForNewRun(){
       progressValue = 0;
       pbar.style.width = '0%';
@@ -272,13 +270,11 @@ The printer will reboot automatically when updates are complete. This page will 
       statusShort.textContent = 'Waiting for updater to start…';
       seenRunning  = false;
       seenRebootReq = false;
-      baselineStatus = null;
-      canShowLog = false;
-      canShowProgress = false;
 
       document.body.classList.remove('rebooting');
       dot.classList.add('idle');
       dot.classList.remove('warn');
+      dot.style.background = '#6b7280';
     }
 
     function appendLog(line){
@@ -324,7 +320,6 @@ The printer will reboot automatically when updates are complete. This page will 
       started = true;
 
       resetUIForNewRun();
-      setStatusRunning();
 
       appendLog("Sending update command to the system…");
       try {
@@ -335,6 +330,8 @@ The printer will reboot automatically when updates are complete. This page will 
     }
 
     function setStatusRunning(){
+      seenRunning = true;
+
       dot.classList.remove('idle');
       dot.classList.remove('warn');
       dot.style.background = '#22c55e';
@@ -348,8 +345,6 @@ The printer will reboot automatically when updates are complete. This page will 
       appendLog("Update script is now running.");
       document.body.classList.remove('rebooting');
 
-      canShowLog = true;
-      canShowProgress = true;
       startFakeProgress();
     }
 
@@ -378,49 +373,32 @@ The printer will reboot automatically when updates are complete. This page will 
         const raw  = (await r.text()).trim();
         const text = raw.toLowerCase();
 
-        // Capture baseline once, before we react to anything
-        if (baselineStatus === null){
-          baselineStatus = text;
-          setTimeout(pollStatus, 3000);
-          return;
-        }
-
-        // If status hasn't changed yet, don't treat it as this run's state.
-        if (text === baselineStatus && !seenRunning && !seenRebootReq){
-          setTimeout(pollStatus, 3000);
-          return;
-        }
-
         if (text === 'running'){
           if (!seenRunning){
-            seenRunning = true;
             setStatusRunning();
           }
         } else if (text === 'rebooting'){
-          // Only treat this as fresh if we've actually seen "running" this session.
-          if (!seenRunning && shouldStart) {
-            // likely stale from previous run, ignore
-          } else {
+          // Only accept rebooting after we've seen running in this session
+          if (seenRunning){
             setStatusRebootPhaseUI();
             startWatchingForReboot();
             return;
           }
         } else if (text === 'error'){
-          // Always treat error as real so we don't get stuck
-          canShowLog = true;
-          canShowProgress = false;
-
-          dot.classList.add('warn');
-          dot.style.background = '#ef4444';
-          spinner.style.visibility = 'visible';
-          statusLabel.textContent  = 'Update failed';
-          statusDetail.textContent = 'An error occurred during the update. Check the log below for details.';
-          statusShort.textContent  = 'Update error.';
-          appendLog("Update script reported an error state.");
-          completeProgress();
-          document.body.classList.remove('rebooting');
-          seenRebootReq = true;
-          return;
+          // Only treat error as real if we've seen running; otherwise assume stale from a prior run
+          if (seenRunning){
+            dot.classList.add('warn');
+            dot.style.background = '#ef4444';
+            spinner.style.visibility = 'visible';
+            statusLabel.textContent  = 'Update failed';
+            statusDetail.textContent = 'An error occurred during the update. Check the log below for details.';
+            statusShort.textContent  = 'Update error.';
+            appendLog("Update script reported an error state.");
+            completeProgress();
+            document.body.classList.remove('rebooting');
+            seenRebootReq = true;
+            return;
+          }
         }
       }catch(e){
         // keep polling
@@ -431,8 +409,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
+    // Only show log after we've confirmed this run is "running"
     async function pollLog(){
-      if (seenRebootReq || !canShowLog) {
+      if (seenRebootReq || !seenRunning){
         setTimeout(pollLog, 2000);
         return;
       }
@@ -454,8 +433,9 @@ The printer will reboot automatically when updates are complete. This page will 
       }
     }
 
+    // Only read progress after we've confirmed this run is "running"
     async function pollProgress(){
-      if (seenRebootReq || !canShowProgress) {
+      if (seenRebootReq || !seenRunning){
         setTimeout(pollProgress, 2000);
         return;
       }
@@ -468,7 +448,6 @@ The printer will reboot automatically when updates are complete. This page will 
           const v = parseInt(text, 10);
           if (!isNaN(v)){
             hasExternalProgress = true;
-            progressStarted = true;
             if (progressTimer){
               clearInterval(progressTimer);
               progressTimer = null;
@@ -477,7 +456,7 @@ The printer will reboot automatically when updates are complete. This page will 
           }
         }
       }catch(e){
-        // ignore, fake progress will keep running until we see real numbers
+        // ignore, fake progress keeps going until we see real numbers
       }finally{
         if (!seenRebootReq){
           setTimeout(pollProgress, 2000);
@@ -513,8 +492,9 @@ The printer will reboot automatically when updates are complete. This page will 
 
     if (shouldStart) {
       resetUIForNewRun();
+      startUpdateOnce();
     }
-    startUpdateOnce();
+
     pollStatus();
     pollLog();
     pollProgress();
