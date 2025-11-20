@@ -265,7 +265,7 @@ G21
 M83 ; use relative distances for extrusion
 ; Filament gcode
 G92 E0
-SET_PRESSURE_ADVANCE ADVANCE={pressure_advance}; Override pressure advance value
+SET_PRESSURE_ADVANCE ADVANCE=0; Override pressure advance value
 M106 S0
 ;LAYER_CHANGE
 ;Z:0.4
