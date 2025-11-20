@@ -309,7 +309,7 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
       # Case-insensitive contains check
       printf '%s\n' "$line" | grep -qi -- "$pat" || continue
 
-      # Skip the first timeout with mcu
+      # Skip the first "timeout with mcu"
       if [ "$pat" = "timeout with mcu" ] && [ "$skip_timeout_with_mcu" = "true" ]; then
         skip_timeout_with_mcu="false"
         continue
@@ -372,7 +372,7 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
       echo "      </pre>"
       echo "    </div>"
       echo "  </div>"
-      ;;
+      break
     done
   done < "$LOG_FILE"
 

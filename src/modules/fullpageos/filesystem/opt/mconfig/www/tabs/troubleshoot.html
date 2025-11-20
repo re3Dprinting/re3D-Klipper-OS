@@ -349,7 +349,7 @@
           const resp = await fetch("/cgi-bin/parse_log.sh", { method: "GET" });
           const html = await resp.text();
           outErrors.innerHTML =
-            html.trim() || "<div class='log-errors-empty'>No output.</div>";
+            html.trim() || "<div class='log-errors-empty'> No Errors found ✅ </div>";
         } catch (err) {
           outErrors.textContent = "Error: " + err;
         } finally {
