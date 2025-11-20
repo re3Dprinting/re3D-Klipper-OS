@@ -64,7 +64,7 @@
       if (parseBtn) { parseBtn.disabled = true; parseBtn.setAttribute('aria-busy', 'true'); }
       out.textContent = 'Collecting logs and scanning for errors...';
       try {
-        const resp = await fetch('/cgi-bin/parse_logs.sh', { method: 'GET' });
+        const resp = await fetch('/cgi-bin/parse_log.sh', { method: 'GET' });
         const text = await resp.text();
         out.textContent = text.trim() || 'No output.';
       } catch (err) {
