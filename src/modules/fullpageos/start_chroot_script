@@ -150,7 +150,7 @@ apt-get autoremove -y
 
 step_start "Base Package Install"
 # apt-get tools
-apt-get -y --force-yes install git screen checkinstall avahi-daemon libavahi-compat-libdnssd1 xterm xdotool vim expect feh pulseaudio
+apt-get -y --force-yes install git screen checkinstall avahi-daemon libavahi-compat-libdnssd1 xterm xdotool vim expect feh pulseaudio python3-matplotlib
 step_end
 
 if [ "$FULLPAGEOS_INCLUDE_CHROMIUM" == "yes" ]

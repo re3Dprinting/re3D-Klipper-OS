@@ -100,6 +100,33 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FFF} not found, skipping FFF configs."
 fi
 
+# ---------- 2.5) Ensure matplotlib is installed for graphstats ----------
+set_progress 45
+log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
+
+# Update package lists
+set_progress 50
+
+# Install matplotlib (if not already present)
+set_progress 55
+log "${LOG_TAG} Installing python3-matplotlib if missing..."
+apt-get install -y python3-matplotlib || {
+  log "${LOG_TAG} ERROR: Failed to install python3-matplotlib"
+  set_status "error"
+  exit 1
+}
+
+# Verify installation
+set_progress 58
+log "${LOG_TAG} Verifying matplotlib import..."
+if ! python3 -c "import matplotlib" 2>/dev/null; then
+  log "${LOG_TAG} ERROR: matplotlib still not importable after install."
+  set_status "error"
+  exit 1
+fi
+
+log "${LOG_TAG} Matplotlib installed successfully."
+
 # ---------- 3) Klipper configs: FGF ----------
 set_progress 60
 

@@ -1,12 +1,12 @@
 #!/bin/sh
 # /cgi-bin/graphstats.sh
 #
-# Runs Klipper's graphstats.py on a saved log and streams the PNG to the browser.
+# Runs Klipper's graphstats.py on a log and streams the PNG to the browser.
 
 set -u
 
 GRAPH_SCRIPT="/home/pi/klipper/scripts/graphstats.py"
-SAVED_LOG_DIR="/home/pi/saved_logs"
+LOG_DIR="/home/pi/printer_data/logs"
 TMP_PNG="/tmp/graphstats.png"
 
 TYPE=""
@@ -27,15 +27,15 @@ if [ -n "${QUERY_STRING:-}" ]; then
   IFS=$OLDIFS
 fi
 
-# If no log name provided, use newest file in /home/pi/saved_logs
+# If no log name provided, pick newest klippy*.log in LOG_DIR
 if [ -z "$LOG" ]; then
-  LOG="$(ls -1t "$SAVED_LOG_DIR" 2>/dev/null | head -n1 || true)"
+  LOG="$(ls -1t "$LOG_DIR"/klippy*.log 2>/dev/null | head -n1 || true)"
 fi
 
-if [ -z "$LOG" ] || [ ! -f "$SAVED_LOG_DIR/$LOG" ]; then
+if [ -z "$LOG" ] || [ ! -f "$LOG" ]; then
   echo "Content-Type: text/plain"
   echo
-  echo "No log file found in $SAVED_LOG_DIR."
+  echo "No klippy log file found in $LOG_DIR (looked for klippy*.log)."
   exit 0
 fi
 
@@ -43,19 +43,19 @@ fi
 FLAGS=""
 case "$TYPE" in
   ""|"bandwidth")
-    # mcu bandwidth & load utilization (default)
+    # MCU bandwidth & load utilization (default)
     FLAGS=""
     ;;
   "freq")
-    # mcu frequency
+    # MCU frequency
     FLAGS="-f"
     ;;
   "system")
-    # system load
+    # System load
     FLAGS="-s"
     ;;
   "heater")
-    # heater temperature
+    # Heater temperature
     FLAGS="-t HEATER"
     ;;
   *)
@@ -64,9 +64,8 @@ case "$TYPE" in
 esac
 
 # Run graphstats.py
-# Command matches your pattern:
-#   graphstats.py /home/pi/saved_logs/{{Log}} {{Type}} -o /home/pi/graph.png
-/usr/bin/python3 "$GRAPH_SCRIPT" "$SAVED_LOG_DIR/$LOG" $FLAGS -o "$TMP_PNG" 2>/tmp/graphstats.err || {
+# graphstats.py /home/pi/printer_data/logs/klippy.log {{flags}} -o /tmp/graphstats.png
+/usr/bin/python3 "$GRAPH_SCRIPT" "$LOG" $FLAGS -o "$TMP_PNG" 2>/tmp/graphstats.err || {
   echo "Content-Type: text/plain"
   echo
   echo "Error running graphstats.py"
