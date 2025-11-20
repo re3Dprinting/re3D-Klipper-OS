@@ -3,7 +3,7 @@
 #
 # 1) Collect logs into a temp bundle directory (similar to collect_logs.sh)
 # 2) Parse ALL klippy*.log files for known error patterns
-# 3) Return an HTML fragment for the web UI
+# 3) Return an HTML fragment for the web UI, with timing info
 
 set -u
 
@@ -252,43 +252,119 @@ EOF
   esac
 }
 
-# --- 3. SCAN *ALL* K L I P P Y  LOGS ---
+# Helper: format "Stats seconds" as t = XXXs (≈ hh mm ss after start)
+format_offset() {
+  secs="$1"
+  [ -z "$secs" ] && return
+  awk -v s="$secs" 'BEGIN{
+    h = int(s/3600);
+    m = int((s - h*3600)/60);
+    sec = s - h*3600 - m*60;
+    printf("t = %.1fs (≈ %02dh %02dm %04.1fs after start)", s, h, m, sec);
+  }'
+}
+
+# Pre-split patterns into $@
+oldIFS=$IFS
+IFS='
+'
+set -- $patterns
+IFS=$oldIFS
 
 any_global="false"
+
+# Skip the *first* occurrence of these noisy patterns globally
+skip_timeout_with_mcu="true"
+skip_got_eof="true"
+
+# --- 3. SCAN *ALL* K L I P P Y  LOGS ---
 
 for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
   [ -f "$LOG_FILE" ] || continue
 
-  found_any="false"
+  file_has_any="false"
   log_basename="$(basename "$LOG_FILE")"
 
-  oldIFS=$IFS
-  IFS='
-'
-  set -- $patterns
-  IFS=$oldIFS
+  current_start_pretty=""
+  current_stats_secs=""
 
-  for pat in "$@"; do
-    [ -z "$pat" ] && continue
+  # Read log line-by-line so we can track Start/Stats context
+  while IFS= read -r line; do
+    # Track "Start printer at ..." lines
+    case "$line" in
+      Start\ printer\ at*)
+        # Human-readable part: strip prefix and trailing "(...)" if present
+        current_start_pretty="$(printf '%s\n' "$line" | sed 's/^Start printer at //; s/ (.*//')"
+        ;;
+      Stats\ *:*)
+        # Stats 2141.9: ...
+        secs="$(printf '%s\n' "$line" | sed -n 's/^Stats \([0-9.]*\):.*/\1/p')"
+        [ -n "$secs" ] && current_stats_secs="$secs"
+        ;;
+    esac
 
-    if grep -qi -- "$pat" "$LOG_FILE"; then
-      if [ "$found_any" = "false" ]; then
-        if [ "$any_global" = "false" ]; then
-          echo "<div class='log-errors-wrap'>"
-        fi
+    # Now check this line against all patterns (case-insensitive)
+    for pat in "$@"; do
+      [ -z "$pat" ] && continue
+      # Case-insensitive contains check
+      printf '%s\n' "$line" | grep -qi -- "$pat" || continue
+
+      # Skip the first timeout with mcu
+      if [ "$pat" = "timeout with mcu" ] && [ "$skip_timeout_with_mcu" = "true" ]; then
+        skip_timeout_with_mcu="false"
+        continue
+      fi
+
+      # Skip the first got eof
+      if [ "$pat" = "got eof" ] && [ "$skip_got_eof" = "true" ]; then
+        skip_got_eof="false"
+        continue
+      fi
+
+      # First error in ANY log → open wrapper
+      if [ "$any_global" = "false" ]; then
+        echo "<div class='log-errors-wrap'>"
         any_global="true"
+      fi
 
+      # First error in THIS log → open file block
+      if [ "$file_has_any" = "false" ]; then
         echo "<div class='log-errors-file'>"
         echo "  <div class='log-file-title'>Errors in <span class='log-file-name'>$(html_escape "$log_basename")</span></div>"
-        found_any="true"
+        file_has_any="true"
       fi
 
       esc_pat="$(html_escape "$pat")"
+
+      # Compute offset text if we have Stats seconds
+      offset_line=""
+      if [ -n "$current_stats_secs" ]; then
+        off_str="$(format_offset "$current_stats_secs")"
+        if [ -n "$off_str" ]; then
+          # HTML-escape the whole formatted string
+          off_str_esc="$(html_escape "$off_str")"
+          offset_line="<div class='log-error-time'>Approx time in run: ${off_str_esc}</div>"
+        fi
+      fi
+
       echo "  <div class='log-error-card'>"
       echo "    <div class='log-error-header'>"
       echo "      <span class='log-error-pill'>Error</span>"
       echo "      <span class='log-error-name'>$esc_pat</span>"
       echo "    </div>"
+
+      # Meta block: run start + time in run (if available)
+      if [ -n "$current_start_pretty" ] || [ -n "$offset_line" ]; then
+        echo "    <div class='log-error-meta'>"
+        if [ -n "$current_start_pretty" ]; then
+          echo "      <div class='log-error-run'>Run started: $(html_escape "$current_start_pretty")</div>"
+        fi
+        if [ -n "$offset_line" ]; then
+          echo "      $offset_line"
+        fi
+        echo "    </div>"
+      fi
+
       echo "    <div class='log-error-body'>"
       echo "      <div class='log-error-solution-title'>Suggested fix</div>"
       echo "      <pre class='log-error-solution-text'>"
@@ -296,10 +372,11 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
       echo "      </pre>"
       echo "    </div>"
       echo "  </div>"
-    fi
-  done
+      ;;
+    done
+  done < "$LOG_FILE"
 
-  if [ "$found_any" = "true" ]; then
+  if [ "$file_has_any" = "true" ]; then
     echo "</div>"  # close .log-errors-file
   fi
 done
