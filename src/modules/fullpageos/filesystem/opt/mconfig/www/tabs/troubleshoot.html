@@ -1,139 +1,166 @@
 <style>
-  .out {
+  /* Scoped to logs tab */
+
+  .logs-wrap {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+    display: grid;
+    gap: 12px;
+  }
+
+  .logs-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .logs-title {
+    font-weight: 800;
+    margin-bottom: 2px;
+  }
+
+  .logs-subtitle {
+    color: var(--gray-300);
+    font-size: 12px;
+  }
+
+  .logs-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .logs-out {
     margin-top: 4px;
     padding: 8px 10px;
     border-radius: 10px;
     background: #0c0e12;
     border: 1px dashed var(--border);
-    max-height: 200px;
+    max-height: 220px;
     overflow: auto;
     font-size: 12px;
     color: var(--gray-200);
     white-space: pre-wrap;
-    font-family: monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+      "Liberation Mono", monospace;
   }
-  .out--small {
-    max-height: 120px;
+
+  .logs-out--small {
+    max-height: 140px;
   }
-  .btn-row {
+
+  .hint {
+    color: var(--gray-300);
+    font-size: 12px;
+  }
+
+  .logs-controls {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    margin-top: 4px;
   }
-  .cards-row {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  @media (min-width: 900px) {
-    .cards-row {
-      flex-direction: row;
-      align-items: flex-start;
-    }
-    .card-col {
-      flex: 1;
-      min-width: 0;
-    }
-  }
-  .card-title {
-    font-weight: 800;
-    margin-bottom: 4px;
-  }
-  .card-subtitle {
+
+  .logs-select {
     font-size: 12px;
-    opacity: 0.8;
-    margin-bottom: 8px;
+    max-width: 260px;
+  }
+
+  .logs-img-wrap {
+    margin-top: 8px;
+  }
+
+  .logs-img {
+    max-width: 100%;
+    display: none;
+    border-radius: 8px;
+    border: 1px solid var(--border);
   }
 </style>
 
-<div class="content single">
-  <div class="cards-row">
-    <!-- Save / download logs -->
-    <div class="card card-col">
-      <div class="card-title">Save & download logs</div>
-      <p class="card-subtitle">
-        Collects printer logs, Chromium logs, dmesg, journalctl and systemctl
-        output.
-      </p>
-      <div class="btn-row" style="margin-bottom: 8px">
-        <form
-          id="logs-download-form"
-          action="/cgi-bin/collect_logs.sh"
-          method="get"
-          target="_self"
-        >
-          <button type="submit">Download log bundle</button>
-        </form>
-        <form id="logs-usb-form" action="/cgi-bin/collect_logs.sh" method="get">
-          <input type="hidden" name="dest" value="usb" />
-          <button type="submit" id="logs-usb-btn">Save to USB</button>
-          <span
-            id="logs-spinner"
-            class="spinner"
-            style="display: none; margin-left: 8px"
-            aria-hidden="true"
-          ></span>
-        </form>
-      </div>
-      <div class="out mono out--small" id="out-save">No save action yet.</div>
-      <p class="hint" style="margin-top: 6px">
-        Insert a USB drive before clicking "Save to USB".
-      </p>
+<div class="content logs-wrap">
+  <!-- Card 1: Collect / save logs -->
+  <div class="card logs-card">
+    <div class="logs-title">Collect & save logs</div>
+    <div class="logs-subtitle">
+      Collects printer logs, Chromium logs, dmesg, journalctl and systemctl
+      output.
     </div>
 
-    <!-- Scan for errors -->
-    <div class="card card-col">
-      <div class="card-title">Scan logs for errors</div>
-      <p class="card-subtitle">
-        Collects logs and scans for known Klipper / MAX31856 error patterns,
-        showing suggested fixes.
-      </p>
-      <div class="btn-row" style="margin-bottom: 8px">
-        <form id="logs-parse-form">
-          <button type="submit" id="logs-parse-btn">Scan log for errors</button>
-        </form>
-      </div>
-      <div class="out mono" id="out-errors">No scan run yet.</div>
+    <div class="logs-row">
+      <form
+        id="logs-download-form"
+        action="/cgi-bin/collect_logs.sh"
+        method="get"
+        target="_self"
+      >
+        <button type="submit">Download log bundle</button>
+      </form>
+
+      <form id="logs-usb-form" action="/cgi-bin/collect_logs.sh" method="get">
+        <input type="hidden" name="dest" value="usb" />
+        <button type="submit" id="logs-usb-btn">Save to USB</button>
+        <span
+          id="logs-spinner"
+          class="spinner"
+          style="display: none; margin-left: 8px"
+          aria-hidden="true"
+        ></span>
+      </form>
     </div>
 
-    <!-- Graphs / visualization -->
-    <div class="card card-col">
-      <div class="card-title">Log graphs</div>
-      <p class="card-subtitle">
-        Visualize MCU bandwidth, frequency, system load, and heater temperatures
-        from saved logs.
-      </p>
+    <div class="logs-out logs-out--small" id="out-save">
+      No save action yet.
+    </div>
+    <p class="hint">Insert a USB drive before clicking "Save to USB".</p>
+  </div>
 
-      <div class="btn-row" style="margin-bottom: 8px">
-        <label for="graph-type" style="font-size: 12px">Graph type:</label>
-        <select id="graph-type">
-          <option value="bandwidth">
-            mcu bandwidth &amp; load utilization
-          </option>
-          <option value="freq">mcu frequency</option>
-          <option value="system">system load</option>
-          <option value="heater">heater temperature</option>
-        </select>
-        <button type="button" id="logs-graph-btn">Generate graph</button>
-      </div>
+  <!-- Card 2: Scan for errors -->
+  <div class="card logs-card">
+    <div class="logs-title">Scan logs for errors</div>
+    <div class="logs-subtitle">
+      Collects logs and scans for known Klipper / MAX31856 errors, then shows
+      suggested fixes.
+    </div>
 
-      <div class="out mono out--small" id="out-graphs">
-        Select a graph type and click "Generate graph".
-      </div>
+    <div class="logs-row">
+      <form id="logs-parse-form">
+        <button type="submit" id="logs-parse-btn">Scan log for errors</button>
+      </form>
+    </div>
 
-      <div style="margin-top: 8px">
-        <img
-          id="graph-img"
-          alt="Log graph"
-          style="
-            max-width: 100%;
-            display: none;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-          "
-        />
-      </div>
+    <div class="logs-out" id="out-errors">No scan run yet.</div>
+  </div>
+
+  <!-- Card 3: Graphs -->
+  <div class="card logs-card">
+    <div class="logs-title">Log graphs</div>
+    <div class="logs-subtitle">
+      Generate graphs from saved logs (MCU bandwidth, frequency, system load,
+      heater temperature).
+    </div>
+
+    <div class="logs-controls">
+      <label for="graph-type" class="hint">Graph type:</label>
+      <select id="graph-type" class="logs-select">
+        <option value="bandwidth">mcu bandwidth &amp; load utilization</option>
+        <option value="freq">mcu frequency</option>
+        <option value="system">system load</option>
+        <option value="heater">heater temperature</option>
+      </select>
+      <button type="button" id="logs-graph-btn">Generate graph</button>
+    </div>
+
+    <div class="logs-out logs-out--small" id="out-graphs">
+      Select a graph type and click "Generate graph".
+    </div>
+
+    <div class="logs-img-wrap">
+      <img id="graph-img" class="logs-img" alt="Log graph" />
     </div>
   </div>
 </div>
@@ -144,7 +171,7 @@
     const outErrors = document.getElementById("out-errors");
     const outGraphs = document.getElementById("out-graphs");
 
-    // Save to USB
+    // --- Save to USB ---
     const usbForm = document.getElementById("logs-usb-form");
     const usbBtn = document.getElementById("logs-usb-btn");
     const spinner = document.getElementById("logs-spinner");
@@ -176,7 +203,7 @@
       });
     }
 
-    // Scan for errors
+    // --- Scan for errors ---
     const parseForm = document.getElementById("logs-parse-form");
     const parseBtn = document.getElementById("logs-parse-btn");
 
@@ -203,7 +230,7 @@
       });
     }
 
-    // Graphs
+    // --- Graphs ---
     const graphBtn = document.getElementById("logs-graph-btn");
     const graphType = document.getElementById("graph-type");
     const graphImg = document.getElementById("graph-img");
@@ -215,7 +242,7 @@
         outGraphs.textContent = "Generating graph...";
         graphImg.style.display = "none";
 
-        // bust cache with ts param
+        // add timestamp to avoid caching
         const url = `/cgi-bin/graphstats.sh?type=${encodeURIComponent(
           type
         )}&ts=${Date.now()}`;
@@ -226,7 +253,7 @@
         };
         graphImg.onerror = () => {
           outGraphs.textContent =
-            "Error generating graph. Check that saved logs exist.";
+            "Error generating graph. Check that saved logs exist and graphstats.sh is configured correctly.";
           graphImg.style.display = "none";
         };
 
