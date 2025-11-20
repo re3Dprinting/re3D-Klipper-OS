@@ -1,57 +1,27 @@
 #!/bin/sh
 # /cgi-bin/parse_log.sh
 #
-# 1) Collect logs into a temp bundle directory (similar to collect_logs.sh)
-# 2) Parse ALL klippy*.log files for known error patterns
-# 3) Return an HTML fragment for the web UI, with timing info
+# Parse ALL /home/pi/printer_data/logs/klippy*.log files
+# for known error patterns and return an HTML fragment
+# for the web UI, with timing info per error.
+#
+# Also:
+#   - Skip the FIRST "timeout with mcu"
+#   - Skip the FIRST "got eof"
 
 set -u
 
 PRINTER_LOG_DIR="/home/pi/printer_data/logs"
-CHROMIUM_LOG_DIR="/home/pi/.config/chromium"
-
-WORKDIR="$(mktemp -d /tmp/logscan.XXXXXX)"
-BUNDLE_DIR="${WORKDIR}/bundle"
-mkdir -p "$BUNDLE_DIR"
-
-# --- 1. COLLECT LOGS INTO BUNDLE_DIR ---
-
-# 1. printer logs
-if [ -d "$PRINTER_LOG_DIR" ]; then
-    mkdir -p "$BUNDLE_DIR/printer_data_logs"
-    cp -r "$PRINTER_LOG_DIR"/. "$BUNDLE_DIR/printer_data_logs/" 2>/dev/null || true
-fi
-
-# 2. chromium logs
-if [ -d "$CHROMIUM_LOG_DIR" ]; then
-    mkdir -p "$BUNDLE_DIR/chromium"
-    find "$CHROMIUM_LOG_DIR" -maxdepth 2 -type f \( -name "*.log" -o -name "Crash*" \) -print0 | \
-        xargs -0 -I{} cp "{}" "$BUNDLE_DIR/chromium/" 2>/dev/null || true
-fi
-
-# 3. dmesg
-dmesg > "$BUNDLE_DIR/dmesg.log" 2>/dev/null || true
-
-# 4. journalctl
-journalctl -xe --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || \
-journalctl --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || true
-
-# 5. systemctl
-systemctl list-units --all > "$BUNDLE_DIR/systemctl-list.log" 2>/dev/null || true
-systemctl status > "$BUNDLE_DIR/systemctl-status.log" 2>/dev/null || true
-
-PRINTER_BUNDLE_DIR="$BUNDLE_DIR/printer_data_logs"
 
 echo "Content-Type: text/html"
 echo
 
-if [ ! -d "$PRINTER_BUNDLE_DIR" ]; then
-    echo "<div class='log-errors-empty'>No printer logs collected (expected directory: ${PRINTER_BUNDLE_DIR}).</div>"
-    rm -rf "$WORKDIR"
+if [ ! -d "$PRINTER_LOG_DIR" ]; then
+    echo "<div class='log-errors-empty'>No printer logs directory found at ${PRINTER_LOG_DIR}.</div>"
     exit 0
 fi
 
-# --- 2. DEFINE ERROR PATTERNS ---
+# --- 1. DEFINE ERROR PATTERNS ---
 
 patterns=$(cat <<'EOF'
 thermocouple reader fault
@@ -264,7 +234,7 @@ format_offset() {
   }'
 }
 
-# Pre-split patterns into $@
+# Turn patterns into $1, $2, ... for easy looping
 oldIFS=$IFS
 IFS='
 '
@@ -277,10 +247,13 @@ any_global="false"
 skip_timeout_with_mcu="true"
 skip_got_eof="true"
 
-# --- 3. SCAN *ALL* K L I P P Y  LOGS ---
+# --- 2. SCAN *ALL* K L I P P Y  LOGS DIRECTLY ---
 
-for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
+have_any_log="false"
+
+for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
   [ -f "$LOG_FILE" ] || continue
+  have_any_log="true"
 
   file_has_any="false"
   log_basename="$(basename "$LOG_FILE")"
@@ -306,19 +279,22 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
     # Now check this line against all patterns (case-insensitive)
     for pat in "$@"; do
       [ -z "$pat" ] && continue
+
       # Case-insensitive contains check
       printf '%s\n' "$line" | grep -qi -- "$pat" || continue
 
       # Skip the first "timeout with mcu"
       if [ "$pat" = "timeout with mcu" ] && [ "$skip_timeout_with_mcu" = "true" ]; then
         skip_timeout_with_mcu="false"
-        continue
+        # do not render this one, just skip
+        break  # stop checking other patterns for this line
       fi
 
-      # Skip the first got eof
+      # Skip the first "got eof"
       if [ "$pat" = "got eof" ] && [ "$skip_got_eof" = "true" ]; then
         skip_got_eof="false"
-        continue
+        # do not render this one, just skip
+        break  # stop checking other patterns for this line
       fi
 
       # First error in ANY log → open wrapper
@@ -372,6 +348,9 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
       echo "      </pre>"
       echo "    </div>"
       echo "  </div>"
+
+      # If a line matches a pattern, we don't want to render duplicates
+      # for the same line even if another pattern also matches.
       break
     done
   done < "$LOG_FILE"
@@ -384,8 +363,11 @@ done
 if [ "$any_global" = "true" ]; then
   echo "</div>"  # close .log-errors-wrap
 else
-  echo "<div class='log-errors-empty'>No known errors found in any klippy log.</div>"
+  if [ "$have_any_log" = "false" ]; then
+    echo "<div class='log-errors-empty'>No klippy logs found in ${PRINTER_LOG_DIR}.</div>"
+  else
+    echo "<div class='log-errors-empty'>No known errors found in any klippy log.</div>"
+  fi
 fi
 
-rm -rf "$WORKDIR"
 exit 0
