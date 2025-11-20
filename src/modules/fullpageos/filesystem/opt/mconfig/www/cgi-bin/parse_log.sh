@@ -49,7 +49,7 @@ PAT_FILE="$(mktemp /tmp/klip_patterns.XXXXXX)"
 printf '%s\n' "$patterns" > "$PAT_FILE"
 
 html_escape() {
-  # basic HTML escape
+  # basic HTML escape for text nodes
   printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
 }
 
@@ -326,6 +326,14 @@ for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
 
       esc_pat="$(html_escape "$pat")"
 
+      # Slug for data-error-type (for filtering in UI)
+      safe_type="$(
+        printf '%s' "$pat" \
+        | tr '[:upper:]' '[:lower:]' \
+        | tr -c 'a-z0-9' '-' \
+        | sed 's/--*/-/g; s/^-//; s/-$//'
+      )"
+
       # Build meta block
       run_html=""
       offset_html=""
@@ -341,7 +349,7 @@ for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
         fi
       fi
 
-      echo "  <div class='log-error-card'>"
+      echo "  <div class='log-error-card' data-error-type='${safe_type}'>"
       echo "    <div class='log-error-header'>"
       echo "      <span class='log-error-pill'>Error</span>"
       echo "      <span class='log-error-name'>$esc_pat</span>"
@@ -354,7 +362,7 @@ for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
         echo "    </div>"
       fi
 
-      echo "    <div class='log-error-body'>"      
+      echo "    <div class='log-error-body'>"
       echo "      <div class='log-error-solution-title'>Suggested fix</div>"
       echo "      <pre class='log-error-solution-text'>"
       print_solution "$pat"

@@ -209,6 +209,11 @@
     font-size: 12px;
     color: var(--gray-300);
   }
+
+  /* Filter row for error types */
+  .log-filter-row {
+    margin-top: 4px;
+  }
 </style>
 
 <div class="content logs-wrap">
@@ -261,6 +266,19 @@
         <button type="submit" id="logs-parse-btn">Scan log for errors</button>
       </form>
     </div>
+
+    <!-- Filter row: hidden by default; shown only if errors exist -->
+    <div
+      class="logs-row log-filter-row"
+      id="error-filter-row"
+      style="display: none"
+    >
+      <label for="error-filter" class="hint">Filter by error type:</label>
+      <select id="error-filter" class="logs-select">
+        <option value="">All error types</option>
+      </select>
+    </div>
+
     <div class="log-errors-shell" id="out-errors">
       <div class="log-errors-empty">No scan run yet.</div>
     </div>
@@ -300,6 +318,96 @@
     const outSave = document.getElementById("out-save");
     const outErrors = document.getElementById("out-errors");
     const outGraphs = document.getElementById("out-graphs");
+
+    const errorFilterRow = document.getElementById("error-filter-row");
+    const errorFilterSelect = document.getElementById("error-filter");
+
+    // --- helper: set up / refresh the error-type filter dropdown ---
+    function setupErrorFilter() {
+      if (!outErrors || !errorFilterRow || !errorFilterSelect) return;
+
+      const cards = outErrors.querySelectorAll(".log-error-card");
+      if (!cards.length) {
+        // No errors → hide filter
+        errorFilterRow.style.display = "none";
+        return;
+      }
+
+      // Collect unique types (from data-error-type) with human labels
+      const typeMap = {}; // key -> label
+      cards.forEach((card) => {
+        const t = card.dataset.errorType || "";
+        if (!t) return;
+        if (typeMap[t]) return;
+        const nameEl = card.querySelector(".log-error-name");
+        const label = nameEl ? nameEl.textContent.trim() : t;
+        typeMap[t] = label;
+      });
+
+      const typeKeys = Object.keys(typeMap);
+      if (!typeKeys.length) {
+        errorFilterRow.style.display = "none";
+        return;
+      }
+
+      // Rebuild select options
+      errorFilterSelect.innerHTML = "";
+      const optAll = document.createElement("option");
+      optAll.value = "";
+      optAll.textContent = "All error types";
+      errorFilterSelect.appendChild(optAll);
+
+      typeKeys
+        .sort((a, b) =>
+          typeMap[a].toLowerCase().localeCompare(typeMap[b].toLowerCase())
+        )
+        .forEach((t) => {
+          const opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = typeMap[t];
+          errorFilterSelect.appendChild(opt);
+        });
+
+      // Show the row now that we have types
+      errorFilterRow.style.display = "flex";
+      errorFilterSelect.value = "";
+
+      // Bind change handler once
+      if (!errorFilterSelect.dataset.bound) {
+        errorFilterSelect.addEventListener("change", () => {
+          const selected = errorFilterSelect.value;
+          const allCards = outErrors.querySelectorAll(".log-error-card");
+          const allFiles = outErrors.querySelectorAll(".log-errors-file");
+
+          if (!selected) {
+            // Show everything
+            allCards.forEach((c) => {
+              c.style.display = "";
+            });
+            allFiles.forEach((file) => {
+              file.style.display = "";
+            });
+            return;
+          }
+
+          // Show only matching cards
+          allCards.forEach((c) => {
+            const t = c.dataset.errorType || "";
+            c.style.display = t === selected ? "" : "none";
+          });
+
+          // Hide any log file blocks that have no visible errors
+          allFiles.forEach((file) => {
+            const visible = Array.from(
+              file.querySelectorAll(".log-error-card")
+            ).some((c) => c.style.display !== "none");
+            file.style.display = visible ? "" : "none";
+          });
+        });
+
+        errorFilterSelect.dataset.bound = "true";
+      }
+    }
 
     // --- Save to USB ---
     const usbForm = document.getElementById("logs-usb-form");
@@ -344,12 +452,19 @@
           parseBtn.disabled = true;
           parseBtn.setAttribute("aria-busy", "true");
         }
+        // Reset filter while scanning
+        if (errorFilterRow) errorFilterRow.style.display = "none";
+        if (errorFilterSelect) errorFilterSelect.value = "";
+
         outErrors.textContent = "Collecting logs and scanning for errors...";
         try {
           const resp = await fetch("/cgi-bin/parse_log.sh", { method: "GET" });
           const html = await resp.text();
           outErrors.innerHTML =
-            html.trim() || "<div class='log-errors-empty'> No Errors found ✅ </div>";
+            html.trim() ||
+            "<div class='log-errors-empty'> No Errors found ✅ </div>";
+          // After injecting new HTML, configure filter
+          setupErrorFilter();
         } catch (err) {
           outErrors.textContent = "Error: " + err;
         } finally {
