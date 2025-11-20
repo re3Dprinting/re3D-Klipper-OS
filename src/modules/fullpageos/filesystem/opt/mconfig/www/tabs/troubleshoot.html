@@ -33,6 +33,7 @@
     width: 100%;
   }
 
+  /* "Terminal" style output – used for save + graphs sections */
   .logs-out {
     margin-top: 4px;
     padding: 8px 10px;
@@ -81,86 +82,106 @@
     border: 1px solid var(--border);
   }
 
-  .log-errors-wrap{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
+  /* --- Error section: nicer cards, not terminal box --- */
+
+  /* Outer scroll container for all error cards */
+  .log-errors-shell {
+    margin-top: 4px;
+    max-height: 360px;
+    overflow: auto;
+    padding: 2px 0;
   }
 
-  .log-errors-file{
-    padding:6px 8px;
-    border-radius:8px;
-    border:1px solid var(--border);
-    background:#05060a;
+  /* Wrap of all per-file groups */
+  .log-errors-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--gray-100);
   }
 
-  .log-file-title{
-    font-size:11px;
-    font-weight:600;
-    color:var(--gray-200);
-    margin-bottom:4px;
+  /* One block per log file (e.g. klippy.log, klippy.log.2025-05-12) */
+  .log-errors-file {
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #05060a;
+    padding: 10px 12px;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
   }
 
-  .log-file-name{
-    color:var(--brand);
+  .log-file-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gray-300);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  .log-error-card{
-    margin-top:6px;
-    padding:6px 8px;
-    border-radius:8px;
-    background:#0C0E12;
-    border:1px solid rgba(239, 68, 68, 0.35); /* red-ish */
+  .log-file-name {
+    color: var(--brand);
   }
 
-  .log-error-header{
-    display:flex;
-    align-items:center;
-    gap:6px;
-    margin-bottom:4px;
+  /* Individual error inside a log file */
+  .log-error-card {
+    margin-top: 8px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    padding: 8px 10px;
   }
 
-  .log-error-pill{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    padding:2px 8px;
-    border-radius:999px;
-    font-size:10px;
-    font-weight:700;
-    text-transform:uppercase;
-    background:#ef4444;
-    color:#111;
+  .log-error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
   }
 
-  .log-error-name{
-    font-size:12px;
-    font-weight:600;
-    color:var(--gray-050);
+  .log-error-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: #ef4444;
+    color: #111;
   }
 
-  .log-error-body{
-    margin-top:2px;
+  .log-error-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-050);
   }
 
-  .log-error-solution-title{
-    font-size:11px;
-    font-weight:600;
-    color:var(--gray-200);
-    margin-bottom:2px;
+  .log-error-body {
+    margin-top: 4px;
   }
 
-  .log-error-solution-text{
-    margin:0;
-    font-size:11px;
-    line-height:1.4;
-    white-space:pre-wrap;
-    color:var(--gray-200);
+  .log-error-solution-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gray-200);
+    margin-bottom: 2px;
   }
 
-  .log-errors-empty{
-    font-size:12px;
-    color:var(--gray-300);
+  .log-error-solution-text {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    color: var(--gray-100);
+    background: transparent;
+    font-family: inherit; /* normal UI font, not monospace */
+  }
+
+  .log-errors-empty {
+    font-size: 12px;
+    color: var(--gray-300);
   }
 </style>
 
@@ -214,8 +235,9 @@
         <button type="submit" id="logs-parse-btn">Scan log for errors</button>
       </form>
     </div>
-
-    <div class="logs-out" id="out-errors">No scan run yet.</div>
+    <div class="log-errors-shell" id="out-errors">
+      <div class="log-errors-empty">No scan run yet.</div>
+    </div>
   </div>
 
   <!-- Card 3: Graphs -->
@@ -289,7 +311,7 @@
     const parseForm = document.getElementById("logs-parse-form");
     const parseBtn = document.getElementById("logs-parse-btn");
 
-        if (parseForm && outErrors) {
+    if (parseForm && outErrors) {
       parseForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (parseBtn) {
@@ -300,7 +322,8 @@
         try {
           const resp = await fetch("/cgi-bin/parse_log.sh", { method: "GET" });
           const html = await resp.text();
-          outErrors.innerHTML = html.trim() || "<div class='log-errors-empty'>No output.</div>";
+          outErrors.innerHTML =
+            html.trim() || "<div class='log-errors-empty'>No output.</div>";
         } catch (err) {
           outErrors.textContent = "Error: " + err;
         } finally {
