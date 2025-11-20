@@ -1,87 +1,237 @@
 <style>
-  .out{
-    margin-top:4px;
-    padding:8px 10px;
-    border-radius:10px;
-    background:#0C0E12;
-    border:1px dashed var(--border);
-    max-height:200px;
-    overflow:auto;
-    font-size:12px;
-    color:var(--gray-200);
-    white-space:pre-wrap;
-    font-family:monospace;
+  .out {
+    margin-top: 4px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #0c0e12;
+    border: 1px dashed var(--border);
+    max-height: 200px;
+    overflow: auto;
+    font-size: 12px;
+    color: var(--gray-200);
+    white-space: pre-wrap;
+    font-family: monospace;
   }
-  .btn-row{display:flex;align-items:center;gap:8px}
+  .out--small {
+    max-height: 120px;
+  }
+  .btn-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .cards-row {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  @media (min-width: 900px) {
+    .cards-row {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .card-col {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+  .card-title {
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .card-subtitle {
+    font-size: 12px;
+    opacity: 0.8;
+    margin-bottom: 8px;
+  }
 </style>
 
 <div class="content single">
-  <div class="card">
-    <div style="font-weight:800;margin-bottom:6px">Log collection</div>
-      <p class="hint">Collects printer logs, Chromium logs, dmesg, journalctl and systemctl output.</p>
-    <div class="btn-row" style="margin-bottom:8px">
-    <form id="logs-download-form" action="/cgi-bin/collect_logs.sh" method="get" target="_self">
-      <button type="submit">Download log bundle</button>
-    </form>
-    <form id="logs-usb-form" action="/cgi-bin/collect_logs.sh" method="get">
-      <input type="hidden" name="dest" value="usb">
-      <button type="submit" id="logs-usb-btn">Save to USB</button>
-      <span id="logs-spinner" class="spinner" style="display:none;margin-left:8px" aria-hidden="true"></span>
-    </form>
-    <form id="logs-parse-form">
-      <button type="submit" id="logs-parse-btn">Scan log for errors</button>
-    </form>
-  </div>
-  <div class="out mono" id="out-logs"></div>
-    <p class="hint">Insert a USB drive before clicking "Save to USB".</p>
+  <div class="cards-row">
+    <!-- Save / download logs -->
+    <div class="card card-col">
+      <div class="card-title">Save & download logs</div>
+      <p class="card-subtitle">
+        Collects printer logs, Chromium logs, dmesg, journalctl and systemctl
+        output.
+      </p>
+      <div class="btn-row" style="margin-bottom: 8px">
+        <form
+          id="logs-download-form"
+          action="/cgi-bin/collect_logs.sh"
+          method="get"
+          target="_self"
+        >
+          <button type="submit">Download log bundle</button>
+        </form>
+        <form id="logs-usb-form" action="/cgi-bin/collect_logs.sh" method="get">
+          <input type="hidden" name="dest" value="usb" />
+          <button type="submit" id="logs-usb-btn">Save to USB</button>
+          <span
+            id="logs-spinner"
+            class="spinner"
+            style="display: none; margin-left: 8px"
+            aria-hidden="true"
+          ></span>
+        </form>
+      </div>
+      <div class="out mono out--small" id="out-save">No save action yet.</div>
+      <p class="hint" style="margin-top: 6px">
+        Insert a USB drive before clicking "Save to USB".
+      </p>
+    </div>
+
+    <!-- Scan for errors -->
+    <div class="card card-col">
+      <div class="card-title">Scan logs for errors</div>
+      <p class="card-subtitle">
+        Collects logs and scans for known Klipper / MAX31856 error patterns,
+        showing suggested fixes.
+      </p>
+      <div class="btn-row" style="margin-bottom: 8px">
+        <form id="logs-parse-form">
+          <button type="submit" id="logs-parse-btn">Scan log for errors</button>
+        </form>
+      </div>
+      <div class="out mono" id="out-errors">No scan run yet.</div>
+    </div>
+
+    <!-- Graphs / visualization -->
+    <div class="card card-col">
+      <div class="card-title">Log graphs</div>
+      <p class="card-subtitle">
+        Visualize MCU bandwidth, frequency, system load, and heater temperatures
+        from saved logs.
+      </p>
+
+      <div class="btn-row" style="margin-bottom: 8px">
+        <label for="graph-type" style="font-size: 12px">Graph type:</label>
+        <select id="graph-type">
+          <option value="bandwidth">
+            mcu bandwidth &amp; load utilization
+          </option>
+          <option value="freq">mcu frequency</option>
+          <option value="system">system load</option>
+          <option value="heater">heater temperature</option>
+        </select>
+        <button type="button" id="logs-graph-btn">Generate graph</button>
+      </div>
+
+      <div class="out mono out--small" id="out-graphs">
+        Select a graph type and click "Generate graph".
+      </div>
+
+      <div style="margin-top: 8px">
+        <img
+          id="graph-img"
+          alt="Log graph"
+          style="
+            max-width: 100%;
+            display: none;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+          "
+        />
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-(() => {
-  const out       = document.getElementById('out-logs');
+  (() => {
+    const outSave = document.getElementById("out-save");
+    const outErrors = document.getElementById("out-errors");
+    const outGraphs = document.getElementById("out-graphs");
 
-  const usbForm   = document.getElementById('logs-usb-form');
-  const usbBtn    = document.getElementById('logs-usb-btn');
-  const spinner   = document.getElementById('logs-spinner');
+    // Save to USB
+    const usbForm = document.getElementById("logs-usb-form");
+    const usbBtn = document.getElementById("logs-usb-btn");
+    const spinner = document.getElementById("logs-spinner");
 
-  const parseForm = document.getElementById('logs-parse-form');
-  const parseBtn  = document.getElementById('logs-parse-btn');
+    if (usbForm && outSave) {
+      usbForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (usbBtn) {
+          usbBtn.disabled = true;
+          usbBtn.setAttribute("aria-busy", "true");
+        }
+        if (spinner) spinner.style.display = "inline-block";
+        outSave.textContent = "Saving to USB...";
+        try {
+          const resp = await fetch("/cgi-bin/collect_logs.sh?dest=usb", {
+            method: "GET",
+          });
+          const text = await resp.text();
+          outSave.textContent = text.trim() || "Done.";
+        } catch (err) {
+          outSave.textContent = "Error: " + err;
+        } finally {
+          if (usbBtn) {
+            usbBtn.disabled = false;
+            usbBtn.removeAttribute("aria-busy");
+          }
+          if (spinner) spinner.style.display = "none";
+        }
+      });
+    }
 
-  if (usbForm && out) {
-    usbForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (usbBtn) { usbBtn.disabled = true; usbBtn.setAttribute('aria-busy', 'true'); }
-      if (spinner) spinner.style.display = 'inline-block';
-      out.textContent = 'Saving to USB...';
-      try {
-        const resp = await fetch('/cgi-bin/collect_logs.sh?dest=usb', { method: 'GET' });
-        const text = await resp.text();
-        out.textContent = text.trim() || 'Done.';
-      } catch (err) {
-        out.textContent = 'Error: ' + err;
-      } finally {
-        if (usbBtn) { usbBtn.disabled = false; usbBtn.removeAttribute('aria-busy'); }
-        if (spinner) spinner.style.display = 'none';
-      }
-    });
-  }
+    // Scan for errors
+    const parseForm = document.getElementById("logs-parse-form");
+    const parseBtn = document.getElementById("logs-parse-btn");
 
-  if (parseForm && out) {
-    parseForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (parseBtn) { parseBtn.disabled = true; parseBtn.setAttribute('aria-busy', 'true'); }
-      out.textContent = 'Collecting logs and scanning for errors...';
-      try {
-        const resp = await fetch('/cgi-bin/parse_log.sh', { method: 'GET' });
-        const text = await resp.text();
-        out.textContent = text.trim() || 'No output.';
-      } catch (err) {
-        out.textContent = 'Error: ' + err;
-      } finally {
-        if (parseBtn) { parseBtn.disabled = false; parseBtn.removeAttribute('aria-busy'); }
-      }
-    });
-  }
-})();
+    if (parseForm && outErrors) {
+      parseForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (parseBtn) {
+          parseBtn.disabled = true;
+          parseBtn.setAttribute("aria-busy", "true");
+        }
+        outErrors.textContent = "Collecting logs and scanning for errors...";
+        try {
+          const resp = await fetch("/cgi-bin/parse_log.sh", { method: "GET" });
+          const text = await resp.text();
+          outErrors.textContent = text.trim() || "No output.";
+        } catch (err) {
+          outErrors.textContent = "Error: " + err;
+        } finally {
+          if (parseBtn) {
+            parseBtn.disabled = false;
+            parseBtn.removeAttribute("aria-busy");
+          }
+        }
+      });
+    }
+
+    // Graphs
+    const graphBtn = document.getElementById("logs-graph-btn");
+    const graphType = document.getElementById("graph-type");
+    const graphImg = document.getElementById("graph-img");
+
+    if (graphBtn && graphType && outGraphs && graphImg) {
+      graphBtn.addEventListener("click", () => {
+        const type = graphType.value || "bandwidth";
+
+        outGraphs.textContent = "Generating graph...";
+        graphImg.style.display = "none";
+
+        // bust cache with ts param
+        const url = `/cgi-bin/graphstats.sh?type=${encodeURIComponent(
+          type
+        )}&ts=${Date.now()}`;
+
+        graphImg.onload = () => {
+          outGraphs.textContent = "";
+          graphImg.style.display = "block";
+        };
+        graphImg.onerror = () => {
+          outGraphs.textContent =
+            "Error generating graph. Check that saved logs exist.";
+          graphImg.style.display = "none";
+        };
+
+        graphImg.src = url;
+      });
+    }
+  })();
 </script>
