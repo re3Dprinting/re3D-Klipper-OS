@@ -1,57 +1,25 @@
 #!/bin/sh
 # /cgi-bin/parse_log.sh
 #
-# 1) Collect logs into a temp bundle directory (similar to collect_logs.sh)
-# 2) Parse ALL klippy*.log files for known error patterns
+# 1) Scan ALL /home/pi/printer_data/logs/klippy*.log files
+# 2) Look for known error patterns
 # 3) Return an HTML fragment for the web UI
+#    – like the original working version
+#    – but skip the *first* "timeout with mcu" and "got eof" per file
 
 set -u
 
 PRINTER_LOG_DIR="/home/pi/printer_data/logs"
-CHROMIUM_LOG_DIR="/home/pi/.config/chromium"
-
-WORKDIR="$(mktemp -d /tmp/logscan.XXXXXX)"
-BUNDLE_DIR="${WORKDIR}/bundle"
-mkdir -p "$BUNDLE_DIR"
-
-# --- 1. COLLECT LOGS INTO BUNDLE_DIR ---
-
-# 1. printer logs
-if [ -d "$PRINTER_LOG_DIR" ]; then
-    mkdir -p "$BUNDLE_DIR/printer_data_logs"
-    cp -r "$PRINTER_LOG_DIR"/. "$BUNDLE_DIR/printer_data_logs/" 2>/dev/null || true
-fi
-
-# 2. chromium logs
-if [ -d "$CHROMIUM_LOG_DIR" ]; then
-    mkdir -p "$BUNDLE_DIR/chromium"
-    find "$CHROMIUM_LOG_DIR" -maxdepth 2 -type f \( -name "*.log" -o -name "Crash*" \) -print0 | \
-        xargs -0 -I{} cp "{}" "$BUNDLE_DIR/chromium/" 2>/dev/null || true
-fi
-
-# 3. dmesg
-dmesg > "$BUNDLE_DIR/dmesg.log" 2>/dev/null || true
-
-# 4. journalctl
-journalctl -xe --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || \
-journalctl --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || true
-
-# 5. systemctl
-systemctl list-units --all > "$BUNDLE_DIR/systemctl-list.log" 2>/dev/null || true
-systemctl status > "$BUNDLE_DIR/systemctl-status.log" 2>/dev/null || true
-
-PRINTER_BUNDLE_DIR="$BUNDLE_DIR/printer_data_logs"
 
 echo "Content-Type: text/html"
 echo
 
-if [ ! -d "$PRINTER_BUNDLE_DIR" ]; then
-    echo "<div class='log-errors-empty'>No printer logs collected (expected directory: ${PRINTER_BUNDLE_DIR}).</div>"
-    rm -rf "$WORKDIR"
+if [ ! -d "$PRINTER_LOG_DIR" ]; then
+    echo "<div class='log-errors-empty'>Printer log directory not found: ${PRINTER_LOG_DIR}</div>"
     exit 0
 fi
 
-# --- 2. DEFINE ERROR PATTERNS ---
+# --- 1. DEFINE ERROR PATTERNS ---
 
 patterns=$(cat <<'EOF'
 thermocouple reader fault
@@ -252,11 +220,11 @@ EOF
   esac
 }
 
-# --- 3. SCAN *ALL* KLIPPY LOGS ---
+# --- 2. SCAN *ALL* KLIPPY LOGS DIRECTLY IN PRINTER_LOG_DIR ---
 
 any_global="false"
 
-for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
+for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
   [ -f "$LOG_FILE" ] || continue
 
   found_any="false"
@@ -272,8 +240,8 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
   for pat in "$@"; do
     [ -z "$pat" ] && continue
 
-    # Decide how many occurrences we require:
-    # - For "timeout with mcu" and "got eof": require at least 2 (skip first)
+    # Decide how many occurrences we require in THIS FILE:
+    # - For "timeout with mcu" and "got eof": require at least 2 (skip the first)
     # - For all others: require at least 1
     case "$pat" in
       "timeout with mcu"|"got eof")
@@ -284,8 +252,8 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
         ;;
     esac
 
-    # Count matches (case-insensitive)
-    count=$(grep -oi -- "$pat" "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')
+    # Count matches (case-insensitive) and force treating file as text (-a)
+    count=$(grep -a -i -- "$pat" "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')
 
     # If not enough matches, skip this pattern for this file
     if [ -z "$count" ] || [ "$count" -lt "$min_count" ]; then
@@ -312,6 +280,7 @@ for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
     echo "    </div>"
     echo "    <div class='log-error-body'>"
     echo "      <div class='log-error-solution-title'>Suggested fix</div>"
+      # Pre tag preserves newlines nicely
     echo "      <pre class='log-error-solution-text'>"
     print_solution "$pat"
     echo "      </pre>"
@@ -330,5 +299,4 @@ else
   echo "<div class='log-errors-empty'>No known errors found in any klippy log.</div>"
 fi
 
-rm -rf "$WORKDIR"
 exit 0
