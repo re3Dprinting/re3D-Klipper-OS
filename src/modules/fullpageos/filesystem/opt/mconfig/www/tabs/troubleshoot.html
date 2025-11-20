@@ -80,6 +80,88 @@
     border-radius: 8px;
     border: 1px solid var(--border);
   }
+
+  .log-errors-wrap{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .log-errors-file{
+    padding:6px 8px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:#05060a;
+  }
+
+  .log-file-title{
+    font-size:11px;
+    font-weight:600;
+    color:var(--gray-200);
+    margin-bottom:4px;
+  }
+
+  .log-file-name{
+    color:var(--brand);
+  }
+
+  .log-error-card{
+    margin-top:6px;
+    padding:6px 8px;
+    border-radius:8px;
+    background:#0C0E12;
+    border:1px solid rgba(239, 68, 68, 0.35); /* red-ish */
+  }
+
+  .log-error-header{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-bottom:4px;
+  }
+
+  .log-error-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:2px 8px;
+    border-radius:999px;
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+    background:#ef4444;
+    color:#111;
+  }
+
+  .log-error-name{
+    font-size:12px;
+    font-weight:600;
+    color:var(--gray-050);
+  }
+
+  .log-error-body{
+    margin-top:2px;
+  }
+
+  .log-error-solution-title{
+    font-size:11px;
+    font-weight:600;
+    color:var(--gray-200);
+    margin-bottom:2px;
+  }
+
+  .log-error-solution-text{
+    margin:0;
+    font-size:11px;
+    line-height:1.4;
+    white-space:pre-wrap;
+    color:var(--gray-200);
+  }
+
+  .log-errors-empty{
+    font-size:12px;
+    color:var(--gray-300);
+  }
 </style>
 
 <div class="content logs-wrap">
@@ -207,7 +289,7 @@
     const parseForm = document.getElementById("logs-parse-form");
     const parseBtn = document.getElementById("logs-parse-btn");
 
-    if (parseForm && outErrors) {
+        if (parseForm && outErrors) {
       parseForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (parseBtn) {
@@ -217,8 +299,8 @@
         outErrors.textContent = "Collecting logs and scanning for errors...";
         try {
           const resp = await fetch("/cgi-bin/parse_log.sh", { method: "GET" });
-          const text = await resp.text();
-          outErrors.textContent = text.trim() || "No output.";
+          const html = await resp.text();
+          outErrors.innerHTML = html.trim() || "<div class='log-errors-empty'>No output.</div>";
         } catch (err) {
           outErrors.textContent = "Error: " + err;
         } finally {

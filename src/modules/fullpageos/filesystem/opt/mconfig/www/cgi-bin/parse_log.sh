@@ -1,17 +1,15 @@
 #!/bin/sh
-# /cgi-bin/collect_and_parse_logs.sh
+# /cgi-bin/parse_log.sh
 #
 # 1) Collect logs into a temp bundle directory (similar to collect_logs.sh)
-# 2) Parse the printer logs for known error patterns
-# 3) Return a plain-text summary for the web UI
+# 2) Parse ALL klippy*.log files for known error patterns
+# 3) Return an HTML fragment for the web UI
 
 set -u
 
-# Same paths as collect_logs.sh
 PRINTER_LOG_DIR="/home/pi/printer_data/logs"
 CHROMIUM_LOG_DIR="/home/pi/.config/chromium"
 
-# Temp workdir for this request
 WORKDIR="$(mktemp -d /tmp/logscan.XXXXXX)"
 BUNDLE_DIR="${WORKDIR}/bundle"
 mkdir -p "$BUNDLE_DIR"
@@ -42,29 +40,18 @@ journalctl --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || true
 systemctl list-units --all > "$BUNDLE_DIR/systemctl-list.log" 2>/dev/null || true
 systemctl status > "$BUNDLE_DIR/systemctl-status.log" 2>/dev/null || true
 
-# --- 2. CHOOSE WHICH LOG TO PARSE ---
-
 PRINTER_BUNDLE_DIR="$BUNDLE_DIR/printer_data_logs"
 
-echo "Content-Type: text/plain"
+echo "Content-Type: text/html"
 echo
 
 if [ ! -d "$PRINTER_BUNDLE_DIR" ]; then
-    echo "No printer logs collected (expected directory: $PRINTER_BUNDLE_DIR)."
+    echo "<div class='log-errors-empty'>No printer logs collected (expected directory: ${PRINTER_BUNDLE_DIR}).</div>"
     rm -rf "$WORKDIR"
     exit 0
 fi
 
-# pick the newest *.log in the collected printer logs
-LOG_FILE="$(ls -1t "$PRINTER_BUNDLE_DIR"/*.log 2>/dev/null | head -n1 || echo "")"
-
-if [ -z "$LOG_FILE" ] || [ ! -f "$LOG_FILE" ]; then
-    echo "No log file found in $PRINTER_BUNDLE_DIR (expected something like klippy.log)."
-    rm -rf "$WORKDIR"
-    exit 0
-fi
-
-# --- 3. DEFINE ERROR PATTERNS ---
+# --- 2. DEFINE ERROR PATTERNS ---
 
 patterns=$(cat <<'EOF'
 thermocouple reader fault
@@ -87,6 +74,11 @@ max31856: thermocouple high fault
 max31856: thermocouple low fault
 EOF
 )
+
+html_escape() {
+  # basic HTML escape
+  printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+}
 
 print_solution() {
   key="$1"
@@ -184,9 +176,9 @@ cat <<'EOF'
 Check the USB connection between the Raspberry Pi (or host machine) and the mainboard. Over time, vibrations can loosen the connectors.
 
 Solution:
-1. Power off the printer.
+1. Power off the machine.
 2. Unplug and replug the USB cable connecting the Raspberry Pi to the mainboard.
-3. Power the printer back on.
+3. Power the machine back on.
 4. If the issue persists, try using a different USB cable or port.
 EOF
     ;;
@@ -260,43 +252,63 @@ EOF
   esac
 }
 
-# --- 4. SCAN LOG FOR PATTERNS ---
+# --- 3. SCAN *ALL* K L I P P Y  LOGS ---
 
-found_any=false
-log_basename="$(basename "$LOG_FILE")"
+any_global="false"
 
-# iterate patterns line by line (keep spaces inside each pattern)
-oldIFS=$IFS
-IFS='
+for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
+  [ -f "$LOG_FILE" ] || continue
+
+  found_any="false"
+  log_basename="$(basename "$LOG_FILE")"
+
+  oldIFS=$IFS
+  IFS='
 '
-set -- $patterns
-IFS=$oldIFS
+  set -- $patterns
+  IFS=$oldIFS
 
-for pat in "$@"; do
-  # skip empty lines
-  [ -z "$pat" ] && continue
+  for pat in "$@"; do
+    [ -z "$pat" ] && continue
 
-  if grep -qi -- "$pat" "$LOG_FILE"; then
-    if [ "$found_any" = false ]; then
-      echo "Errors found in $log_basename:"
-      echo
-      found_any=true
+    if grep -qi -- "$pat" "$LOG_FILE"; then
+      if [ "$found_any" = "false" ]; then
+        if [ "$any_global" = "false" ]; then
+          echo "<div class='log-errors-wrap'>"
+        fi
+        any_global="true"
+
+        echo "<div class='log-errors-file'>"
+        echo "  <div class='log-file-title'>Errors in <span class='log-file-name'>$(html_escape "$log_basename")</span></div>"
+        found_any="true"
+      fi
+
+      esc_pat="$(html_escape "$pat")"
+      echo "  <div class='log-error-card'>"
+      echo "    <div class='log-error-header'>"
+      echo "      <span class='log-error-pill'>Error</span>"
+      echo "      <span class='log-error-name'>$esc_pat</span>"
+      echo "    </div>"
+      echo "    <div class='log-error-body'>"
+      echo "      <div class='log-error-solution-title'>Suggested fix</div>"
+      echo "      <pre class='log-error-solution-text'>"
+      print_solution "$pat"
+      echo "      </pre>"
+      echo "    </div>"
+      echo "  </div>"
     fi
+  done
 
-    echo "----------------------------------------------------------"
-    echo "Error Detected: $pat"
-    echo
-    echo "Possible Solution:"
-    echo
-    print_solution "$pat"
-    echo
+  if [ "$found_any" = "true" ]; then
+    echo "</div>"  # close .log-errors-file
   fi
 done
 
-if [ "$found_any" = false ]; then
-  echo "No known errors found in $log_basename."
+if [ "$any_global" = "true" ]; then
+  echo "</div>"  # close .log-errors-wrap
+else
+  echo "<div class='log-errors-empty'>No known errors found in any klippy log.</div>"
 fi
 
-# cleanup
 rm -rf "$WORKDIR"
 exit 0
