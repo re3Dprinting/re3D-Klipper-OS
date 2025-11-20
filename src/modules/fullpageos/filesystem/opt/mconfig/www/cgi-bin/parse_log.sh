@@ -1,27 +1,57 @@
 #!/bin/sh
 # /cgi-bin/parse_log.sh
 #
-# Parse ALL /home/pi/printer_data/logs/klippy*.log files
-# for known error patterns and return an HTML fragment
-# for the web UI, with timing info per error.
-#
-# Also:
-#   - Skip the FIRST "timeout with mcu"
-#   - Skip the FIRST "got eof"
+# 1) Collect logs into a temp bundle directory (similar to collect_logs.sh)
+# 2) Parse ALL klippy*.log files for known error patterns
+# 3) Return an HTML fragment for the web UI
 
 set -u
 
 PRINTER_LOG_DIR="/home/pi/printer_data/logs"
+CHROMIUM_LOG_DIR="/home/pi/.config/chromium"
+
+WORKDIR="$(mktemp -d /tmp/logscan.XXXXXX)"
+BUNDLE_DIR="${WORKDIR}/bundle"
+mkdir -p "$BUNDLE_DIR"
+
+# --- 1. COLLECT LOGS INTO BUNDLE_DIR ---
+
+# 1. printer logs
+if [ -d "$PRINTER_LOG_DIR" ]; then
+    mkdir -p "$BUNDLE_DIR/printer_data_logs"
+    cp -r "$PRINTER_LOG_DIR"/. "$BUNDLE_DIR/printer_data_logs/" 2>/dev/null || true
+fi
+
+# 2. chromium logs
+if [ -d "$CHROMIUM_LOG_DIR" ]; then
+    mkdir -p "$BUNDLE_DIR/chromium"
+    find "$CHROMIUM_LOG_DIR" -maxdepth 2 -type f \( -name "*.log" -o -name "Crash*" \) -print0 | \
+        xargs -0 -I{} cp "{}" "$BUNDLE_DIR/chromium/" 2>/dev/null || true
+fi
+
+# 3. dmesg
+dmesg > "$BUNDLE_DIR/dmesg.log" 2>/dev/null || true
+
+# 4. journalctl
+journalctl -xe --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || \
+journalctl --no-pager > "$BUNDLE_DIR/journalctl.log" 2>/dev/null || true
+
+# 5. systemctl
+systemctl list-units --all > "$BUNDLE_DIR/systemctl-list.log" 2>/dev/null || true
+systemctl status > "$BUNDLE_DIR/systemctl-status.log" 2>/dev/null || true
+
+PRINTER_BUNDLE_DIR="$BUNDLE_DIR/printer_data_logs"
 
 echo "Content-Type: text/html"
 echo
 
-if [ ! -d "$PRINTER_LOG_DIR" ]; then
-    echo "<div class='log-errors-empty'>No printer logs directory found at ${PRINTER_LOG_DIR}.</div>"
+if [ ! -d "$PRINTER_BUNDLE_DIR" ]; then
+    echo "<div class='log-errors-empty'>No printer logs collected (expected directory: ${PRINTER_BUNDLE_DIR}).</div>"
+    rm -rf "$WORKDIR"
     exit 0
 fi
 
-# --- 1. DEFINE ERROR PATTERNS ---
+# --- 2. DEFINE ERROR PATTERNS ---
 
 patterns=$(cat <<'EOF'
 thermocouple reader fault
@@ -222,140 +252,74 @@ EOF
   esac
 }
 
-# Helper: format "Stats seconds" as t = XXXs (≈ hh mm ss after start)
-format_offset() {
-  secs="$1"
-  [ -z "$secs" ] && return
-  awk -v s="$secs" 'BEGIN{
-    h = int(s/3600);
-    m = int((s - h*3600)/60);
-    sec = s - h*3600 - m*60;
-    printf("t = %.1fs (≈ %02dh %02dm %04.1fs after start)", s, h, m, sec);
-  }'
-}
-
-# Turn patterns into $1, $2, ... for easy looping
-oldIFS=$IFS
-IFS='
-'
-set -- $patterns
-IFS=$oldIFS
+# --- 3. SCAN *ALL* KLIPPY LOGS ---
 
 any_global="false"
 
-# Skip the *first* occurrence of these noisy patterns globally
-skip_timeout_with_mcu="true"
-skip_got_eof="true"
-
-# --- 2. SCAN *ALL* K L I P P Y  LOGS DIRECTLY ---
-
-have_any_log="false"
-
-for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
+for LOG_FILE in "$PRINTER_BUNDLE_DIR"/klippy*.log; do
   [ -f "$LOG_FILE" ] || continue
-  have_any_log="true"
 
-  file_has_any="false"
+  found_any="false"
   log_basename="$(basename "$LOG_FILE")"
 
-  current_start_pretty=""
-  current_stats_secs=""
+  # split patterns into $1, $2, ...
+  oldIFS=$IFS
+  IFS='
+'
+  set -- $patterns
+  IFS=$oldIFS
 
-  # Read log line-by-line so we can track Start/Stats context
-  while IFS= read -r line; do
-    # Track "Start printer at ..." lines
-    case "$line" in
-      Start\ printer\ at*)
-        # Human-readable part: strip prefix and trailing "(...)" if present
-        current_start_pretty="$(printf '%s\n' "$line" | sed 's/^Start printer at //; s/ (.*//')"
+  for pat in "$@"; do
+    [ -z "$pat" ] && continue
+
+    # Decide how many occurrences we require:
+    # - For "timeout with mcu" and "got eof": require at least 2 (skip first)
+    # - For all others: require at least 1
+    case "$pat" in
+      "timeout with mcu"|"got eof")
+        min_count=2
         ;;
-      Stats\ *:*)
-        # Stats 2141.9: ...
-        secs="$(printf '%s\n' "$line" | sed -n 's/^Stats \([0-9.]*\):.*/\1/p')"
-        [ -n "$secs" ] && current_stats_secs="$secs"
+      *)
+        min_count=1
         ;;
     esac
 
-    # Now check this line against all patterns (case-insensitive)
-    for pat in "$@"; do
-      [ -z "$pat" ] && continue
+    # Count matches (case-insensitive)
+    count=$(grep -oi -- "$pat" "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')
 
-      # Case-insensitive contains check
-      printf '%s\n' "$line" | grep -qi -- "$pat" || continue
+    # If not enough matches, skip this pattern for this file
+    if [ -z "$count" ] || [ "$count" -lt "$min_count" ]; then
+      continue
+    fi
 
-      # Skip the first "timeout with mcu"
-      if [ "$pat" = "timeout with mcu" ] && [ "$skip_timeout_with_mcu" = "true" ]; then
-        skip_timeout_with_mcu="false"
-        # do not render this one, just skip
-        break  # stop checking other patterns for this line
-      fi
-
-      # Skip the first "got eof"
-      if [ "$pat" = "got eof" ] && [ "$skip_got_eof" = "true" ]; then
-        skip_got_eof="false"
-        # do not render this one, just skip
-        break  # stop checking other patterns for this line
-      fi
-
-      # First error in ANY log → open wrapper
+    # At this point, pattern is considered "present" for this file
+    if [ "$found_any" = "false" ]; then
       if [ "$any_global" = "false" ]; then
         echo "<div class='log-errors-wrap'>"
-        any_global="true"
       fi
+      any_global="true"
 
-      # First error in THIS log → open file block
-      if [ "$file_has_any" = "false" ]; then
-        echo "<div class='log-errors-file'>"
-        echo "  <div class='log-file-title'>Errors in <span class='log-file-name'>$(html_escape "$log_basename")</span></div>"
-        file_has_any="true"
-      fi
+      echo "<div class='log-errors-file'>"
+      echo "  <div class='log-file-title'>Errors in <span class='log-file-name'>$(html_escape "$log_basename")</span></div>"
+      found_any="true"
+    fi
 
-      esc_pat="$(html_escape "$pat")"
+    esc_pat="$(html_escape "$pat")"
+    echo "  <div class='log-error-card'>"
+    echo "    <div class='log-error-header'>"
+    echo "      <span class='log-error-pill'>Error</span>"
+    echo "      <span class='log-error-name'>$esc_pat</span>"
+    echo "    </div>"
+    echo "    <div class='log-error-body'>"
+    echo "      <div class='log-error-solution-title'>Suggested fix</div>"
+    echo "      <pre class='log-error-solution-text'>"
+    print_solution "$pat"
+    echo "      </pre>"
+    echo "    </div>"
+    echo "  </div>"
+  done
 
-      # Compute offset text if we have Stats seconds
-      offset_line=""
-      if [ -n "$current_stats_secs" ]; then
-        off_str="$(format_offset "$current_stats_secs")"
-        if [ -n "$off_str" ]; then
-          # HTML-escape the whole formatted string
-          off_str_esc="$(html_escape "$off_str")"
-          offset_line="<div class='log-error-time'>Approx time in run: ${off_str_esc}</div>"
-        fi
-      fi
-
-      echo "  <div class='log-error-card'>"
-      echo "    <div class='log-error-header'>"
-      echo "      <span class='log-error-pill'>Error</span>"
-      echo "      <span class='log-error-name'>$esc_pat</span>"
-      echo "    </div>"
-
-      # Meta block: run start + time in run (if available)
-      if [ -n "$current_start_pretty" ] || [ -n "$offset_line" ]; then
-        echo "    <div class='log-error-meta'>"
-        if [ -n "$current_start_pretty" ]; then
-          echo "      <div class='log-error-run'>Run started: $(html_escape "$current_start_pretty")</div>"
-        fi
-        if [ -n "$offset_line" ]; then
-          echo "      $offset_line"
-        fi
-        echo "    </div>"
-      fi
-
-      echo "    <div class='log-error-body'>"
-      echo "      <div class='log-error-solution-title'>Suggested fix</div>"
-      echo "      <pre class='log-error-solution-text'>"
-      print_solution "$pat"
-      echo "      </pre>"
-      echo "    </div>"
-      echo "  </div>"
-
-      # If a line matches a pattern, we don't want to render duplicates
-      # for the same line even if another pattern also matches.
-      break
-    done
-  done < "$LOG_FILE"
-
-  if [ "$file_has_any" = "true" ]; then
+  if [ "$found_any" = "true" ]; then
     echo "</div>"  # close .log-errors-file
   fi
 done
@@ -363,11 +327,8 @@ done
 if [ "$any_global" = "true" ]; then
   echo "</div>"  # close .log-errors-wrap
 else
-  if [ "$have_any_log" = "false" ]; then
-    echo "<div class='log-errors-empty'>No klippy logs found in ${PRINTER_LOG_DIR}.</div>"
-  else
-    echo "<div class='log-errors-empty'>No known errors found in any klippy log.</div>"
-  fi
+  echo "<div class='log-errors-empty'>No known errors found in any klippy log.</div>"
 fi
 
+rm -rf "$WORKDIR"
 exit 0
