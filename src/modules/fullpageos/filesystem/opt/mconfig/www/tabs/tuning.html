@@ -1,4 +1,4 @@
-<!-- Tuning (PID) — live status/temps + result parse (no temp spam in log) -->
+<!-- Tuning (PID) — overlay + smoothed temp graph + standalone.cfg write + fw restart -->
 <style>
   .out{
     margin-top:8px;padding:10px;border-radius:10px;background:#0C0E12;
@@ -20,7 +20,63 @@
   .pill{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:#11151b}
   .ok{background:#10331c;border-color:#174d27}
   .warn{background:#3a1a11;border-color:#5c2a1b}
-  .copy-row{display:flex;gap:8px;align-items:center}
+  .copy-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  /* Overlay base */
+  .pid-overlay{
+    position:fixed;inset:0;z-index:9999;
+    background:rgba(0,0,0,0.82);
+    display:none;align-items:center;justify-content:center;
+  }
+  .pid-modal{
+    width:min(760px,90vw);
+    max-height:90vh;
+    background:#0C0E12;
+    border-radius:14px;
+    border:1px solid var(--border);
+    box-shadow:0 20px 40px rgba(0,0,0,0.6);
+    padding:18px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .pid-modal-header{
+    display:flex;justify-content:space-between;align-items:flex-start;gap:8px
+  }
+  .pid-modal-title{
+    font-weight:800;font-size:16px
+  }
+  .pid-modal-sub{
+    font-size:12px;color:var(--muted)
+  }
+  .pid-modal-metrics{
+    display:flex;flex-wrap:wrap;gap:10px;font-size:13px
+  }
+  .pid-chip{
+    padding:4px 8px;border-radius:999px;
+    border:1px solid var(--border);background:#11151b
+  }
+  .pid-chart-wrap{
+    border-radius:10px;border:1px solid var(--border);background:#05070B;
+    padding:10px
+  }
+  .pid-chart-wrap canvas{
+    width:100%;height:200px;display:block
+  }
+  .pid-modal-footer{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px
+  }
+  .btn-danger{
+    background:#3a1a11;
+    border-color:#5c2a1b;
+    color:#ffd2c2;
+  }
+  .btn-danger:hover{
+    background:#5c2a1b;
+  }
+  .pid-hint{
+    font-size:12px;color:var(--muted)
+  }
 </style>
 
 <div class="content single">
@@ -40,7 +96,7 @@
       </div>
       <div>
         <label>Target Temp (°C)</label>
-        <input name="target" type="number" min="30" max="300" placeholder="200" required>
+        <input name="target" id="target" type="number" min="30" max="300" placeholder="200" required>
       </div>
     </div>
 
@@ -58,8 +114,7 @@
 
     <div class="btn-row" style="justify-content:flex-start">
       <button type="submit" id="pid-go">Start PID Tune</button>
-      <button type="button" id="pid-stop" class="btn-ghost" title="Attempt to abort current script">Abort</button>
-      <span class="hint">Sends <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span></span>
+      
     </div>
 
     <div class="out mono" id="out-pid" aria-live="polite"></div>
@@ -77,9 +132,61 @@
           <span class="hint" id="copy-hint"></span>
         </div>
       </div>
-      <div class="hint">Values parsed from Klipper’s console when PID_CALIBRATE finishes.</div>
+      <div class="hint">
+      </div>
     </div>
   </form>
+</div>
+
+<!-- Fullscreen PID overlay -->
+<div class="pid-overlay" id="pid-overlay" aria-live="polite">
+  <div class="pid-modal">
+    <div class="pid-modal-header">
+      <div>
+        <div class="pid-modal-title">PID tuning in progress</div>
+        <div class="pid-modal-sub" id="overlay-sub">
+          The printer is running <span class="mono">PID_CALIBRATE</span>. Please wait until it finishes.
+        </div>
+      </div>
+      <div class="pill" id="overlay-timer-pill">00:00</div>
+    </div>
+
+    <div class="pid-modal-metrics">
+      <span class="pid-chip" id="overlay-heater-chip">Heater: —</span>
+      <span class="pid-chip" id="overlay-target-chip">Target: —</span>
+      <span class="pid-chip">Current: <span id="overlay-temp">—</span></span>
+      <span class="pid-chip">Power: <span id="overlay-power">—</span></span>
+    </div>
+
+    <div class="pid-chart-wrap">
+      <canvas id="pid-chart" width="640" height="200"></canvas>
+    </div>
+
+    <div class="pid-modal-footer">
+      <button type="button" id="overlay-stop" class="btn-danger">Emergency Stop</button>
+      <div class="pid-hint">
+        This overlay will close when PID completes or is aborted.<br>
+        You can still monitor live temperature and power while tuning.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Completion popup: values saved + firmware restarted -->
+<div class="pid-overlay" id="pid-done-overlay" aria-live="polite">
+  <div class="pid-modal" style="max-width:480px">
+    <div class="pid-modal-header">
+      <div>
+        <div class="pid-modal-title">PID updated</div>
+        <div class="pid-modal-sub" id="pid-done-sub">
+          PID values were saved to <span class="mono">standalone.cfg</span> and a firmware restart was requested.
+        </div>
+      </div>
+    </div>
+    <div class="pid-modal-footer" style="justify-content:flex-end">
+      <button type="button" id="pid-done-close" class="btn-ghost">Close</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -88,18 +195,18 @@
   const host = location.hostname || 'localhost';
   const DEFAULT_MOONRAKER = `http://${host}:7125`;
   const MR = (localStorage.getItem('moonrakerUrl') || DEFAULT_MOONRAKER).replace(/\/+$/,'');
-  const DIRECT_GCODE = `${MR}/printer/gcode/script`;        // POST JSON {"script":"..."}
-  const QUERY_OBJS   = `${MR}/printer/objects/query`;       // POST JSON {"objects":{"extruder":["temperature","target","power"],...}}
-  const PROXY_GCODE  = `/cgi-bin/mr_gcode.sh`;              // optional same-origin CGI fallback
+  const DIRECT_GCODE = `${MR}/printer/gcode/script`;
+  const QUERY_OBJS   = `${MR}/printer/objects/query`;
+  const PROXY_GCODE  = `/cgi-bin/mr_gcode.sh`;
   const WS_URL       = `ws://${(new URL(MR)).host}/websocket`;
 
   /* ========= UI refs ========= */
   const out = document.getElementById('out-pid');
   const goBtn = document.getElementById('pid-go');
-  const stopBtn = document.getElementById('pid-stop');
   const form = document.getElementById('pid-form');
   const heaterSel  = document.getElementById('heater');
   const heaterHint = document.getElementById('heater-hint');
+  const targetInput = document.getElementById('target');
   const wsPill = document.getElementById('ws-pill');
   const runPill = document.getElementById('run-pill');
   const timerPill = document.getElementById('timer-pill');
@@ -113,6 +220,22 @@
   const copyBtn = document.getElementById('copy-pid');
   const copyHint = document.getElementById('copy-hint');
 
+  // Overlay refs
+  const overlay = document.getElementById('pid-overlay');
+  const overlayTimer = document.getElementById('overlay-timer-pill');
+  const overlayHeaterChip = document.getElementById('overlay-heater-chip');
+  const overlayTargetChip = document.getElementById('overlay-target-chip');
+  const overlayTemp = document.getElementById('overlay-temp');
+  const overlayPower = document.getElementById('overlay-power');
+  const overlayStopBtn = document.getElementById('overlay-stop');
+  const overlaySub = document.getElementById('overlay-sub');
+  const chartCanvas = document.getElementById('pid-chart');
+
+  // Done popup refs
+  const doneOverlay = document.getElementById('pid-done-overlay');
+  const doneClose = document.getElementById('pid-done-close');
+  const doneSub = document.getElementById('pid-done-sub');
+
   const HEATER_HINTS = {
     extruder:   'FFF: left • FGF: bottom',
     extruder1:  'FFF: right • FGF: middle',
@@ -120,13 +243,15 @@
     heater_bed: 'Build plate heater'
   };
   function updateHeaterHint(){ heaterHint.textContent = HEATER_HINTS[heaterSel.value] || ''; }
-  heaterSel.addEventListener('change', updateHeaterHint); updateHeaterHint();
+  heaterSel.addEventListener('change', updateHeaterHint);
+  updateHeaterHint();
 
   /* ========= State ========= */
   let ws, wsConnected = false;
   let tuningActive = false;
   let startTs = 0;
   let tmr;
+  let lastHeater = null;
 
   const latest = {
     extruder:   {temperature:null,target:null,power:null},
@@ -138,9 +263,7 @@
   /* ========= Logging with spam filter ========= */
   const MAX_LOG_LINES = 300;
   function shouldDrop(line){
-    // Drop typical temp spam (B:, T:, T0:, T1:, etc., with " /" target tokens), and "Stats:" lines.
     if (/^\s*(?:Stats:|B:|T\d?:|T:)\s*/i.test(line) && /\/\s*\d+(\.\d+)?/.test(line)) return true;
-    // Also drop repeated bare temp reports mid-line like " B:21.4 /0.0 T0:20.7 /200.0 ..."
     if (/(?:^|\s)(?:B:|T\d?:|T:)\s*\d+(\.\d+)?\s*\/\s*\d+(\.\d+)?/i.test(line)) return true;
     return false;
   }
@@ -153,29 +276,215 @@
     out.scrollTop = out.scrollHeight;
   }
 
-  function setBusy(b){ goBtn.disabled = b; stopBtn.disabled = !b; }
-  function setRunState(state){ runPill.textContent = state; runPill.className = 'pill ' + (state==='Running'?'ok':state==='Idle'?'':'warn'); }
+  function setBusy(b){ goBtn.disabled = b; }
 
-  function renderLive(){
-    const h = heaterSel.value;
-    const d = latest[h] || {};
-    liveTemp.textContent = (d.temperature!=null) ? `${d.temperature.toFixed(1)}°C` : '—';
-    liveTarget.textContent = (d.target!=null) ? `${d.target.toFixed(0)}°C` : '—';
-    livePower.textContent = (d.power!=null) ? `${Math.round(d.power*100)}%` : '—';
+  function setRunState(state){
+    runPill.textContent = state;
+    runPill.className = 'pill ' + (state==='Running'?'ok':state==='Idle'?'':'warn');
   }
 
+  /* ========= Timer ========= */
   function startTimer(){
     clearInterval(tmr);
     startTs = Date.now();
     tmr = setInterval(()=>{
-      if (!tuningActive){timerPill.textContent='00:00'; return;}
+      if (!tuningActive){
+        timerPill.textContent='00:00';
+        overlayTimer.textContent='00:00';
+        return;
+      }
       const s = Math.floor((Date.now()-startTs)/1000);
       const mm = String(Math.floor(s/60)).padStart(2,'0');
       const ss = String(s%60).padStart(2,'0');
-      timerPill.textContent = `${mm}:${ss}`;
+      const v = `${mm}:${ss}`;
+      timerPill.textContent = v;
+      overlayTimer.textContent = v;
     }, 500);
   }
   function stopTimer(){ clearInterval(tmr); }
+
+  function showOverlay(heater, target){
+    overlayHeaterChip.textContent = `Heater: ${heater}`;
+    overlayTargetChip.textContent = `Target: ${target}°C`;
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    chartTargetFixed = Number(target) || null;  // flat target line
+    resetChart();
+  }
+  function hideOverlay(){
+    overlay.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function showDoneOverlay(message){
+    if (message) doneSub.textContent = message;
+    doneOverlay.style.display = 'flex';
+  }
+  function hideDoneOverlay(){
+    doneOverlay.style.display = 'none';
+  }
+
+  /* ========= Chart handling (decimated + smoothed) ========= */
+  const chartCtx = chartCanvas.getContext('2d');
+  const chartData = { t: [], temp: [] };
+  const MAX_POINTS = 240;
+  let chartTargetFixed = null;
+  let lastSampleTs = 0;
+  let smoothTemp = null;
+  const SAMPLE_INTERVAL_MS = 1000; // 1s
+  const SMOOTH_ALPHA = 0.25;       // EMA factor
+
+  function resetChart(){
+    chartData.t = [];
+    chartData.temp = [];
+    lastSampleTs = 0;
+    smoothTemp = null;
+    drawChart();
+  }
+
+  function maybeSample(temp){
+    if (!tuningActive) return;
+    if (temp == null) return;
+    const now = Date.now();
+    if (now - lastSampleTs < SAMPLE_INTERVAL_MS) return;
+    lastSampleTs = now;
+
+    if (smoothTemp == null) smoothTemp = temp;
+    else smoothTemp = smoothTemp + SMOOTH_ALPHA * (temp - smoothTemp);
+
+    recordChartSample(now, smoothTemp);
+  }
+
+  function recordChartSample(timestamp, tempVal){
+    chartData.t.push(timestamp);
+    chartData.temp.push(tempVal);
+
+    if (chartData.t.length > MAX_POINTS){
+      chartData.t.shift();
+      chartData.temp.shift();
+    }
+    drawChart();
+  }
+
+  function drawChart(){
+    const ctx = chartCtx;
+    const w = chartCanvas.width;
+    const h = chartCanvas.height;
+
+    ctx.clearRect(0,0,w,h);
+
+    if (!chartData.t.length){
+      ctx.fillStyle = '#666';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText('Waiting for temperature data…', 10, h/2);
+      return;
+    }
+
+    const tMin = chartData.t[0];
+    const tMax = chartData.t[chartData.t.length-1] || (tMin+1);
+
+    let dataMin = Infinity, dataMax = -Infinity;
+    for (let v of chartData.temp){
+      if (v == null) continue;
+      if (v < dataMin) dataMin = v;
+      if (v > dataMax) dataMax = v;
+    }
+
+    if (!isFinite(dataMin) || !isFinite(dataMax)){
+      if (chartTargetFixed != null){
+        dataMin = chartTargetFixed - 20;
+        dataMax = chartTargetFixed + 20;
+      } else {
+        dataMin = 0;
+        dataMax = 10;
+      }
+    }
+
+    let yMin, yMax;
+    if (chartTargetFixed != null){
+      const center = chartTargetFixed;
+      const halfSpan = 40;
+      yMin = center - halfSpan;
+      yMax = center + halfSpan;
+      yMin = Math.min(yMin, dataMin);
+      yMax = Math.max(yMax, dataMax);
+    } else {
+      const spanRaw = Math.max(15, dataMax - dataMin);
+      const pad = spanRaw * 0.15;
+      const center = (dataMax + dataMin) / 2;
+      yMin = center - spanRaw/2 - pad;
+      yMax = center + spanRaw/2 + pad;
+    }
+
+    if (yMin < 0) yMin = 0;
+
+    const padX = 25, padY = 10;
+
+    function xScale(t){
+      if (tMax === tMin) return padX;
+      return padX + (w - padX*2) * ((t - tMin) / (tMax - tMin));
+    }
+    function yScale(v){
+      return h - padY - (h - padY*2) * ((v - yMin) / (yMax - yMin));
+    }
+
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padX, padY);
+    ctx.lineTo(padX, h-padY);
+    ctx.lineTo(w-padX, h-padY);
+    ctx.stroke();
+
+    ctx.fillStyle = '#777';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText(`${yMax.toFixed(0)}°C`, 4, padY+8);
+    ctx.fillText(`${yMin.toFixed(0)}°C`, 4, h-padY);
+
+    if (chartTargetFixed != null){
+      const yT = yScale(chartTargetFixed);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4,3]);
+      ctx.beginPath();
+      ctx.moveTo(padX, yT);
+      ctx.lineTo(w-padX, yT);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.strokeStyle = '#FFD400';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let first = true;
+    for (let i=0;i<chartData.t.length;i++){
+      const v = chartData.temp[i];
+      if (v == null) continue;
+      const x = xScale(chartData.t[i]);
+      const y = yScale(v);
+      if (first){ ctx.moveTo(x,y); first=false; }
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  /* ========= Live rendering ========= */
+  function renderLive(){
+    const h = heaterSel.value;
+    const d = latest[h] || {};
+    const temp = (d.temperature!=null) ? d.temperature : null;
+    const target = (d.target!=null) ? d.target : null;
+    const power = (d.power!=null) ? d.power : null;
+
+    liveTemp.textContent = (temp!=null) ? `${temp.toFixed(1)}°C` : '—';
+    liveTarget.textContent = (target!=null) ? `${target.toFixed(0)}°C` : '—';
+    livePower.textContent = (power!=null) ? `${Math.round(power*100)}%` : '—';
+
+    overlayTemp.textContent = (temp!=null) ? `${temp.toFixed(1)}°C` : '—';
+    overlayPower.textContent = (power!=null) ? `${Math.round(power*100)}%` : '—';
+
+    maybeSample(temp);
+  }
 
   /* ========= WebSocket subscription ========= */
   function wsSend(obj){ try{ ws?.send(JSON.stringify(obj)); }catch{} }
@@ -198,7 +507,7 @@
     };
     ws.onclose = () => { setWsState(false); setTimeout(openWs, 1500); };
     ws.onerror = () => {};
-    ws.onmessage = (ev) => {
+    ws.onmessage = async (ev) => {
       let data; try{ data = JSON.parse(ev.data); }catch{return;}
       if (data?.method === 'notify_status_update' && data.params && data.params[0]){
         const p = data.params[0];
@@ -214,24 +523,56 @@
       }
       if (data?.method === 'notify_gcode_response' && data.params && data.params[0]){
         const line = String(data.params[0]);
-        // Only log if not a temp spam line
         log(line);
-        // PID constants parsing
+
         const m1 = line.match(/kP:\s*([\d.]+)\s*,\s*kI:\s*([\d.]+)\s*,\s*kD:\s*([\d.]+)/i);
         const m2 = line.match(/pid_Kp\s*=\s*([\d.]+)\s+pid_Ki\s*=\s*([\d.]+)\s+pid_Kd\s*=\s*([\d.]+)/i);
         if (m1 || m2){
           const kp = parseFloat((m1?.[1]||m2?.[1])||'');
           const ki = parseFloat((m1?.[2]||m2?.[2])||'');
           const kd = parseFloat((m1?.[3]||m2?.[3])||'');
+
           showResult(kp,ki,kd);
-          setRunState('Idle'); tuningActive = false; stopTimer();
+          const heaterName = lastHeater || heaterSel.value;
+
+          // Save PID + firmware restart + done popup
+          try{
+            await savePidToStandalone(heaterName, kp, ki, kd);
+            await doFirmwareRestart();
+            showDoneOverlay('PID values were saved to standalone.cfg and firmware restart was requested.');
+          }catch(err){
+            log('✗ Post-PID handling error: ' + err.message, {force:true});
+            showDoneOverlay('PID values were parsed, but there was an error saving or restarting firmware. Check the log.');
+          }
+
+          setRunState('Idle');
+          tuningActive = false;
+          stopTimer();
+          hideOverlay();
+          return;
         }
-        if (/PID_CALIBRATE finished/i.test(line)){ setRunState('Idle'); tuningActive = false; stopTimer(); }
-        if (/PID_CALIBRATE aborted|error|fail/i.test(line)){ setRunState('Aborted'); tuningActive = false; stopTimer(); }
+
+        if (/PID_CALIBRATE finished/i.test(line)){
+          setRunState('Idle');
+          tuningActive = false;
+          stopTimer();
+          hideOverlay();
+        }
+        if (/PID_CALIBRATE aborted|error|fail/i.test(line)){
+          setRunState('Aborted');
+          tuningActive = false;
+          stopTimer();
+          overlaySub.textContent = 'PID calibration aborted or failed. Check the log for details.';
+          hideOverlay();
+        }
       }
     };
   }
-  function setWsState(ok){ wsConnected = !!ok; wsPill.textContent = 'WS: ' + (ok?'connected':'offline'); wsPill.className = 'pill ' + (ok?'ok':'warn'); }
+  function setWsState(ok){
+    wsConnected = !!ok;
+    wsPill.textContent = 'WS: ' + (ok?'connected':'offline');
+    wsPill.className = 'pill ' + (ok?'ok':'warn');
+  }
   openWs();
 
   /* ========= HTTP polling fallback (WS offline) ========= */
@@ -297,6 +638,134 @@
     return { script: `PID_CALIBRATE HEATER=${heater} TARGET=${target}`, heater, target };
   }
 
+  /* ========= standalone.cfg integration ========= */
+  function heaterToSection(heater){
+    return heater || 'extruder';
+  }
+
+  function updateStandaloneContent(original, heater, kp, ki, kd){
+    const section = heaterToSection(heater);
+    const headerRegex = new RegExp(
+      "^\\s*\\[" + section.replace(/[-/\\^$*+?.()|[\\]{}]/g, "\\$&") + "\\]\\s*$",
+      "i"
+    );
+    const pidLines = [
+      `pid_Kp: ${kp}`,
+      `pid_Ki: ${ki}`,
+      `pid_Kd: ${kd}`
+    ];
+
+    if (!original || !original.trim()){
+      return [
+        `[${section}]`,
+        ...pidLines,
+        ''
+      ].join('\n');
+    }
+
+    const lines = original.split(/\r?\n/);
+    let start = -1;
+    let end   = lines.length;
+
+    for (let i = 0; i < lines.length; i++){
+      if (headerRegex.test(lines[i])){
+        start = i;
+        for (let j = i + 1; j < lines.length; j++){
+          if (/^\s*\[.+\]\s*$/.test(lines[j])){ end = j; break; }
+        }
+        break;
+      }
+    }
+
+    if (start === -1){
+      const trimmed = original.replace(/\s+$/,'');
+      const baseLines = trimmed ? trimmed.split(/\r?\n/) : [];
+      if (baseLines.length && baseLines[baseLines.length-1].trim() !== '') {
+        baseLines.push('');
+      }
+      return baseLines
+        .concat([`[${section}]`])
+        .concat(pidLines)
+        .concat([''])
+        .join('\n');
+    }
+
+    const headerLine = lines[start];
+    const before     = lines.slice(0, start);
+    const body       = lines.slice(start + 1, end);
+    const after      = lines.slice(end);
+
+    const newBody = [];
+    for (const ln of body){
+      if (/^\s*pid_Kp\s*:/i.test(ln)) continue;
+      if (/^\s*pid_Ki\s*:/i.test(ln)) continue;
+      if (/^\s*pid_Kd\s*:/i.test(ln)) continue;
+      newBody.push(ln);
+    }
+    newBody.push(...pidLines);
+
+    const sectionBlock = [headerLine, ...newBody];
+
+    return [...before, ...sectionBlock, ...after].join('\n');
+  }
+
+  async function readStandaloneCfg(){
+    try{
+      const r = await fetch(`${MR}/server/files/config/standalone.cfg`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.text();
+    }catch(err){
+      log(`Note: standalone.cfg not found, creating a new one. (${err.message})`, {force:true});
+      return '';
+    }
+  }
+
+  async function writeStandaloneCfg(content){
+    const formData = new FormData();
+    const blob = new Blob([content], { type: 'text/plain' });
+    formData.append('file', blob, 'standalone.cfg');
+    formData.append('root', 'config');
+
+    const r = await fetch(`${MR}/server/files/upload`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!r.ok) throw new Error(`upload HTTP ${r.status}`);
+  }
+
+  async function savePidToStandalone(heater, kp, ki, kd){
+    if (!isFinite(kp) || !isFinite(ki) || !isFinite(kd)) return;
+    const section = heaterToSection(heater);
+    log(`Saving PID for [${section}] to standalone.cfg…`, {force:true});
+    const original = await readStandaloneCfg();
+    const updated  = updateStandaloneContent(original, heater, kp, ki, kd);
+    await writeStandaloneCfg(updated);
+    log('✓ Wrote PID to /home/pi/printer_data/config/standalone.cfg', {force:true});
+  }
+
+  /* ========= Firmware restart ========= */
+  async function doFirmwareRestart(){
+    try{
+      const payload = {
+        jsonrpc: "2.0",
+        method: "printer.firmware_restart",
+        id: Date.now()
+      };
+      const resp = await fetch(`${MR}/printer/firmware_restart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok){
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      log('✓ Firmware restart requested via /printer/firmware_restart', {force:true});
+    }catch(err){
+      log('✗ Firmware restart failed: ' + err.message, {force:true});
+      throw err;
+    }
+  }
+
   /* ========= Results UI ========= */
   function showResult(kp,ki,kd){
     resKp.value = isFinite(kp)? kp : '';
@@ -304,15 +773,16 @@
     resKd.value = isFinite(kd)? kd : '';
     resCard.style.display = (isFinite(kp)&&isFinite(ki)&&isFinite(kd)) ? '' : 'none';
   }
+
   copyBtn.addEventListener('click', async ()=>{
     const kp = resKp.value, ki = resKi.value, kd = resKd.value;
-    const h = heaterSel.value;
+    const h = lastHeater || heaterSel.value;
     const snippet =
-`# Insert into your printer.cfg:
-[heater_pid ${h}]
-kp: ${kp}
-ki: ${ki}
-kd: ${kd}`;
+`# Insert into your Klipper config:
+[${h}]
+pid_Kp: ${kp}
+pid_Ki: ${ki}
+pid_Kd: ${kd}`;
     try{
       await navigator.clipboard.writeText(snippet);
       copyHint.textContent = 'Copied!';
@@ -331,8 +801,11 @@ kd: ${kd}`;
     setRunState('Running');
     tuningActive = true;
     startTimer();
+    const fd = new FormData(form);
+    const {script, heater, target} = buildScript(fd);
+    lastHeater = heater;
+    showOverlay(heater, target);
     try{
-      const {script, heater, target} = buildScript(new FormData(form));
       await sendScript(script, `PID_CALIBRATE ${heater} @ ${target}°C`);
       log('✓ Submitted. Watch live temperatures; results will appear below on completion.', {force:true});
     }catch(err){
@@ -340,29 +813,43 @@ kd: ${kd}`;
       setRunState('Idle');
       tuningActive = false;
       stopTimer();
+      hideOverlay();
     }finally{
       setBusy(false);
     }
   });
 
-  // Abort flow
-  stopBtn.addEventListener('click', async ()=>{
+  /* ========= Emergency stop via /printer/emergency_stop (overlay only) ========= */
+  async function doEmergencyStop(){
     setBusy(true);
     try{
-      await sendScript('CANCEL_PRINT', 'CANCEL_PRINT');
+      const payload = {
+        jsonrpc: "2.0",
+        method: "printer.emergency_stop",
+        id: Date.now()
+      };
+      const resp = await fetch(`${MR}/printer/emergency_stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok){
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      log('! Emergency stop requested via /printer/emergency_stop', {force:true});
       setRunState('Aborted');
     }catch(err){
-      try{
-        await sendScript('M112', 'M112 (Emergency Stop)');
-        setRunState('Aborted');
-      }catch(err2){
-        log('Abort failed: ' + err2, {force:true});
-      }
+      log('Abort failed: ' + err.message, {force:true});
     }finally{
       tuningActive = false;
       stopTimer();
+      hideOverlay();
       setBusy(false);
     }
-  });
+  }
+
+  overlayStopBtn.addEventListener('click', doEmergencyStop);
+  doneClose.addEventListener('click', hideDoneOverlay);
+
 })();
 </script>
