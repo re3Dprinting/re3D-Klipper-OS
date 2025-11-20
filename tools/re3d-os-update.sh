@@ -47,11 +47,13 @@ trap 'on_error $? $LINENO' ERR
 SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
 SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
+SRC_COMMON="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common"
 
 # Target locations on the LIVE system
 DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
+DST_COMMON="/home/pi/printer_data/config/src/common"
 
 # ---------- Start ----------
 set_status "running"
@@ -100,7 +102,20 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FFF} not found, skipping FFF configs."
 fi
 
-# ---------- 2.5) Ensure matplotlib is installed for graphstats ----------
+# ---------- 3) Klipper configs: COMMON ----------
+set_progress 60
+
+if [ -d "${SRC_COMMON}" ]; then
+  log "${LOG_TAG} Syncing common configs..."
+  # Same: conservative, no --delete
+  rsync -a \
+    "${SRC_COMMON}/" \
+    "${DST_COMMON}/"
+else
+  log "${LOG_TAG} WARNING: Source ${SRC_COMMON} not found, skipping common configs."
+fi
+
+# ---------- 3.5) Ensure matplotlib is installed for graphstats ----------
 set_progress 45
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
 
@@ -127,7 +142,7 @@ fi
 
 log "${LOG_TAG} Matplotlib installed successfully."
 
-# ---------- 3) Klipper configs: FGF ----------
+# ---------- 4) Klipper configs: FGF ----------
 set_progress 60
 
 if [ -d "${SRC_FGF}" ]; then
@@ -140,7 +155,7 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
 fi
 
-# ---------- 4) Reload services (best-effort, no "not found" noise) ----------
+# ---------- 5) Reload services (best-effort, no "not found" noise) ----------
 set_progress 80
 
 log "${LOG_TAG} Reloading services (best-effort)..."
@@ -154,7 +169,7 @@ done
 set_progress 96
 log "${LOG_TAG} Services reload complete."
 
-# ---------- 5) Done → reboot ----------
+# ---------- 6) Done → reboot ----------
 set_progress 100
 log "${LOG_TAG} Update complete. Printer will reboot now."
 set_status "rebooting"
