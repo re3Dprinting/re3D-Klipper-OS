@@ -1,21 +1,88 @@
 #!/usr/bin/env bash
-# wifi-both.sh — connect wlan0 & wlan1 to SSID using: sudo ./wifi-both.sh SSID PSK
+# wifi-both.sh / set_wifi.sh
+# - CLI: sudo ./set_wifi.sh SSID PSK
+# - CGI: POST with form fields "ssid" and "psk"
 # Use "-" as PSK for open networks.
 
 set -eo pipefail
 
-need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1"; exit 1; }; }
-need nmcli
+MODE="cli"
+[[ -n "${REQUEST_METHOD:-}" ]] && MODE="cgi"
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: sudo $0 SSID PSK"
-  echo "       (Use '-' for PSK on open networks)"
-  exit 2
+echo_header=0
+http_header() {
+  if (( echo_header == 0 )); then
+    echo "Content-Type: text/plain"
+    echo
+    echo_header=1
+  fi
+}
+
+need() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    [[ "$MODE" == "cgi" ]] && http_header
+    echo "Missing: $1"
+    exit 1
+  fi
+}
+
+read_stdin() {
+  local len="${CONTENT_LENGTH:-0}"
+  local data=""
+  if [[ "$len" -gt 0 ]]; then
+    # bash-specific: read exact length
+    IFS= read -r -N "$len" data 2>/dev/null || true
+  fi
+  printf '%s' "$data"
+}
+
+urldecode() {
+  local data="$1"
+  data="${data//+/ }"
+  printf '%b' "${data//%/\\x}"
+}
+
+extract_field() {
+  local name="$1"
+  local src="$2"
+  local val
+  # split on & then grab the line starting with name=
+  val=$(printf '%s' "$src" | tr '&' '\n' | sed -n "s/^${name}=//p" | head -n1)
+  printf '%s' "$val"
+}
+
+SSID=""
+PSK=""
+
+if [[ "$MODE" == "cgi" ]]; then
+  http_header
+
+  BODY="$(read_stdin)"
+
+  raw_ssid="$(extract_field "ssid" "$BODY")"
+  raw_psk="$(extract_field "psk"  "$BODY")"
+
+  SSID="$(urldecode "$raw_ssid")"
+  PSK="$(urldecode "$raw_psk")"
+
+  if [[ -z "$SSID" ]]; then
+    echo "Error: Missing ssid"
+    exit 2
+  fi
+  # PSK may be empty (open network) or "-" to mean open
+else
+  if [[ $# -lt 2 ]]; then
+    echo "Usage: sudo $0 SSID PSK"
+    echo "       (Use '-' for PSK on open networks)"
+    exit 2
+  fi
+  SSID="$1"
+  PSK="$2"
 fi
 
-SSID="$1"
-PSK="$2"
 [[ "$PSK" == "-" ]] && PSK=""
+
+need nmcli
 
 dev_exists() { nmcli -t -f DEVICE device | grep -Fxq "$1"; }
 
@@ -87,4 +154,5 @@ for iface in wlan0 wlan1; do
     echo "Skipping $iface: device not found."
   fi
 done
+
 exit "$rc"
