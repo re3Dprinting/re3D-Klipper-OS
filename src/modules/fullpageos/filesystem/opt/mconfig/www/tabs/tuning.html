@@ -1,4 +1,4 @@
-<!-- Tuning (PID) — overlay + smoothed temp graph + standalone.cfg write + fw restart -->
+<!-- Tuning (PID) — overlay + smoothed temp graph + standalone.cfg write + fw restart + fan option -->
 <style>
   .out{
     margin-top:8px;padding:10px;border-radius:10px;background:#0C0E12;
@@ -21,6 +21,28 @@
   .ok{background:#10331c;border-color:#174d27}
   .warn{background:#3a1a11;border-color:#5c2a1b}
   .copy-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  /* Fan checkbox styling */
+  .check-row{
+    margin-top:6px;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:4px 10px;
+    border-radius:999px;
+    background:#0F1216;
+    border:1px solid var(--border);
+    font-size:11px;
+    color:var(--muted);
+    cursor:pointer;
+    user-select:none;
+  }
+  .check-row input[type="checkbox"]{
+    width:14px;
+    height:14px;
+    accent-color:var(--brand);
+    cursor:pointer;
+  }
 
   /* Overlay base */
   .pid-overlay{
@@ -97,6 +119,10 @@
       <div>
         <label>Target Temp (°C)</label>
         <input name="target" id="target" type="number" min="30" max="300" placeholder="200" required>
+        <label class="check-row">
+          <input type="checkbox" id="pid-fan" name="pid_fan">
+          <span>Run part cooling fan during tune</span>
+        </label>
       </div>
     </div>
 
@@ -114,7 +140,9 @@
 
     <div class="btn-row" style="justify-content:flex-start">
       <button type="submit" id="pid-go">Start PID Tune</button>
-      
+      <span class="hint">
+        Sends <span class="mono">M106 S0/S255</span> + <span class="mono">PID_CALIBRATE HEATER=&lt;heater&gt; TARGET=&lt;temp&gt;</span>
+      </span>
     </div>
 
     <div class="out mono" id="out-pid" aria-live="polite"></div>
@@ -133,6 +161,8 @@
         </div>
       </div>
       <div class="hint">
+        Values are parsed from Klipper’s console when PID_CALIBRATE finishes<br>
+        and written to <span class="mono">/home/pi/printer_data/config/standalone.cfg</span>.
       </div>
     </div>
   </form>
@@ -219,6 +249,7 @@
   const resKd = document.getElementById('res-kd');
   const copyBtn = document.getElementById('copy-pid');
   const copyHint = document.getElementById('copy-hint');
+  const fanCheckbox = document.getElementById('pid-fan');
 
   // Overlay refs
   const overlay = document.getElementById('pid-overlay');
@@ -535,7 +566,6 @@
           showResult(kp,ki,kd);
           const heaterName = lastHeater || heaterSel.value;
 
-          // Save PID + firmware restart + done popup
           try{
             await savePidToStandalone(heaterName, kp, ki, kd);
             await doFirmwareRestart();
@@ -635,7 +665,10 @@
   function buildScript(fd){
     const heater = fd.get('heater');
     const target = Number(fd.get('target'));
-    return { script: `PID_CALIBRATE HEATER=${heater} TARGET=${target}`, heater, target };
+    const fanOn = fd.get('pid_fan') === 'on';
+    const fanCmd = fanOn ? 'M106 S255' : 'M106 S0';
+    const script = `${fanCmd}\nPID_CALIBRATE HEATER=${heater} TARGET=${target}`;
+    return { script, heater, target, fanOn };
   }
 
   /* ========= standalone.cfg integration ========= */
