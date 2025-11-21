@@ -35,6 +35,12 @@
     gap:8px;
   }
 
+  /* Disabled / no-update-connectivity state for update card */
+  .sys-card.sys-disabled{
+    opacity:0.45;
+    pointer-events:none;
+  }
+
   .sys-title{
     font-weight:800;
     margin-bottom:4px;
@@ -154,18 +160,21 @@
     <div class="sys-section-label">System</div>
 
     <!-- OS / Configurator Update -->
-    <div class="card sys-card">
+    <div class="card sys-card" id="update-card">
       <div class="sys-title">OS &amp; Configurator Update</div>
       <div class="sys-subtitle">
         <span>
           Pulls the latest Configurator UI and machine configs from the re3D-Klipper-OS repository
           and restarts relevant services.
         </span>
-        <span class="chip dim" id="update-check-pill">Auto-checking…</span>
+        <span class="chip dim" id="update-check-pill">Checking connectivity…</span>
+      </div>
+      <div class="hint" id="update-offline-hint" style="display:none;margin-top:2px;">
+        Internet connection required to check for or install updates.
       </div>
       <div class="btn-row">
-        <button type="button" id="btn-check-update">Check for Updates</button>
-        <button type="button" id="btn-update">Run Update</button>
+        <button type="button" id="btn-check-update" disabled>Check for Updates</button>
+        <button type="button" id="btn-update" disabled>Run Update</button>
       </div>
       <div class="sys-out mono" id="out-update"></div>
     </div>
@@ -262,6 +271,12 @@
   const btnCheckUpdate  = document.getElementById('btn-check-update');
   const outUpdate       = document.getElementById('out-update');
   const updatePill      = document.getElementById('update-check-pill');
+  const updateCard      = document.getElementById('update-card');
+  const offlineHint     = document.getElementById('update-offline-hint');
+
+  // "canUpdate" = "this machine can actually reach the update source"
+  let canUpdate = false;
+  let connectivityChecked = false;
 
   function setUpdatePill(text, tone){
     if (!updatePill) return;
@@ -288,7 +303,72 @@
     }
   }
 
+  function applyUpdateConnectivity(allowed){
+    canUpdate = !!allowed;
+    connectivityChecked = true;
+
+    if (canUpdate){
+      if (updateCard) updateCard.classList.remove('sys-disabled');
+      if (offlineHint) offlineHint.style.display = 'none';
+      if (btnUpdate) btnUpdate.disabled = false;
+      if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+
+      // Reset pill to show it's ready to check for updates
+      setUpdatePill('Ready to check', 'muted');
+      if (outUpdate && outUpdate.textContent === 'Updates require an active internet connection.') {
+        outUpdate.textContent = '';
+      }
+    }else{
+      if (updateCard) updateCard.classList.add('sys-disabled');
+      if (offlineHint) offlineHint.style.display = 'block';
+      if (btnUpdate) btnUpdate.disabled = true;
+      if (btnCheckUpdate) btnCheckUpdate.disabled = true;
+      setUpdatePill('No internet for updates', 'error');
+      if (outUpdate && !outUpdate.textContent){
+        outUpdate.textContent = 'Updates require an active internet connection.';
+      }
+    }
+  }
+
+  async function checkUpdateConnectivity(){
+    // Show "checking" state
+    if (updatePill){
+      updatePill.textContent = 'Checking connectivity…';
+      setUpdatePill('Checking connectivity…', 'muted');
+    }
+    if (btnUpdate) btnUpdate.disabled = true;
+    if (btnCheckUpdate) btnCheckUpdate.disabled = true;
+    if (updateCard) updateCard.classList.add('sys-disabled');
+
+    try{
+      const r = await fetch('/cgi-bin/check_update_connectivity.sh?ts=' + Date.now(), {cache:'no-store'});
+      if (!r.ok){
+        throw new Error('HTTP ' + r.status);
+      }
+      const data = await r.json().catch(()=>({}));
+      applyUpdateConnectivity(!!data.can_update);
+    }catch(err){
+      // If we can't even verify connectivity, treat as "no updates"
+      applyUpdateConnectivity(false);
+      if (outUpdate && !outUpdate.textContent){
+        outUpdate.textContent = 'Unable to verify internet connectivity; updates are disabled.\n' + err;
+      }
+    }
+  }
+
   async function checkForUpdates(manual){
+    if (!connectivityChecked){
+      // If somehow triggered before connectivity check finishes, force a check first
+      await checkUpdateConnectivity();
+    }
+    if (!canUpdate){
+      if (manual && outUpdate){
+        outUpdate.textContent = 'Cannot check for updates: internet not available for update source.';
+      }
+      setUpdatePill('No internet for updates', 'error');
+      return;
+    }
+
     if (updatePill){
       setUpdatePill(manual ? 'Checking…' : 'Auto-checking…', 'muted');
     }
@@ -333,8 +413,13 @@
     });
   }
 
-  // Auto-check whenever System tab loads
-  checkForUpdates(false);
+  // Auto-connectivity check + auto-update-check when System tab loads
+  (async () => {
+    await checkUpdateConnectivity();
+    if (canUpdate){
+      checkForUpdates(false);
+    }
+  })();
 
   // ---- Update Modal wiring (Machine-tab style) ----
   const updateModal     = document.getElementById('update-modal');
@@ -343,7 +428,7 @@
   const updateStatus    = document.getElementById('update-status');
 
   function openUpdateModal(){
-    if (!updateModal) return;
+    if (!updateModal || !canUpdate) return;
     updateModal.hidden = false;
     if (updateStatus) updateStatus.textContent = '';
     if (updateRunBtn) updateRunBtn.disabled = false;
@@ -378,6 +463,7 @@
 
   if (updateRunBtn){
     updateRunBtn.addEventListener('click', () => {
+      if (!canUpdate) return;
       if (updateStatus) updateStatus.textContent = 'Starting update…';
       updateRunBtn.disabled = true;
       if (updateCancelBtn) updateCancelBtn.disabled = true;
