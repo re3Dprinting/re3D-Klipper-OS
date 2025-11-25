@@ -26,7 +26,7 @@ Every new commit an image is created, streamlining development and removing the 
 * [Pi-usb-automount](https://github.com/fasteddy516/pi-usb-automount): Auto mounts USB drives with a symbolic link to /printer_data/gcodes.
 * [Automated firmware flashing](https://github.com/re3Dprinting/re3D-Klipper-OS/blob/devel/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands/flash_firmware.sh): Attempts to flash the microcontroller with Klipper firmware on first boot. 
 * [Multi-machine configuration](https://github.com/re3Dprinting/re3D-Klipper-OS/blob/devel/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/reload.py): Checks for printer type and uses the appropriate configuration files.
-* (WIP)
+* re:3D Configurator
 
 
 ## Installation
