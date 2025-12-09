@@ -258,7 +258,8 @@ for LOG_FILE in "$PRINTER_LOG_DIR"/klippy*.log; do
 
     # Skip the first timeout/got eof per log
     skip_first="false"
-    case "$pat" in
+    pat_lc="$(printf '%s' "$pat" | tr '[:upper:]' '[:lower:]')"
+    case "$pat_lc" in
       "timeout with mcu"|"got eof")
         skip_first="true"
         ;;
