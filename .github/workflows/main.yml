@@ -33,6 +33,42 @@ jobs:
           repository: "guysoft/CustomPiOS"
           path: CustomPiOS
 
+      # ✅ PATCH: remove Bookworm-incompatible libconfig11 install lines in CustomPiOS
+      - name: Patch CustomPiOS (remove libconfig11 install)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "CustomPiOS HEAD: $(git -C CustomPiOS rev-parse --short HEAD)"
+
+          # Find all files in CustomPiOS that reference libconfig11
+          mapfile -t FILES < <(grep -RIl --line-number 'libconfig11' CustomPiOS/src || true)
+
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No libconfig11 references found in CustomPiOS/src (nothing to patch)."
+            exit 0
+          fi
+
+          echo "Patching files:"
+          printf ' - %s\n' "${FILES[@]}"
+
+          for f in "${FILES[@]}"; do
+            echo "---- BEFORE ($f) ----"
+            grep -n 'libconfig' "$f" || true
+
+            # Remove only the apt-get install lines that include libconfig11
+            # (keeps any other mentions, but in practice this is the bad install line)
+            sed -i '/apt-get .*install .*libconfig11/d' "$f"
+
+            echo "---- AFTER ($f) ----"
+            grep -n 'libconfig' "$f" || true
+          done
+
+          # Sanity: ensure no apt-get install line with libconfig11 remains
+          if grep -RIn 'apt-get .*install .*libconfig11' CustomPiOS/src; then
+            echo "ERROR: libconfig11 install line still present after patch!"
+            exit 1
+          fi
+
       - name: Checkout Project Repository
         uses: actions/checkout@v4
         with:
@@ -133,7 +169,6 @@ jobs:
           cd repository/src
           sudo bash -x ./build_dist
 
-
       - name: copy Output
         run: |
           cp ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
@@ -191,7 +226,7 @@ jobs:
           sudo cp -f extracted/lib/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
           sudo cp -f extracted/etc/systemd/system/crowsnest.service "$HOME/crowsnest-binaries/crowsnest.service" 2>/dev/null || true
           sudo chown -R runner:docker "$HOME/crowsnest-binaries" || true
-          
+
       # free space BEFORE caches are saved
       - name: Free space before caching
         run: |
