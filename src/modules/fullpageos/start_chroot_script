@@ -209,9 +209,7 @@ apt-get update
 apt-get install -y \
   libopenjp2-7 python3-libgpiod curl libcurl4-openssl-dev libssl-dev \
   liblmdb-dev libsodium-dev zlib1g-dev libjpeg-dev packagekit wireless-tools \
-  python3-git \
-  libtiff-dev libfreetype-dev liblcms2-dev libwebp-dev libopenjp2-7-dev \
-  libharfbuzz-dev libfribidi-dev
+  python3-git python3-pil
 
 # 1) Create the directory structure (NO config/)
 sudo -u "${BASE_USER}" bash -lc 'mkdir -p ~/printer_data/{logs,gcodes,systemd,comms}'
@@ -350,12 +348,24 @@ sudo -u "${BASE_USER}" bash -lc '
 
   mkdir -p ~/printer_data/{logs,systemd,comms,gcodes}
 
+  # Link system Pillow (python3-pil) into any moonraker venv to avoid
+  # compiling from source, which fails in QEMU ARM chroots.
+  _link_system_pillow() {
+    local venv_sp
+    venv_sp=$(~/moonraker-env/bin/python -c "import site; print(site.getsitepackages()[0])")
+    local sys_sp="/usr/lib/python3/dist-packages"
+    ln -sf "$sys_sp/PIL" "$venv_sp/PIL"
+    for d in "$sys_sp"/Pillow*.*-info "$sys_sp"/Pillow*.egg-info; do
+      [ -e "$d" ] && ln -sf "$d" "$venv_sp/$(basename "$d")"
+    done
+    echo "Linked system Pillow into moonraker-env"
+  }
+
   if [ ! -d "$HOME/moonraker-env/bin" ]; then
     echo "Creating moonraker-env..."
     python3 -m venv ~/moonraker-env
     ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
-    # Pre-install Pillow without build isolation to avoid chroot permission errors
-    ~/moonraker-env/bin/python -m pip install --no-cache-dir --no-build-isolation pillow
+    _link_system_pillow
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
     ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
 
@@ -363,6 +373,7 @@ sudo -u "${BASE_USER}" bash -lc '
     echo "$REQS_HASH" > "$HOME/moonraker-env/.requirements-hash"
   else
     echo "moonraker-env already present"
+    _link_system_pillow
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
     REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
     HASH_FILE="$HOME/moonraker-env/.requirements-hash"
@@ -370,8 +381,6 @@ sudo -u "${BASE_USER}" bash -lc '
     if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
       echo "Requirements changed, updating packages..."
       ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
-      # Pre-install Pillow without build isolation to avoid chroot permission errors
-      ~/moonraker-env/bin/python -m pip install --no-cache-dir --no-build-isolation pillow
       ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
       echo "$REQS_HASH" > "$HASH_FILE"
     else
