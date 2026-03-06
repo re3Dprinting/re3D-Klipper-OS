@@ -354,9 +354,9 @@ sudo -u "${BASE_USER}" bash -lc '
     local venv_sp
     venv_sp=$(~/moonraker-env/bin/python -c "import site; print(site.getsitepackages()[0])")
     local sys_sp="/usr/lib/python3/dist-packages"
-    ln -sf "$sys_sp/PIL" "$venv_sp/PIL"
-    for d in "$sys_sp"/Pillow*.*-info "$sys_sp"/Pillow*.egg-info; do
-      [ -e "$d" ] && ln -sf "$d" "$venv_sp/$(basename "$d")"
+    ln -sfn "$sys_sp/PIL" "$venv_sp/PIL"
+    for d in "$sys_sp"/Pillow*.dist-info "$sys_sp"/Pillow*.egg-info; do
+      [ -e "$d" ] && ln -sfn "$d" "$venv_sp/$(basename "$d")"
     done
     echo "Linked system Pillow into moonraker-env"
   }
