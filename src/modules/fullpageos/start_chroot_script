@@ -209,7 +209,9 @@ apt-get update
 apt-get install -y \
   libopenjp2-7 python3-libgpiod curl libcurl4-openssl-dev libssl-dev \
   liblmdb-dev libsodium-dev zlib1g-dev libjpeg-dev packagekit wireless-tools \
-  python3-git
+  python3-git \
+  libtiff-dev libfreetype-dev liblcms2-dev libwebp-dev libopenjp2-7-dev \
+  libharfbuzz-dev libfribidi-dev
 
 # 1) Create the directory structure (NO config/)
 sudo -u "${BASE_USER}" bash -lc 'mkdir -p ~/printer_data/{logs,gcodes,systemd,comms}'
@@ -352,6 +354,8 @@ sudo -u "${BASE_USER}" bash -lc '
     echo "Creating moonraker-env..."
     python3 -m venv ~/moonraker-env
     ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
+    # Pre-install Pillow without build isolation to avoid chroot permission errors
+    ~/moonraker-env/bin/python -m pip install --no-cache-dir --no-build-isolation pillow
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
     ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
 
@@ -366,6 +370,8 @@ sudo -u "${BASE_USER}" bash -lc '
     if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
       echo "Requirements changed, updating packages..."
       ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
+      # Pre-install Pillow without build isolation to avoid chroot permission errors
+      ~/moonraker-env/bin/python -m pip install --no-cache-dir --no-build-isolation pillow
       ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
       echo "$REQS_HASH" > "$HASH_FILE"
     else
