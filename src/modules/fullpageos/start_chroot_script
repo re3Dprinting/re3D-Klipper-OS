@@ -337,7 +337,6 @@ sudo -u "${BASE_USER}" bash -lc '
   chmod 700 "$TMPDIR"
 
   cd "$HOME"
-
   if [ ! -d "$HOME/moonraker/.git" ]; then
     echo "Cloning Moonraker..."
     git clone --depth 1 https://github.com/Arksine/moonraker.git
@@ -349,47 +348,24 @@ sudo -u "${BASE_USER}" bash -lc '
 
   mkdir -p ~/printer_data/{logs,systemd,comms,gcodes}
 
-  # make absolutely sure pi owns its dirs
-  chown -R '"${BASE_USER}"':'"${BASE_USER}"' "$HOME/moonraker" "$HOME/printer_data" 2>/dev/null || true
-  [ -d "$HOME/moonraker-env" ] && chown -R '"${BASE_USER}"':'"${BASE_USER}"' "$HOME/moonraker-env" || true
-
   if [ ! -d "$HOME/moonraker-env/bin" ]; then
     echo "Creating moonraker-env..."
     python3 -m venv ~/moonraker-env
-    ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel
-
+    ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
-
-    echo "=== moonraker pip debug ==="
-    id
-    echo "HOME=$HOME"
-    echo "TMPDIR=$TMPDIR"
-    pwd
-    ls -ld "$HOME" "$HOME/moonraker" "$HOME/moonraker-env" "$TMPDIR" /tmp
-    touch "$TMPDIR/.write_test" && rm -f "$TMPDIR/.write_test"
-
     ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
 
     REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
     echo "$REQS_HASH" > "$HOME/moonraker-env/.requirements-hash"
   else
     echo "moonraker-env already present"
-
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
     REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
     HASH_FILE="$HOME/moonraker-env/.requirements-hash"
 
-    echo "=== moonraker pip debug ==="
-    id
-    echo "HOME=$HOME"
-    echo "TMPDIR=$TMPDIR"
-    pwd
-    ls -ld "$HOME" "$HOME/moonraker" "$HOME/moonraker-env" "$TMPDIR" /tmp
-    touch "$TMPDIR/.write_test" && rm -f "$TMPDIR/.write_test"
-
     if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
       echo "Requirements changed, updating packages..."
-      ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel
+      ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
       ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
       echo "$REQS_HASH" > "$HASH_FILE"
     else
@@ -398,7 +374,6 @@ sudo -u "${BASE_USER}" bash -lc '
   fi
 '
 step_end
-
 # --- Make manual install equivalent to the official installer ---
 
 # 1) Ensure the policy group exists and the user is in it
