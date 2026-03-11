@@ -348,8 +348,10 @@ sudo -u "${BASE_USER}" bash -lc '
 
   mkdir -p ~/printer_data/{logs,systemd,comms,gcodes}
 
-  # Link system Pillow (python3-pil) into any moonraker venv to avoid
-  # compiling from source, which fails in QEMU ARM chroots.
+  # Use system Pillow (python3-pil) instead of building from source,
+  # which fails with Permission denied in QEMU ARM chroots.
+  # Symlink the system package into the venv and strip Pillow from
+  # the requirements so pip never attempts a source build.
   _link_system_pillow() {
     local venv_sp
     venv_sp=$(~/moonraker-env/bin/python -c "import site; print(site.getsitepackages()[0])")
@@ -361,13 +363,20 @@ sudo -u "${BASE_USER}" bash -lc '
     echo "Linked system Pillow into moonraker-env"
   }
 
+  # Filter Pillow out of a requirements file (case-insensitive).
+  _reqs_without_pillow() {
+    grep -iv '^\s*pillow\b' "$1" > "${1}.nopillow"
+    echo "${1}.nopillow"
+  }
+
   if [ ! -d "$HOME/moonraker-env/bin" ]; then
     echo "Creating moonraker-env..."
     python3 -m venv ~/moonraker-env
     ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
     _link_system_pillow
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
-    ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
+    FILTERED=$(_reqs_without_pillow "$REQS_FILE")
+    ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$FILTERED"
 
     REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
     echo "$REQS_HASH" > "$HOME/moonraker-env/.requirements-hash"
@@ -381,7 +390,8 @@ sudo -u "${BASE_USER}" bash -lc '
     if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
       echo "Requirements changed, updating packages..."
       ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
-      ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$REQS_FILE"
+      FILTERED=$(_reqs_without_pillow "$REQS_FILE")
+      ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$FILTERED"
       echo "$REQS_HASH" > "$HASH_FILE"
     else
       echo "Requirements unchanged, skipping pip install"
