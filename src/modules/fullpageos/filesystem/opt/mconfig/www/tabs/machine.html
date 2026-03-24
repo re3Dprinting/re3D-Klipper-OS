@@ -54,7 +54,7 @@
     <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4">
     <div class="machine-grid" id="machine-grid">
       <label class="machine-card" data-type="Gigabot 4">
-        <input type="radio" name="type-radio" value="Gigabot 4" checked>
+        <input type="radio" name="type-radio" value="Gigabot 4">
         <img src="/img/gigabot-4.png" alt="Gigabot 4">
         <div class="title">Gigabot 4</div>
       </label>
@@ -121,8 +121,20 @@
     }
   }
 
-  // Initialize selection state on load
-  applySelectedClasses();
+  // Fetch current machine type from server and pre-select
+  (async () => {
+    try {
+      const resp = await fetch('/cgi-bin/get_machine_type.sh');
+      if (resp.ok) {
+        const current = (await resp.text()).trim();
+        const match = radios.find(r => r.value === current);
+        if (match) match.checked = true;
+      }
+    } catch (_) { /* fall through to default */ }
+    // If nothing was selected (fetch failed or unknown), default to first
+    if (!radios.some(r => r.checked) && radios.length) radios[0].checked = true;
+    applySelectedClasses();
+  })();
 
   // Click anywhere on a card to select its radio
   cards.forEach(card => {
