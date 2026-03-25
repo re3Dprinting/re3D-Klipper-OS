@@ -60,8 +60,8 @@
     margin-top:4px;
     padding:8px 10px;
     border-radius:10px;
-    background:#0C0E12; /* same as network .out */
-    border:1px dashed var(--border);
+    background:#1C1C1E;
+    border:1px solid var(--border);
     max-height:220px;
     overflow:auto;
     font-size:12px;
@@ -107,9 +107,9 @@
 
   .ph-panel{
     border-radius:10px;
-    border:1px dashed var(--border);
+    border:1px solid var(--border);
     padding:8px 10px;
-    background:#05070B;
+    background:#111112;
     display:flex;
     flex-direction:column;
     gap:6px;
@@ -142,16 +142,16 @@
   .modal{
     width:min(520px, calc(100vw - 32px));
     background:var(--panel-outer);
-    border:1px solid var(--border);
-    border-radius:14px;
-    box-shadow:0 10px 40px rgba(0,0,0,.45);
+    border:none;
+    border-radius:10px;
+    box-shadow:0 10px 40px rgba(0,0,0,.6);
     display:grid; gap:12px; padding:14px;
   }
   .modal h3{margin:0; font-size:16px; font-weight:900; color:var(--fg);}
   .modal p{margin:0; color:var(--muted); font-size:13px; line-height:1.45;}
   .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:4px;}
-  .btn-ghost{background:transparent; color:var(--fg); border:1px solid var(--border);}
-  .btn-ghost:hover{background:#24272c}
+  .btn-ghost{background:#262628; color:var(--fg); border:none;box-shadow:2px 2px 0px 0px rgb(0 0 0 / 30%), -0.5px -0.5px 0px 0px #666868}
+  .btn-ghost:hover{background:#393B3E}
 </style>
 
 <div class="content sys-content">
