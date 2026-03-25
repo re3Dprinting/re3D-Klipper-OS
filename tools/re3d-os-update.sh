@@ -103,7 +103,7 @@ else
 fi
 
 # ---------- 3) Klipper configs: COMMON ----------
-set_progress 60
+set_progress 50
 
 if [ -d "${SRC_COMMON}" ]; then
   log "${LOG_TAG} Syncing common configs..."
@@ -114,33 +114,6 @@ if [ -d "${SRC_COMMON}" ]; then
 else
   log "${LOG_TAG} WARNING: Source ${SRC_COMMON} not found, skipping common configs."
 fi
-
-# ---------- 3.5) Ensure matplotlib is installed for graphstats ----------
-set_progress 45
-log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
-
-# Update package lists
-set_progress 50
-
-# Install matplotlib (if not already present)
-set_progress 55
-log "${LOG_TAG} Installing python3-matplotlib if missing..."
-apt-get install -y python3-matplotlib || {
-  log "${LOG_TAG} ERROR: Failed to install python3-matplotlib"
-  set_status "error"
-  exit 1
-}
-
-# Verify installation
-set_progress 58
-log "${LOG_TAG} Verifying matplotlib import..."
-if ! python3 -c "import matplotlib" 2>/dev/null; then
-  log "${LOG_TAG} ERROR: matplotlib still not importable after install."
-  set_status "error"
-  exit 1
-fi
-
-log "${LOG_TAG} Matplotlib installed successfully."
 
 # ---------- 4) Klipper configs: FGF ----------
 set_progress 60
@@ -154,6 +127,26 @@ if [ -d "${SRC_FGF}" ]; then
 else
   log "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
 fi
+
+# ---------- 5) Ensure matplotlib is installed for graphstats ----------
+set_progress 70
+log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
+
+log "${LOG_TAG} Installing python3-matplotlib if missing..."
+apt-get install -y python3-matplotlib || {
+  log "${LOG_TAG} ERROR: Failed to install python3-matplotlib"
+  set_status "error"
+  exit 1
+}
+
+log "${LOG_TAG} Verifying matplotlib import..."
+if ! python3 -c "import matplotlib" 2>/dev/null; then
+  log "${LOG_TAG} ERROR: matplotlib still not importable after install."
+  set_status "error"
+  exit 1
+fi
+
+log "${LOG_TAG} Matplotlib installed successfully."
 
 # ---------- 5) Reload services (best-effort, no "not found" noise) ----------
 set_progress 80
