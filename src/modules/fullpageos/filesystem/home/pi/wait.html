@@ -108,7 +108,7 @@
         return 'Please switch the machine OFF, then ON. This power-cycles both the Pi and mainboard.';
       if(state==='waiting_device'){
         return hasAnyDevices
-          ? 'Board detected but not ready. If needed, erase the board so it appears as the Atmel device.'
+          ? 'Board detected but not ready. Please erase the Archimajor board and the firmware will be flashed automatically.'
           : 'No connection detected. Check printer power and the USB cable/port.';
       }
       if(state==='done')  return 'Flashing complete.';
