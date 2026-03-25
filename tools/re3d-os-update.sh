@@ -78,7 +78,7 @@ set_progress 20
 if [ -d "${SRC_MCONFIG}" ]; then
   log "${LOG_TAG} Syncing Configurator UI (preserving calibration_data)..."
   # Exact mirror, but do NOT touch calibration_data contents
-  rsync -a --delete \
+  rsync -a --checksum --delete \
     --exclude 'calibration_data/' \
     "${SRC_MCONFIG}/" \
     "${DST_MCONFIG}/"
@@ -95,7 +95,7 @@ set_progress 40
 if [ -d "${SRC_FFF}" ]; then
   log "${LOG_TAG} Syncing FFF configs..."
   # NO --delete here so we don't blow away any local-only configs
-  rsync -a \
+  rsync -a --checksum \
     "${SRC_FFF}/" \
     "${DST_FFF}/"
 else
@@ -108,7 +108,7 @@ set_progress 50
 if [ -d "${SRC_COMMON}" ]; then
   log "${LOG_TAG} Syncing common configs..."
   # Same: conservative, no --delete
-  rsync -a \
+  rsync -a --checksum \
     "${SRC_COMMON}/" \
     "${DST_COMMON}/"
 else
@@ -121,7 +121,7 @@ set_progress 60
 if [ -d "${SRC_FGF}" ]; then
   log "${LOG_TAG} Syncing FGF configs..."
   # Same: conservative, no --delete
-  rsync -a \
+  rsync -a --checksum \
     "${SRC_FGF}/" \
     "${DST_FGF}/"
 else
