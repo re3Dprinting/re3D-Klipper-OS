@@ -148,14 +148,49 @@ fi
 
 log "${LOG_TAG} Matplotlib installed successfully."
 
-# ---------- 6) Moonraker: update if not already at latest ----------
-set_progress 60
-
-MOONRAKER_DIR="/home/pi/moonraker"
 # Allow git to operate on pi-owned repos when running as root
-export GIT_CONFIG_COUNT=1
+KLIPPER_DIR="/home/pi/klipper"
+MOONRAKER_DIR="/home/pi/moonraker"
+export GIT_CONFIG_COUNT=2
 export GIT_CONFIG_KEY_0=safe.directory
-export GIT_CONFIG_VALUE_0="${MOONRAKER_DIR}"
+export GIT_CONFIG_VALUE_0="${KLIPPER_DIR}"
+export GIT_CONFIG_KEY_1=safe.directory
+export GIT_CONFIG_VALUE_1="${MOONRAKER_DIR}"
+
+# ---------- 6) Klipper: update if not already at latest ----------
+set_progress 55
+
+if [ -d "${KLIPPER_DIR}/.git" ]; then
+  log "${LOG_TAG} Checking Klipper for updates..."
+  cd "${KLIPPER_DIR}"
+  git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
+  LOCAL_REV=$(git rev-parse HEAD)
+  REMOTE_REV=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master)
+
+  if [ "${LOCAL_REV}" = "${REMOTE_REV}" ]; then
+    log "${LOG_TAG} Klipper is already up-to-date (${LOCAL_REV:0:8}). Skipping."
+  else
+    log "${LOG_TAG} Klipper update available (${LOCAL_REV:0:8} → ${REMOTE_REV:0:8}). Updating..."
+    log "${LOG_TAG} *** NOTE: Klipper was updated. The Archimajor board firmware must be re-flashed. ***"
+    sudo systemctl stop klipper || true
+    git pull 2>&1 | tee -a "${LOG_FILE}"
+    log "${LOG_TAG} Updating Klipper Python dependencies..."
+    "${KLIPPER_DIR}/klippy-env/bin/pip" install -r "${KLIPPER_DIR}/scripts/klippy-requirements.txt" 2>&1 | tee -a "${LOG_FILE}"
+    sudo systemctl start klipper || true
+
+    # Trigger the mainboard flash flow on next reboot
+    log "${LOG_TAG} Setting firstboot-splash flag for Archimajor board re-flash..."
+    touch /etc/firstboot-splash
+    systemctl enable flash_once.service 2>/dev/null || true
+
+    log "${LOG_TAG} Klipper updated successfully."
+  fi
+else
+  log "${LOG_TAG} WARNING: ${KLIPPER_DIR} not found or not a git repo. Skipping Klipper update."
+fi
+
+# ---------- 7) Moonraker: update if not already at latest ----------
+set_progress 65
 
 if [ -d "${MOONRAKER_DIR}/.git" ]; then
   log "${LOG_TAG} Checking Moonraker for updates..."
@@ -179,8 +214,8 @@ else
   log "${LOG_TAG} WARNING: ${MOONRAKER_DIR} not found or not a git repo. Skipping Moonraker update."
 fi
 
-# ---------- 7) Mainsail: update if not already at latest ----------
-set_progress 75
+# ---------- 8) Mainsail: update if not already at latest ----------
+set_progress 78
 
 MAINSAIL_DIR="/home/pi/mainsail"
 log "${LOG_TAG} Checking Mainsail for updates..."
@@ -215,8 +250,8 @@ else
   fi
 fi
 
-# ---------- 8) Reload services (best-effort, no "not found" noise) ----------
-set_progress 88
+# ---------- 9) Reload services (best-effort, no "not found" noise) ----------
+set_progress 90
 
 log "${LOG_TAG} Reloading services (best-effort)..."
 systemctl daemon-reload || true
@@ -229,7 +264,7 @@ done
 set_progress 96
 log "${LOG_TAG} Services reload complete."
 
-# ---------- 9) Done → reboot ----------
+# ---------- 10) Done → reboot ----------
 set_progress 100
 log "${LOG_TAG} Update complete. Printer will reboot now."
 set_status "rebooting"
