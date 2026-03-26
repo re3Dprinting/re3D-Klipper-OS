@@ -132,53 +132,85 @@ echo "$(ts) stopping klipper"
 jstatus "running" 50 "Stopping Klipper"
 systemctl stop klipper || true
 
-echo "$(ts) flashing"
-jstatus "running" 80 "Flashing firmware"
-FLASH_OK=0
-sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH'" && FLASH_OK=1 || true
+# --- Ensure bossac is available before we enter the retry loop ---
+DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
 
-if (( ! FLASH_OK )); then
-  echo "$(ts) make flash failed — trying bossac fallback"
-  jstatus "running" 82 "Primary flash failed. Trying bossac fallback…"
+# Pre-build klipper.bin once so both make-flash and bossac can use it
+if [[ ! -f /home/pi/klipper/out/klipper.bin ]]; then
+  echo "$(ts) pre-building klipper.bin"
+  jstatus "running" 55 "Building firmware binary"
+  sudo -u pi bash -lc 'cd ~/klipper && make clean && make' || true
+fi
 
-  # Ensure bossac is available
-  DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
+# --- Flash with retry loop — we do NOT move on until flash succeeds ---
+FLASH_MAX_ATTEMPTS=5
+FLASH_RETRY_DELAY=10          # seconds between attempts
+FLASH_SUCCEEDED=0
 
-  if command -v bossac >/dev/null 2>&1; then
-    # Build the binary if it wasn't produced by the failed make flash
-    if [[ ! -f /home/pi/klipper/out/klipper.bin ]]; then
-      echo "$(ts) building klipper.bin for bossac"
-      sudo -u pi bash -lc 'cd ~/klipper && make' || true
-    fi
+resolve_acm_port(){
+  # Resolve the erased-device by-id symlink to its underlying /dev/ttyACM* path
+  local rp
+  rp="$(realpath -e "$ERASED_PATH" 2>/dev/null || true)"
+  if [[ "$rp" == /dev/ttyACM* ]]; then
+    echo "$rp"
+    return
+  fi
+  # Fallback: scan common ports
+  for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyACM2; do
+    [[ -e "$p" ]] && echo "$p" && return
+  done
+}
 
-    if [[ -f /home/pi/klipper/out/klipper.bin ]]; then
-      # Try common serial ports for the SAM3X8E
-      BOSSAC_OK=0
-      for port in /dev/ttyACM0 /dev/ttyACM1; do
-        if [[ -e "$port" ]]; then
-          echo "$(ts) bossac flash via $port"
-          jstatus "running" 84 "Flashing via bossac on $port"
-          if sudo -u pi bossac -U -p "$port" -a -e -w /home/pi/klipper/out/klipper.bin -v -b; then
-            BOSSAC_OK=1
-            echo "$(ts) bossac flash succeeded on $port"
-            break
-          else
-            echo "$(ts) bossac flash failed on $port, trying next"
-          fi
-        fi
-      done
+for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
+  echo "$(ts) === Flash attempt ${attempt}/${FLASH_MAX_ATTEMPTS} ==="
+  jstatus "running" 80 "Flashing firmware (attempt ${attempt}/${FLASH_MAX_ATTEMPTS})"
 
-      if (( ! BOSSAC_OK )); then
-        echo "$(ts) WARNING: bossac fallback failed on all ports"
-        jstatus "running" 85 "Fallback flash failed — continuing anyway"
-      fi
+  # Re-settle udev so device nodes are current
+  udevadm settle --timeout=5 || true
+  sleep 1
+  list_devices_json
+
+  # --- Method 1: make flash ---
+  if [[ -e "$ERASED_PATH" ]]; then
+    echo "$(ts) trying make flash on $ERASED_PATH"
+    if sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH'" 2>&1 | tee -a "$LOG"; then
+      echo "$(ts) make flash SUCCEEDED on attempt ${attempt}"
+      FLASH_SUCCEEDED=1
+      break
     else
-      echo "$(ts) WARNING: klipper.bin not found, cannot bossac flash"
+      echo "$(ts) make flash FAILED on attempt ${attempt}"
     fi
   else
-    echo "$(ts) WARNING: bossac not available and could not be installed"
+    echo "$(ts) erased device $ERASED_PATH not present, skipping make flash"
   fi
-fi
+
+  # --- Method 2: bossac fallback ---
+  if command -v bossac >/dev/null 2>&1 && [[ -f /home/pi/klipper/out/klipper.bin ]]; then
+    ACM_PORT="$(resolve_acm_port)"
+    if [[ -n "$ACM_PORT" ]]; then
+      echo "$(ts) trying bossac fallback on $ACM_PORT (attempt ${attempt})"
+      jstatus "running" 82 "Trying bossac on ${ACM_PORT} (attempt ${attempt}/${FLASH_MAX_ATTEMPTS})"
+      if sudo -u pi bossac -U -p "$ACM_PORT" -a -e -w /home/pi/klipper/out/klipper.bin -v -b 2>&1 | tee -a "$LOG"; then
+        echo "$(ts) bossac flash SUCCEEDED on $ACM_PORT (attempt ${attempt})"
+        FLASH_SUCCEEDED=1
+        break
+      else
+        echo "$(ts) bossac flash FAILED on $ACM_PORT (attempt ${attempt})"
+      fi
+    else
+      echo "$(ts) no ACM port found for bossac fallback"
+    fi
+  else
+    echo "$(ts) bossac not available or klipper.bin missing — skipping fallback"
+  fi
+
+  # Wait before retrying (except on the last attempt)
+  if (( attempt < FLASH_MAX_ATTEMPTS )); then
+    echo "$(ts) waiting ${FLASH_RETRY_DELAY}s before retry..."
+    jstatus "running" 80 "Flash failed — retrying in ${FLASH_RETRY_DELAY}s (attempt $((attempt+1))/${FLASH_MAX_ATTEMPTS})"
+    sleep "$FLASH_RETRY_DELAY"
+  fi
+done
 
 # --- Ensure build deps + venv exist (safe to re-run) ---
 echo "$(ts) ensuring build deps + klippy-env"
@@ -200,12 +232,20 @@ echo "$(ts) starting klipper"
 jstatus "running" 90 "Starting Klipper"
 systemctl start klipper || true
 
-# --- FINAL: Prompt user to power-cycle. Remove flags. Sit here forever. ---
-echo "$(ts) prompting for power-cycle (indefinite)"
-jstatus "power_cycle" 100 "Flashing complete. Please switch the machine OFF, then ON to power-cycle both the Pi and mainboard."
+# --- FINAL: branch on whether flash actually succeeded ---
+if (( FLASH_SUCCEEDED )); then
+  echo "$(ts) Flash succeeded — prompting for power-cycle"
+  jstatus "power_cycle" 100 "Flashing complete. Please switch the machine OFF, then ON to power-cycle both the Pi and mainboard."
 
-# Clear first-boot flags so next boot is normal (when user actually power-cycles)
-rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
+  # Clear first-boot flags so next boot is normal
+  rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
+else
+  echo "$(ts) ERROR: Flash FAILED after ${FLASH_MAX_ATTEMPTS} attempts — flags preserved for retry on next boot"
+  jstatus "error" 85 "Firmware flash failed after ${FLASH_MAX_ATTEMPTS} attempts. Please power-cycle and try again."
+
+  # Do NOT clear firstboot-splash — the flash will be re-attempted on next boot
+  rm -f /tmp/firstboot-ui-started
+fi
 
 # Park here forever so the splash stays visible
 while :; do sleep 3600; done
