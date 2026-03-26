@@ -134,7 +134,51 @@ systemctl stop klipper || true
 
 echo "$(ts) flashing"
 jstatus "running" 80 "Flashing firmware"
-sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH' || true"
+FLASH_OK=0
+sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH'" && FLASH_OK=1 || true
+
+if (( ! FLASH_OK )); then
+  echo "$(ts) make flash failed — trying bossac fallback"
+  jstatus "running" 82 "Primary flash failed. Trying bossac fallback…"
+
+  # Ensure bossac is available
+  DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
+
+  if command -v bossac >/dev/null 2>&1; then
+    # Build the binary if it wasn't produced by the failed make flash
+    if [[ ! -f /home/pi/klipper/out/klipper.bin ]]; then
+      echo "$(ts) building klipper.bin for bossac"
+      sudo -u pi bash -lc 'cd ~/klipper && make' || true
+    fi
+
+    if [[ -f /home/pi/klipper/out/klipper.bin ]]; then
+      # Try common serial ports for the SAM3X8E
+      BOSSAC_OK=0
+      for port in /dev/ttyACM0 /dev/ttyACM1; do
+        if [[ -e "$port" ]]; then
+          echo "$(ts) bossac flash via $port"
+          jstatus "running" 84 "Flashing via bossac on $port"
+          if sudo -u pi bossac -U -p "$port" -a -e -w /home/pi/klipper/out/klipper.bin -v -b; then
+            BOSSAC_OK=1
+            echo "$(ts) bossac flash succeeded on $port"
+            break
+          else
+            echo "$(ts) bossac flash failed on $port, trying next"
+          fi
+        fi
+      done
+
+      if (( ! BOSSAC_OK )); then
+        echo "$(ts) WARNING: bossac fallback failed on all ports"
+        jstatus "running" 85 "Fallback flash failed — continuing anyway"
+      fi
+    else
+      echo "$(ts) WARNING: klipper.bin not found, cannot bossac flash"
+    fi
+  else
+    echo "$(ts) WARNING: bossac not available and could not be installed"
+  fi
+fi
 
 # --- Ensure build deps + venv exist (safe to re-run) ---
 echo "$(ts) ensuring build deps + klippy-env"
