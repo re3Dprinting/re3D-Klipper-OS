@@ -48,6 +48,7 @@ SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
 SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
 SRC_COMMON="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common"
+SRC_SHELL_CMDS="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands"
 SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
 
 # Target locations on the LIVE system
@@ -55,6 +56,7 @@ DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 DST_COMMON="/home/pi/printer_data/config/src/common"
+DST_SHELL_CMDS="/usr/local/bin"
 DST_WAIT_HTML="/home/pi/wait.html"
 
 # ---------- Start ----------
@@ -136,7 +138,19 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_FGF} not found, skipping FGF configs."
 fi
 
-# ---------- 5) Ensure matplotlib is installed for graphstats ----------
+# ---------- 5) Shell commands → /usr/local/bin ----------
+set_progress 45
+
+if [ -d "${SRC_SHELL_CMDS}" ]; then
+  log "${LOG_TAG} Syncing shell commands to ${DST_SHELL_CMDS}..."
+  # Install each file with correct perms (matches chroot build behaviour)
+  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f -print0 \
+    | xargs -0 -I{} install -m 0755 -o root -g root "{}" "${DST_SHELL_CMDS}/"
+else
+  log "${LOG_TAG} WARNING: Source ${SRC_SHELL_CMDS} not found, skipping shell commands."
+fi
+
+# ---------- 6) Ensure matplotlib is installed for graphstats ----------
 set_progress 50
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
 
@@ -165,7 +179,7 @@ export GIT_CONFIG_VALUE_0="${KLIPPER_DIR}"
 export GIT_CONFIG_KEY_1=safe.directory
 export GIT_CONFIG_VALUE_1="${MOONRAKER_DIR}"
 
-# ---------- 6) Klipper: update if not already at latest ----------
+# ---------- 7) Klipper: update if not already at latest ----------
 set_progress 55
 
 if [ -d "${KLIPPER_DIR}/.git" ]; then
@@ -197,7 +211,7 @@ else
   log "${LOG_TAG} WARNING: ${KLIPPER_DIR} not found or not a git repo. Skipping Klipper update."
 fi
 
-# ---------- 7) Moonraker: update if not already at latest ----------
+# ---------- 8) Moonraker: update if not already at latest ----------
 set_progress 65
 
 if [ -d "${MOONRAKER_DIR}/.git" ]; then
@@ -222,7 +236,7 @@ else
   log "${LOG_TAG} WARNING: ${MOONRAKER_DIR} not found or not a git repo. Skipping Moonraker update."
 fi
 
-# ---------- 8) Mainsail: update if not already at latest ----------
+# ---------- 9) Mainsail: update if not already at latest ----------
 set_progress 78
 
 MAINSAIL_DIR="/home/pi/mainsail"
@@ -258,7 +272,7 @@ else
   fi
 fi
 
-# ---------- 9) Reload services (best-effort, no "not found" noise) ----------
+# ---------- 10) Reload services (best-effort, no "not found" noise) ----------
 set_progress 90
 
 log "${LOG_TAG} Reloading services (best-effort)..."
@@ -272,7 +286,7 @@ done
 set_progress 96
 log "${LOG_TAG} Services reload complete."
 
-# ---------- 10) Done → reboot ----------
+# ---------- 11) Done → reboot ----------
 set_progress 100
 log "${LOG_TAG} Update complete. Printer will reboot now."
 set_status "rebooting"
