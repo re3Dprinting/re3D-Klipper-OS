@@ -1,0 +1,155 @@
+<!-- tabs/flash.html — Firmware flash monitor (embedded in Configurator) -->
+<style>
+  .flash-card{
+    max-width:800px; margin:0 auto; padding:24px;
+    border:1px solid var(--border); border-radius:var(--radius);
+    background:var(--panel);
+  }
+  .flash-row{display:flex;gap:16px;align-items:center;margin-bottom:12px}
+  .flash-spin{
+    width:48px;height:48px;flex:0 0 auto;
+    border:5px solid var(--border);border-top-color:var(--brand);
+    border-radius:50%;animation:spin 1s linear infinite;
+  }
+  .flash-spin.done{animation:none;border-color:var(--success);border-top-color:var(--success)}
+  .flash-spin.err{animation:none;border-color:var(--error);border-top-color:var(--error)}
+  .flash-title{font-size:22px;font-weight:800}
+  .flash-sub{color:var(--muted);font-size:14px}
+  .flash-bar{height:12px;border-radius:999px;background:#1C1C1E;overflow:hidden;margin:10px 0 4px}
+  .flash-bar>div{height:100%;width:0%;background:linear-gradient(90deg,var(--brand-700),var(--brand));transition:width .4s ease}
+  .flash-pnum{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .flash-hint{
+    font-size:16px;font-weight:700;padding:14px 16px;margin:12px 0 0;
+    border-radius:10px;border:2px solid var(--brand);background:#17170F;color:var(--fg);
+  }
+  .flash-hint.warn{border-color:var(--error);background:var(--error-bg);color:#FFE7E7}
+  .flash-hint.ok{border-color:var(--success);background:var(--success-bg);color:#E9FFE9}
+  .flash-log{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--border);background:#111112;color:#e5e7eb;
+    max-height:260px;overflow:auto;margin-top:10px;white-space:pre-wrap;
+  }
+  .flash-idle{text-align:center;padding:40px;color:var(--muted);font-size:16px}
+</style>
+
+<div id="flash-root">
+  <div class="flash-idle" id="flash-idle">No firmware flash in progress.</div>
+
+  <div class="flash-card" id="flash-active" hidden>
+    <div class="flash-row">
+      <div class="flash-spin" id="fl-spin"></div>
+      <div>
+        <div class="flash-title" id="fl-title">Preparing printer…</div>
+        <div class="flash-sub">Keep the printer powered and the USB cable connected.</div>
+      </div>
+    </div>
+
+    <div id="fl-status" class="flash-sub">Starting…</div>
+    <div class="flash-bar"><div id="fl-pbar"></div></div>
+    <div class="flash-pnum" id="fl-pnum">0%</div>
+
+    <div id="fl-hint" class="flash-hint">Please wait. Do not unplug or power off.</div>
+
+    <details open>
+      <summary style="cursor:pointer;color:var(--muted);font-size:13px;margin-top:10px">Technical details</summary>
+      <pre class="flash-log" id="fl-log">waiting for logs…</pre>
+    </details>
+  </div>
+</div>
+
+<script>
+(function(){
+  const STATUS  = '/cgi-bin/flash_status.sh';
+  const LOG     = '/cgi-bin/flash_log.sh';
+  const DEVLIST = '/cgi-bin/flash_devices.sh';
+
+  const idle    = document.getElementById('flash-idle');
+  const active  = document.getElementById('flash-active');
+  const spin    = document.getElementById('fl-spin');
+  const title   = document.getElementById('fl-title');
+  const status  = document.getElementById('fl-status');
+  const pbar    = document.getElementById('fl-pbar');
+  const pnum    = document.getElementById('fl-pnum');
+  const hint    = document.getElementById('fl-hint');
+  const logEl   = document.getElementById('fl-log');
+
+  function statusLabel(s){
+    switch(s){
+      case 'waiting_device': return 'Waiting for board…';
+      case 'running':        return 'Working…';
+      case 'power_cycle':    return 'Power-cycle required';
+      case 'done':           return 'Complete';
+      case 'error':          return 'Error';
+      default:               return 'Working…';
+    }
+  }
+
+  function hintFor(s, hasDev){
+    if(s==='power_cycle')    return 'Please switch the machine OFF, then ON. This power-cycles both the Pi and mainboard.';
+    if(s==='waiting_device') return hasDev
+      ? 'Board detected but not ready. Please erase the Archimajor board and the firmware will be flashed automatically.'
+      : 'No connection detected. Check printer power and the USB cable/port.';
+    if(s==='done')  return 'Flashing complete.';
+    if(s==='error') return 'There was an issue. See the details for more information.';
+    return 'Please wait. Do not unplug or power off.';
+  }
+
+  async function fetchJSON(u){ try{ const r=await fetch(u+'?ts='+Date.now(),{cache:'no-store'}); if(!r.ok) throw 0; return r.json(); }catch{ return null; }}
+  async function fetchText(u){ try{ const r=await fetch(u+'?ts='+Date.now(),{cache:'no-store'}); if(!r.ok) throw 0; return r.text(); }catch{ return null; }}
+  function tail(t,n){ if(!t)return ''; const a=t.trimEnd().split(/\r?\n/); return a.slice(-n).join('\n'); }
+
+  let running = false;
+
+  async function tick(){
+    if(running) return; running=true;
+
+    let state='idle', progress=0;
+
+    const s = await fetchJSON(STATUS);
+    if(s){
+      state = s.state ?? 'idle';
+      progress = Math.max(0,Math.min(100,Number(s.progress||0)));
+    }
+
+    if(state==='idle'){
+      idle.hidden=false; active.hidden=true;
+      running=false;
+      return;
+    }
+
+    idle.hidden=true; active.hidden=false;
+
+    let hasDev=false;
+    const devs = await fetchJSON(DEVLIST);
+    if(Array.isArray(devs) && devs.length>0) hasDev=true;
+
+    title.textContent = state==='power_cycle' ? 'Power-cycle required'
+                      : state==='error'       ? 'Flash error'
+                      : 'Flashing firmware…';
+    status.textContent = s && s.message ? s.message : statusLabel(state);
+    pbar.style.width = progress+'%';
+    pnum.textContent = progress+'%';
+
+    hint.textContent = s && s.message ? s.message : hintFor(state, hasDev);
+    hint.classList.remove('warn','ok');
+    if(state==='error') hint.classList.add('warn');
+    if(state==='done' || state==='power_cycle') hint.classList.add('ok');
+
+    spin.classList.remove('done','err');
+    if(state==='done' || state==='power_cycle') spin.classList.add('done');
+    if(state==='error') spin.classList.add('err');
+
+    const log = await fetchText(LOG);
+    if(log!==null){
+      logEl.textContent = tail(log,200);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    running=false;
+  }
+
+  setInterval(tick, 2000);
+  tick();
+})();
+</script>
