@@ -154,6 +154,7 @@ set_progress 60
 MOONRAKER_DIR="/home/pi/moonraker"
 if [ -d "${MOONRAKER_DIR}/.git" ]; then
   log "${LOG_TAG} Checking Moonraker for updates..."
+  git config --global --add safe.directory "${MOONRAKER_DIR}"
   cd "${MOONRAKER_DIR}"
   git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
   LOCAL_REV=$(git rev-parse HEAD)
