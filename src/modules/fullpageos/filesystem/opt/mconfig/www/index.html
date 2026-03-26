@@ -167,7 +167,7 @@
    - Cleans previous tab’s styles/scripts via data attributes
 ─────────────────────────────────────────────────────────────────────────── */
 
-const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','system','updating','flash'];
+const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','system'];
 const titleEl = document.getElementById('page-title');
 const hostEl  = document.getElementById('page');
 const tabbar  = document.getElementById('tabbar');
@@ -184,8 +184,7 @@ function prettyName(pg){
   const m = {
     machine:'Machine', network:'Network', tuning:'Tuning',
     shaper:'Input Shaper', calibration:'Calibration',
-    troubleshoot:'Troubleshooting', system:'System',
-    updating:'System Update', flash:'Firmware Flash'
+    troubleshoot:'Troubleshooting', system:'System'
   };
   return m[pg] || (pg[0].toUpperCase()+pg.slice(1));
 }
@@ -302,51 +301,6 @@ window.addEventListener('hashchange', ()=>loadTab((location.hash||'#machine').sl
     dash.href=`http://${targetHost||'localhost'}/`;
     dash.title=`Open Dashboard on ${targetHost||'localhost'}`;
   }
-})();
-
-/* ── Background activity detector ───────────────────────────────────────
-   Polls update.txt and flash_status to auto-switch view when activity
-   is started from the OTHER client (touchscreen or computer).
-   ────────────────────────────────────────────────────────────────────── */
-(function(){
-  let autoSwitchedToUpdate = false;
-
-  async function checkActivity(){
-    try {
-      // --- OS update running? ---
-      const ur = await fetch('/update.txt?ts='+Date.now(), {cache:'no-store'});
-      if (ur.ok) {
-        const ut = (await ur.text()).trim().toLowerCase();
-        if ((ut === 'running' || ut === 'rebooting') && !autoSwitchedToUpdate) {
-          autoSwitchedToUpdate = true;
-          // loadTab is in the outer scope
-          if (typeof loadTab === 'function' && currentTab !== 'updating') {
-            loadTab('updating');
-          }
-        }
-        // Reset flag when update finishes so it can trigger again next time
-        if (ut !== 'running' && ut !== 'rebooting') {
-          autoSwitchedToUpdate = false;
-        }
-      }
-    } catch(e) { /* offline / rebooting — ignore */ }
-
-    try {
-      // --- Firmware flash running? ---
-      const fr = await fetch('/cgi-bin/flash_status.sh?ts='+Date.now(), {cache:'no-store'});
-      if (fr.ok) {
-        const fj = await fr.json();
-        if (fj && fj.state && fj.state !== 'done' && fj.state !== 'error') {
-          // Flash is active — open the flash monitor page if not already viewing it
-          if (currentTab !== 'flash') {
-            loadTab('flash');
-          }
-        }
-      }
-    } catch(e) { /* no flash in progress — normal */ }
-  }
-
-  setInterval(checkActivity, 4000);
 })();
 </script>
 </body>

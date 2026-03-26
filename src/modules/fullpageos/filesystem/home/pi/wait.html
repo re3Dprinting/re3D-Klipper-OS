@@ -89,16 +89,9 @@
   </div>
 
   <script>
-    // Detect context: if loaded via file:// (local kiosk), use the mconfig HTTP
-    // server on localhost:8081 so CGI works. If loaded via http:// (remote
-    // browser), use the same origin.
-    const BASE = location.protocol === 'file:'
-      ? 'http://localhost:8081'
-      : '';
-
-    const LOG     = BASE + '/cgi-bin/flash_log.sh';
-    const STATUS  = BASE + '/cgi-bin/flash_status.sh';
-    const DEVLIST = BASE + '/cgi-bin/flash_devices.sh';
+    const LOG     = 'file:///var/log/flash_once.log';
+    const STATUS  = 'file:///tmp/flash_status.json';
+    const DEVLIST = 'file:///tmp/flash_devices.json';
 
     function statusLabel(state){
       switch(state){
