@@ -206,7 +206,7 @@ if [ -d "${MOONRAKER_DIR}/.git" ]; then
     sudo systemctl stop moonraker || true
     git pull 2>&1 | tee -a "${LOG_FILE}"
     log "${LOG_TAG} Running Moonraker dependency installer..."
-    "${MOONRAKER_DIR}/scripts/install-moonraker.sh" -r 2>&1 | tee -a "${LOG_FILE}"
+    sudo -u pi "${MOONRAKER_DIR}/scripts/install-moonraker.sh" -r 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start moonraker || true
     log "${LOG_TAG} Moonraker updated successfully."
   fi
