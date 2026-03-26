@@ -73,7 +73,7 @@ if [ ! -d "${REPO_DIR}/.git" ]; then
 fi
 
 # ---------- 1) Configurator: /opt/mconfig/www ----------
-set_progress 20
+set_progress 10
 
 if [ -d "${SRC_MCONFIG}" ]; then
   log "${LOG_TAG} Syncing Configurator UI (preserving calibration_data)..."
@@ -90,7 +90,7 @@ log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
 
 # ---------- 2) Klipper configs: FFF ----------
-set_progress 40
+set_progress 20
 
 if [ -d "${SRC_FFF}" ]; then
   log "${LOG_TAG} Syncing FFF configs..."
@@ -103,7 +103,7 @@ else
 fi
 
 # ---------- 3) Klipper configs: COMMON ----------
-set_progress 50
+set_progress 30
 
 if [ -d "${SRC_COMMON}" ]; then
   log "${LOG_TAG} Syncing common configs..."
@@ -116,7 +116,7 @@ else
 fi
 
 # ---------- 4) Klipper configs: FGF ----------
-set_progress 60
+set_progress 40
 
 if [ -d "${SRC_FGF}" ]; then
   log "${LOG_TAG} Syncing FGF configs..."
@@ -129,7 +129,7 @@ else
 fi
 
 # ---------- 5) Ensure matplotlib is installed for graphstats ----------
-set_progress 70
+set_progress 50
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
 
 log "${LOG_TAG} Installing python3-matplotlib if missing..."
@@ -148,8 +148,70 @@ fi
 
 log "${LOG_TAG} Matplotlib installed successfully."
 
-# ---------- 5) Reload services (best-effort, no "not found" noise) ----------
-set_progress 80
+# ---------- 6) Moonraker: update if not already at latest ----------
+set_progress 60
+
+MOONRAKER_DIR="/home/pi/moonraker"
+if [ -d "${MOONRAKER_DIR}/.git" ]; then
+  log "${LOG_TAG} Checking Moonraker for updates..."
+  cd "${MOONRAKER_DIR}"
+  git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
+  LOCAL_REV=$(git rev-parse HEAD)
+  REMOTE_REV=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master)
+
+  if [ "${LOCAL_REV}" = "${REMOTE_REV}" ]; then
+    log "${LOG_TAG} Moonraker is already up-to-date (${LOCAL_REV:0:8}). Skipping."
+  else
+    log "${LOG_TAG} Moonraker update available (${LOCAL_REV:0:8} → ${REMOTE_REV:0:8}). Updating..."
+    sudo systemctl stop moonraker || true
+    git pull 2>&1 | tee -a "${LOG_FILE}"
+    log "${LOG_TAG} Running Moonraker dependency installer..."
+    "${MOONRAKER_DIR}/scripts/install-moonraker.sh" -r 2>&1 | tee -a "${LOG_FILE}"
+    sudo systemctl start moonraker || true
+    log "${LOG_TAG} Moonraker updated successfully."
+  fi
+else
+  log "${LOG_TAG} WARNING: ${MOONRAKER_DIR} not found or not a git repo. Skipping Moonraker update."
+fi
+
+# ---------- 7) Mainsail: update if not already at latest ----------
+set_progress 75
+
+MAINSAIL_DIR="/home/pi/mainsail"
+log "${LOG_TAG} Checking Mainsail for updates..."
+
+# Get the latest release tag from GitHub
+LATEST_MAINSAIL=$(curl -sS --max-time 15 \
+  https://api.github.com/repos/mainsail-crew/mainsail/releases/latest \
+  | grep -Po '"tag_name":\s*"\K[^"]+' || true)
+
+if [ -z "${LATEST_MAINSAIL}" ]; then
+  log "${LOG_TAG} WARNING: Could not fetch latest Mainsail release tag. Skipping Mainsail update."
+else
+  CURRENT_MAINSAIL=""
+  if [ -f "${MAINSAIL_DIR}/.version" ]; then
+    CURRENT_MAINSAIL=$(cat "${MAINSAIL_DIR}/.version" 2>/dev/null || true)
+  fi
+
+  if [ "${CURRENT_MAINSAIL}" = "${LATEST_MAINSAIL}" ]; then
+    log "${LOG_TAG} Mainsail is already up-to-date (${CURRENT_MAINSAIL}). Skipping."
+  else
+    log "${LOG_TAG} Mainsail update available (${CURRENT_MAINSAIL:-unknown} → ${LATEST_MAINSAIL}). Updating..."
+    mkdir -p "${MAINSAIL_DIR}"
+    cd "${MAINSAIL_DIR}"
+    rm -rf ./*
+    wget -q -O mainsail.zip \
+      https://github.com/mainsail-crew/mainsail/releases/latest/download/mainsail.zip
+    unzip -o mainsail.zip
+    rm -f mainsail.zip
+    # Record installed version for future comparison
+    echo "${LATEST_MAINSAIL}" > "${MAINSAIL_DIR}/.version"
+    log "${LOG_TAG} Mainsail updated to ${LATEST_MAINSAIL} successfully."
+  fi
+fi
+
+# ---------- 8) Reload services (best-effort, no "not found" noise) ----------
+set_progress 88
 
 log "${LOG_TAG} Reloading services (best-effort)..."
 systemctl daemon-reload || true
@@ -162,7 +224,7 @@ done
 set_progress 96
 log "${LOG_TAG} Services reload complete."
 
-# ---------- 6) Done → reboot ----------
+# ---------- 9) Done → reboot ----------
 set_progress 100
 log "${LOG_TAG} Update complete. Printer will reboot now."
 set_status "rebooting"
