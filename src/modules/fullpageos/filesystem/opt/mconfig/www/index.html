@@ -336,11 +336,10 @@ window.addEventListener('hashchange', ()=>loadTab((location.hash||'#machine').sl
       const fr = await fetch('/cgi-bin/flash_status.sh?ts='+Date.now(), {cache:'no-store'});
       if (fr.ok) {
         const fj = await fr.json();
-        if (fj && fj.state && fj.state !== 'done' && fj.state !== 'error') {
-          // Flash is active — open the flash monitor page if not already viewing it
-          if (currentTab !== 'flash') {
-            loadTab('flash');
-          }
+        const active = fj && fj.state
+          && fj.state !== 'idle' && fj.state !== 'done' && fj.state !== 'error';
+        if (active && currentTab !== 'flash') {
+          loadTab('flash');
         }
       }
     } catch(e) { /* no flash in progress — normal */ }
