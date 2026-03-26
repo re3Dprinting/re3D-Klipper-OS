@@ -165,7 +165,7 @@ if [ -d "${KLIPPER_DIR}/.git" ]; then
   cd "${KLIPPER_DIR}"
   git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
   LOCAL_REV=$(git rev-parse HEAD)
-  REMOTE_REV=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master)
+  REMOTE_REV=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master 2>/dev/null || git rev-parse origin/main)
 
   if [ "${LOCAL_REV}" = "${REMOTE_REV}" ]; then
     log "${LOG_TAG} Klipper is already up-to-date (${LOCAL_REV:0:8}). Skipping."
@@ -197,7 +197,7 @@ if [ -d "${MOONRAKER_DIR}/.git" ]; then
   cd "${MOONRAKER_DIR}"
   git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
   LOCAL_REV=$(git rev-parse HEAD)
-  REMOTE_REV=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master)
+  REMOTE_REV=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master 2>/dev/null || git rev-parse origin/main)
 
   if [ "${LOCAL_REV}" = "${REMOTE_REV}" ]; then
     log "${LOG_TAG} Moonraker is already up-to-date (${LOCAL_REV:0:8}). Skipping."
