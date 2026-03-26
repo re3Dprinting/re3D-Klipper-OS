@@ -175,7 +175,7 @@ if [ -d "${KLIPPER_DIR}/.git" ]; then
     sudo systemctl stop klipper || true
     git pull 2>&1 | tee -a "${LOG_FILE}"
     log "${LOG_TAG} Updating Klipper Python dependencies..."
-    "${KLIPPER_DIR}/klippy-env/bin/pip" install -r "${KLIPPER_DIR}/scripts/klippy-requirements.txt" 2>&1 | tee -a "${LOG_FILE}"
+    /home/pi/klippy-env/bin/pip install -r "${KLIPPER_DIR}/scripts/klippy-requirements.txt" 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start klipper || true
 
     # Trigger the mainboard flash flow on next reboot
