@@ -48,12 +48,14 @@ SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
 SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
 SRC_COMMON="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common"
+SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
 
 # Target locations on the LIVE system
 DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 DST_COMMON="/home/pi/printer_data/config/src/common"
+DST_WAIT_HTML="/home/pi/wait.html"
 
 # ---------- Start ----------
 set_status "running"
@@ -88,6 +90,12 @@ fi
 
 log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
+
+# Sync wait.html (first-boot / flash UI) if changed
+if [ -f "${SRC_WAIT_HTML}" ]; then
+  rsync -a --checksum "${SRC_WAIT_HTML}" "${DST_WAIT_HTML}"
+  chown pi:pi "${DST_WAIT_HTML}" 2>/dev/null || true
+fi
 
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
