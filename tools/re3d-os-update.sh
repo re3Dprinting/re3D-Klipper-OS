@@ -152,9 +152,13 @@ log "${LOG_TAG} Matplotlib installed successfully."
 set_progress 60
 
 MOONRAKER_DIR="/home/pi/moonraker"
+# Allow git to operate on pi-owned repos when running as root
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=safe.directory
+export GIT_CONFIG_VALUE_0="${MOONRAKER_DIR}"
+
 if [ -d "${MOONRAKER_DIR}/.git" ]; then
   log "${LOG_TAG} Checking Moonraker for updates..."
-  git config --global --add safe.directory "${MOONRAKER_DIR}"
   cd "${MOONRAKER_DIR}"
   git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
   LOCAL_REV=$(git rev-parse HEAD)
