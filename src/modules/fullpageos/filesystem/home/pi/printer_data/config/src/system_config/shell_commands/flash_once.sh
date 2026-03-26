@@ -142,41 +142,121 @@ if [[ ! -f /home/pi/klipper/out/klipper.bin ]]; then
   sudo -u pi bash -lc 'cd ~/klipper && make clean && make' || true
 fi
 
-# --- Flash with retry loop — we do NOT move on until flash succeeds ---
-FLASH_MAX_ATTEMPTS=5
-FLASH_RETRY_DELAY=10          # seconds between attempts
-FLASH_SUCCEEDED=0
+# --- Helpers ---
+
+KLIPPER_ID_PATTERN="usb-Klipper_"   # what a flashed board looks like in by-id
 
 resolve_acm_port(){
-  # Resolve the erased-device by-id symlink to its underlying /dev/ttyACM* path
   local rp
   rp="$(realpath -e "$ERASED_PATH" 2>/dev/null || true)"
-  if [[ "$rp" == /dev/ttyACM* ]]; then
-    echo "$rp"
-    return
-  fi
-  # Fallback: scan common ports
+  if [[ "$rp" == /dev/ttyACM* ]]; then echo "$rp"; return; fi
   for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyACM2; do
     [[ -e "$p" ]] && echo "$p" && return
   done
 }
 
+# Find the sysfs USB port path for the erased device so we can rebind it
+find_usb_port(){
+  # Walk from the by-id symlink → realpath → sysfs
+  local dev rp syspath busdev
+  dev="$ERASED_PATH"
+  [[ -e "$dev" ]] || return 1
+  rp="$(realpath -e "$dev" 2>/dev/null)" || return 1
+  # /sys/class/tty/ttyACM0/device → ../../1-1.3:1.0  (the interface)
+  local ttyname="${rp##*/}"
+  syspath="/sys/class/tty/${ttyname}/device"
+  [[ -d "$syspath" ]] || return 1
+  # Go up one level from the interface to the USB device
+  busdev="$(readlink -f "$syspath/.." 2>/dev/null)" || return 1
+  # The directory name is the port id (e.g. "1-1.3")
+  echo "${busdev##*/}"
+}
+
+usb_reenumerate(){
+  echo "$(ts) attempting USB re-enumeration"
+  jstatus "running" 88 "Re-enumerating USB to verify flash"
+
+  local port
+  port="$(find_usb_port 2>/dev/null || true)"
+
+  if [[ -n "$port" ]]; then
+    echo "$(ts) unbinding USB port $port"
+    echo "$port" > /sys/bus/usb/drivers/usb/unbind 2>/dev/null || true
+    sleep 2
+    echo "$(ts) rebinding USB port $port"
+    echo "$port" > /sys/bus/usb/drivers/usb/bind 2>/dev/null || true
+    sleep 2
+  else
+    echo "$(ts) could not find USB port path, trying usbreset on tty"
+    local acm
+    acm="$(resolve_acm_port)"
+    if [[ -n "$acm" ]] && command -v usbreset >/dev/null 2>&1; then
+      usbreset "$acm" 2>/dev/null || true
+      sleep 2
+    fi
+  fi
+
+  # Always trigger a full udev re-scan
+  udevadm trigger --action=change --subsystem-match=usb 2>/dev/null || true
+  udevadm settle --timeout=10 || true
+  sleep 2
+}
+
+# Wait for the erased ID to disappear and a Klipper ID to appear.
+# Returns 0 if verified, 1 if erased ID still present.
+POST_FLASH_VERIFY_SECS=30
+
+verify_flash(){
+  local deadline=$((SECONDS + POST_FLASH_VERIFY_SECS))
+  echo "$(ts) verifying flash: waiting up to ${POST_FLASH_VERIFY_SECS}s for Klipper serial to appear"
+  jstatus "running" 90 "Verifying flash — waiting for Klipper serial ID"
+
+  while (( SECONDS < deadline )); do
+    list_devices_json
+
+    # Check if erased ID is gone
+    if [[ ! -e "$ERASED_PATH" ]]; then
+      echo "$(ts) erased device gone"
+      # Check if a Klipper device appeared
+      local kdev
+      kdev="$(ls /dev/serial/by-id/ 2>/dev/null | grep "$KLIPPER_ID_PATTERN" || true)"
+      if [[ -n "$kdev" ]]; then
+        echo "$(ts) VERIFIED: Klipper device found: $kdev"
+        jstatus "running" 95 "Flash verified — Klipper device: $kdev"
+        return 0
+      fi
+      echo "$(ts) erased ID gone but Klipper device not yet visible, waiting..."
+    else
+      echo "$(ts) erased ID still present, waiting..."
+    fi
+    sleep 2
+  done
+
+  echo "$(ts) verification timed out — erased ID still present or Klipper ID not found"
+  return 1
+}
+
+# --- Flash with retry loop + USB re-enumeration + verification ---
+FLASH_MAX_ATTEMPTS=5
+FLASH_RETRY_DELAY=10
+FLASH_VERIFIED=0
+
 for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
   echo "$(ts) === Flash attempt ${attempt}/${FLASH_MAX_ATTEMPTS} ==="
   jstatus "running" 80 "Flashing firmware (attempt ${attempt}/${FLASH_MAX_ATTEMPTS})"
 
-  # Re-settle udev so device nodes are current
   udevadm settle --timeout=5 || true
   sleep 1
   list_devices_json
+
+  FLASH_CMD_OK=0
 
   # --- Method 1: make flash ---
   if [[ -e "$ERASED_PATH" ]]; then
     echo "$(ts) trying make flash on $ERASED_PATH"
     if sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH'" 2>&1 | tee -a "$LOG"; then
-      echo "$(ts) make flash SUCCEEDED on attempt ${attempt}"
-      FLASH_SUCCEEDED=1
-      break
+      echo "$(ts) make flash reported success on attempt ${attempt}"
+      FLASH_CMD_OK=1
     else
       echo "$(ts) make flash FAILED on attempt ${attempt}"
     fi
@@ -184,37 +264,51 @@ for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
     echo "$(ts) erased device $ERASED_PATH not present, skipping make flash"
   fi
 
-  # --- Method 2: bossac fallback ---
-  if command -v bossac >/dev/null 2>&1 && [[ -f /home/pi/klipper/out/klipper.bin ]]; then
-    ACM_PORT="$(resolve_acm_port)"
-    if [[ -n "$ACM_PORT" ]]; then
-      echo "$(ts) trying bossac fallback on $ACM_PORT (attempt ${attempt})"
-      jstatus "running" 82 "Trying bossac on ${ACM_PORT} (attempt ${attempt}/${FLASH_MAX_ATTEMPTS})"
-      if sudo -u pi bossac -U -p "$ACM_PORT" -a -e -w /home/pi/klipper/out/klipper.bin -v -b 2>&1 | tee -a "$LOG"; then
-        echo "$(ts) bossac flash SUCCEEDED on $ACM_PORT (attempt ${attempt})"
-        FLASH_SUCCEEDED=1
-        break
-      else
-        echo "$(ts) bossac flash FAILED on $ACM_PORT (attempt ${attempt})"
+  # --- Method 2: bossac fallback (only if make flash failed) ---
+  if (( ! FLASH_CMD_OK )); then
+    if command -v bossac >/dev/null 2>&1 && [[ -f /home/pi/klipper/out/klipper.bin ]]; then
+      ACM_PORT="$(resolve_acm_port)"
+      if [[ -n "$ACM_PORT" ]]; then
+        echo "$(ts) trying bossac on $ACM_PORT (attempt ${attempt})"
+        jstatus "running" 82 "Trying bossac on ${ACM_PORT} (attempt ${attempt}/${FLASH_MAX_ATTEMPTS})"
+        if sudo -u pi bossac -U -p "$ACM_PORT" -a -e -w /home/pi/klipper/out/klipper.bin -v -b 2>&1 | tee -a "$LOG"; then
+          echo "$(ts) bossac reported success on $ACM_PORT (attempt ${attempt})"
+          FLASH_CMD_OK=1
+        else
+          echo "$(ts) bossac FAILED on $ACM_PORT (attempt ${attempt})"
+        fi
       fi
-    else
-      echo "$(ts) no ACM port found for bossac fallback"
     fi
-  else
-    echo "$(ts) bossac not available or klipper.bin missing — skipping fallback"
   fi
 
-  # Wait before retrying (except on the last attempt)
+  if (( ! FLASH_CMD_OK )); then
+    echo "$(ts) both flash methods failed on attempt ${attempt}"
+    if (( attempt < FLASH_MAX_ATTEMPTS )); then
+      jstatus "running" 80 "Flash command failed — retrying in ${FLASH_RETRY_DELAY}s"
+      sleep "$FLASH_RETRY_DELAY"
+    fi
+    continue
+  fi
+
+  # --- Flash command said OK — now re-enumerate USB and VERIFY ---
+  usb_reenumerate
+
+  if verify_flash; then
+    FLASH_VERIFIED=1
+    break
+  fi
+
+  # Verification failed — the board is still showing erased ID
+  echo "$(ts) flash not verified on attempt ${attempt}, will retry"
   if (( attempt < FLASH_MAX_ATTEMPTS )); then
-    echo "$(ts) waiting ${FLASH_RETRY_DELAY}s before retry..."
-    jstatus "running" 80 "Flash failed — retrying in ${FLASH_RETRY_DELAY}s (attempt $((attempt+1))/${FLASH_MAX_ATTEMPTS})"
+    jstatus "running" 80 "Flash wrote OK but board still erased — retrying in ${FLASH_RETRY_DELAY}s"
     sleep "$FLASH_RETRY_DELAY"
   fi
 done
 
 # --- Ensure build deps + venv exist (safe to re-run) ---
 echo "$(ts) ensuring build deps + klippy-env"
-jstatus "running" 86 "Preparing build environment"
+jstatus "running" 96 "Preparing build environment"
 apt-get update -y || true
 DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
 
@@ -229,19 +323,20 @@ sudo -u pi -H bash -lc '
 systemctl enable splash_video.service || true
 
 echo "$(ts) starting klipper"
-jstatus "running" 90 "Starting Klipper"
+jstatus "running" 98 "Starting Klipper"
 systemctl start klipper || true
 
-# --- FINAL: branch on whether flash actually succeeded ---
-if (( FLASH_SUCCEEDED )); then
-  echo "$(ts) Flash succeeded — prompting for power-cycle"
-  jstatus "power_cycle" 100 "Flashing complete. Please switch the machine OFF, then ON to power-cycle both the Pi and mainboard."
+# --- FINAL: branch on verified result ---
+if (( FLASH_VERIFIED )); then
+  echo "$(ts) Flash VERIFIED — Klipper serial ID confirmed"
+  jstatus "power_cycle" 100 "Flash verified! Klipper firmware is running. Please power-cycle the machine to complete setup."
 
   # Clear first-boot flags so next boot is normal
   rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
 else
-  echo "$(ts) ERROR: Flash FAILED after ${FLASH_MAX_ATTEMPTS} attempts — flags preserved for retry on next boot"
-  jstatus "error" 85 "Firmware flash failed after ${FLASH_MAX_ATTEMPTS} attempts. Please power-cycle and try again."
+  echo "$(ts) ERROR: Flash NOT VERIFIED after ${FLASH_MAX_ATTEMPTS} attempts"
+  echo "$(ts) Board still showing erased ID — flags preserved for retry on next boot"
+  jstatus "error" 85 "Firmware flash could not be verified after ${FLASH_MAX_ATTEMPTS} attempts. The board may still be erased. Please power-cycle and try again."
 
   # Do NOT clear firstboot-splash — the flash will be re-attempted on next boot
   rm -f /tmp/firstboot-ui-started
