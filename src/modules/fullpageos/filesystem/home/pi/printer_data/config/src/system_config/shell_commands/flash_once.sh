@@ -254,7 +254,8 @@ for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
   # --- Method 1: make flash ---
   if [[ -e "$ERASED_PATH" ]]; then
     echo "$(ts) trying make flash on $ERASED_PATH"
-    if sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH'" 2>&1 | tee -a "$LOG"; then
+    sudo -u pi bash -lc "cd ~/klipper && make flash FLASH_DEVICE='$ERASED_PATH'" 2>&1 | tee -a "$LOG"
+    if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
       echo "$(ts) make flash reported success on attempt ${attempt}"
       FLASH_CMD_OK=1
     else
@@ -271,7 +272,8 @@ for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
       if [[ -n "$ACM_PORT" ]]; then
         echo "$(ts) trying bossac on $ACM_PORT (attempt ${attempt})"
         jstatus "running" 82 "Trying bossac on ${ACM_PORT} (attempt ${attempt}/${FLASH_MAX_ATTEMPTS})"
-        if sudo -u pi bossac -U -p "$ACM_PORT" -a -e -w /home/pi/klipper/out/klipper.bin -v -b 2>&1 | tee -a "$LOG"; then
+        sudo -u pi bossac -U -p "$ACM_PORT" -a -e -w /home/pi/klipper/out/klipper.bin -v -b 2>&1 | tee -a "$LOG"
+        if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
           echo "$(ts) bossac reported success on $ACM_PORT (attempt ${attempt})"
           FLASH_CMD_OK=1
         else
