@@ -144,8 +144,6 @@ fi
 
 # --- Helpers ---
 
-KLIPPER_ID_PATTERN="usb-Klipper_"   # what a flashed board looks like in by-id
-
 resolve_acm_port(){
   local rp
   rp="$(realpath -e "$ERASED_PATH" 2>/dev/null || true)"
@@ -155,91 +153,10 @@ resolve_acm_port(){
   done
 }
 
-# Find the sysfs USB port path for the erased device so we can rebind it
-find_usb_port(){
-  # Walk from the by-id symlink → realpath → sysfs
-  local dev rp syspath busdev
-  dev="$ERASED_PATH"
-  [[ -e "$dev" ]] || return 1
-  rp="$(realpath -e "$dev" 2>/dev/null)" || return 1
-  # /sys/class/tty/ttyACM0/device → ../../1-1.3:1.0  (the interface)
-  local ttyname="${rp##*/}"
-  syspath="/sys/class/tty/${ttyname}/device"
-  [[ -d "$syspath" ]] || return 1
-  # Go up one level from the interface to the USB device
-  busdev="$(readlink -f "$syspath/.." 2>/dev/null)" || return 1
-  # The directory name is the port id (e.g. "1-1.3")
-  echo "${busdev##*/}"
-}
-
-usb_reenumerate(){
-  echo "$(ts) attempting USB re-enumeration"
-  jstatus "running" 88 "Re-enumerating USB to verify flash"
-
-  local port
-  port="$(find_usb_port 2>/dev/null || true)"
-
-  if [[ -n "$port" ]]; then
-    echo "$(ts) unbinding USB port $port"
-    echo "$port" > /sys/bus/usb/drivers/usb/unbind 2>/dev/null || true
-    sleep 2
-    echo "$(ts) rebinding USB port $port"
-    echo "$port" > /sys/bus/usb/drivers/usb/bind 2>/dev/null || true
-    sleep 2
-  else
-    echo "$(ts) could not find USB port path, trying usbreset on tty"
-    local acm
-    acm="$(resolve_acm_port)"
-    if [[ -n "$acm" ]] && command -v usbreset >/dev/null 2>&1; then
-      usbreset "$acm" 2>/dev/null || true
-      sleep 2
-    fi
-  fi
-
-  # Always trigger a full udev re-scan
-  udevadm trigger --action=change --subsystem-match=usb 2>/dev/null || true
-  udevadm settle --timeout=10 || true
-  sleep 2
-}
-
-# Wait for the erased ID to disappear and a Klipper ID to appear.
-# Returns 0 if verified, 1 if erased ID still present.
-POST_FLASH_VERIFY_SECS=30
-
-verify_flash(){
-  local deadline=$((SECONDS + POST_FLASH_VERIFY_SECS))
-  echo "$(ts) verifying flash: waiting up to ${POST_FLASH_VERIFY_SECS}s for Klipper serial to appear"
-  jstatus "running" 90 "Verifying flash — waiting for Klipper serial ID"
-
-  while (( SECONDS < deadline )); do
-    list_devices_json
-
-    # Check if erased ID is gone
-    if [[ ! -e "$ERASED_PATH" ]]; then
-      echo "$(ts) erased device gone"
-      # Check if a Klipper device appeared
-      local kdev
-      kdev="$(ls /dev/serial/by-id/ 2>/dev/null | grep "$KLIPPER_ID_PATTERN" || true)"
-      if [[ -n "$kdev" ]]; then
-        echo "$(ts) VERIFIED: Klipper device found: $kdev"
-        jstatus "running" 95 "Flash verified — Klipper device: $kdev"
-        return 0
-      fi
-      echo "$(ts) erased ID gone but Klipper device not yet visible, waiting..."
-    else
-      echo "$(ts) erased ID still present, waiting..."
-    fi
-    sleep 2
-  done
-
-  echo "$(ts) verification timed out — erased ID still present or Klipper ID not found"
-  return 1
-}
-
-# --- Flash with retry loop + USB re-enumeration + verification ---
+# --- Flash with retry loop ---
 FLASH_MAX_ATTEMPTS=5
 FLASH_RETRY_DELAY=10
-FLASH_VERIFIED=0
+FLASH_CMD_OK=0
 
 for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
   echo "$(ts) === Flash attempt ${attempt}/${FLASH_MAX_ATTEMPTS} ==="
@@ -283,27 +200,14 @@ for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
     fi
   fi
 
-  if (( ! FLASH_CMD_OK )); then
-    echo "$(ts) both flash methods failed on attempt ${attempt}"
-    if (( attempt < FLASH_MAX_ATTEMPTS )); then
-      jstatus "running" 80 "Flash command failed — retrying in ${FLASH_RETRY_DELAY}s"
-      sleep "$FLASH_RETRY_DELAY"
-    fi
-    continue
-  fi
-
-  # --- Flash command said OK — now re-enumerate USB and VERIFY ---
-  usb_reenumerate
-
-  if verify_flash; then
-    FLASH_VERIFIED=1
+  if (( FLASH_CMD_OK )); then
+    echo "$(ts) flash succeeded on attempt ${attempt}"
     break
   fi
 
-  # Verification failed — the board is still showing erased ID
-  echo "$(ts) flash not verified on attempt ${attempt}, will retry"
+  echo "$(ts) both flash methods failed on attempt ${attempt}"
   if (( attempt < FLASH_MAX_ATTEMPTS )); then
-    jstatus "running" 80 "Flash wrote OK but board still erased — retrying in ${FLASH_RETRY_DELAY}s"
+    jstatus "running" 80 "Flash command failed — retrying in ${FLASH_RETRY_DELAY}s"
     sleep "$FLASH_RETRY_DELAY"
   fi
 done
@@ -328,17 +232,16 @@ echo "$(ts) starting klipper"
 jstatus "running" 98 "Starting Klipper"
 systemctl start klipper || true
 
-# --- FINAL: branch on verified result ---
-if (( FLASH_VERIFIED )); then
-  echo "$(ts) Flash VERIFIED — Klipper serial ID confirmed"
-  jstatus "power_cycle" 100 "Flash verified! Klipper firmware is running. Please power-cycle the machine to complete setup."
+# --- FINAL: branch on flash result ---
+if (( FLASH_CMD_OK )); then
+  echo "$(ts) Flash command succeeded"
+  jstatus "power_cycle" 100 "Flash complete! Please power-cycle the machine to complete setup."
 
   # Clear first-boot flags so next boot is normal
   rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
 else
-  echo "$(ts) ERROR: Flash NOT VERIFIED after ${FLASH_MAX_ATTEMPTS} attempts"
-  echo "$(ts) Board still showing erased ID — flags preserved for retry on next boot"
-  jstatus "error" 85 "Firmware flash could not be verified after ${FLASH_MAX_ATTEMPTS} attempts. The board may still be erased. Please power-cycle and try again."
+  echo "$(ts) ERROR: Flash FAILED after ${FLASH_MAX_ATTEMPTS} attempts"
+  jstatus "error" 85 "Firmware flash failed after ${FLASH_MAX_ATTEMPTS} attempts. Please power-cycle and try again."
 
   # Do NOT clear firstboot-splash — the flash will be re-attempted on next boot
   rm -f /tmp/firstboot-ui-started
