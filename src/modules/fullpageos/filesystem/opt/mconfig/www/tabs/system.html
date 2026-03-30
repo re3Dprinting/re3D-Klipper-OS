@@ -161,16 +161,22 @@
 
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
-      <div class="sys-title">OS &amp; Configurator Update</div>
+      <div class="sys-title">System Update</div>
       <div class="sys-subtitle">
         <span>
-          Pulls the latest Configurator UI and machine configs from the re3D-Klipper-OS repository
-          and restarts relevant services.
+          Pulls the latest Configurator UI, machine configs, Klipper, Moonraker, and Mainsail
+          from their repositories and restarts relevant services.
         </span>
         <span class="chip dim" id="update-check-pill">Checking connectivity…</span>
       </div>
       <div class="hint" id="update-offline-hint" style="display:none;margin-top:2px;">
         Internet connection required to check for or install updates.
+      </div>
+      <div id="klipper-card-warn" style="display:none;
+        background:#451a03; border:1px solid #f97316; border-radius:6px;
+        padding:8px 12px; margin-top:6px; color:#fed7aa; font-size:12.5px; line-height:1.4;">
+        <strong style="color:#fb923c;">&#9888; Klipper update available</strong> &mdash;
+        The Archimajor board will need to be re-flashed after this update.
       </div>
       <div class="btn-row">
         <button type="button" id="btn-check-update" disabled>Check for Updates</button>
@@ -253,9 +259,16 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
     <h3 id="update-title">Run OS &amp; Configurator update?</h3>
     <p>
-      This will pull the latest Configurator UI and machine configs and may restart
-      Klipper, Moonraker, and the web UI. The printer will reboot automatically when updates are complete.
+      This will pull the latest Configurator UI, machine configs, Klipper, Moonraker,
+      and Mainsail updates. The printer will reboot automatically when complete.
     </p>
+    <div class="klipper-warn" id="klipper-warn" style="display:none;
+      background:#451a03; border:1px solid #f97316; border-radius:6px;
+      padding:10px 14px; margin:8px 0; color:#fed7aa; font-size:13px; line-height:1.45;">
+      <strong style="color:#fb923c; font-size:14px;">&#9888; Klipper update detected</strong><br>
+      A Klipper firmware update is available. After this update completes and the system reboots,
+      <strong style="color:#fbbf24;">the Archimajor board must be re-flashed</strong> with the new firmware.
+    </div>
     <div class="actions">
       <button class="btn-ghost" id="update-cancel" type="button">Cancel</button>
       <button id="update-run" type="button">Run update</button>
@@ -388,10 +401,23 @@
       //  - "UPDATE_AVAILABLE ..."    → update available
       //  - anything else             → just show raw output
       let firstToken = text.split(/\s+/, 1)[0] || '';
+      const hasKlipperUpdate = text.indexOf('KLIPPER_UPDATE=yes') !== -1;
+      const klipperCardWarn = document.getElementById('klipper-card-warn');
+      const klipperModalWarn = document.getElementById('klipper-warn');
+
       if (firstToken === 'UP_TO_DATE'){
         setUpdatePill('Up to date', 'ok');
+        if (klipperCardWarn) klipperCardWarn.style.display = 'none';
+        if (klipperModalWarn) klipperModalWarn.style.display = 'none';
       }else if (firstToken === 'UPDATE_AVAILABLE'){
         setUpdatePill('Update available', 'warn');
+        if (hasKlipperUpdate){
+          if (klipperCardWarn) klipperCardWarn.style.display = 'block';
+          if (klipperModalWarn) klipperModalWarn.style.display = 'block';
+        }else{
+          if (klipperCardWarn) klipperCardWarn.style.display = 'none';
+          if (klipperModalWarn) klipperModalWarn.style.display = 'none';
+        }
       }else{
         setUpdatePill('Check complete', 'muted');
       }
