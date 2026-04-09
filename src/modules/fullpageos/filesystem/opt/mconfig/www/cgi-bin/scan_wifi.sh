@@ -14,6 +14,13 @@ fi
 
 # Trigger a fresh scan (best-effort; may fail if scan just ran)
 nmcli device wifi rescan 2>/dev/null || true
+# Give the radio a moment to complete the scan before listing
+sleep 2
+
+# Get the currently-connected SSID(s) reliably from active connections
+# (wifi list's IN-USE can lag behind after a rescan)
+ACTIVE_SSIDS=$(nmcli -t -f TYPE,NAME,DEVICE connection show --active 2>/dev/null \
+  | awk -F: '$1=="802-11-wireless"{print $2}')
 
 # nmcli fields: IN-USE, SIGNAL, SECURITY, SSID, FREQ
 # Using terse/fields mode for reliable parsing
@@ -27,11 +34,11 @@ fi
 
 # Build JSON array. Use awk for reliable parsing of the colon-delimited nmcli output.
 # nmcli -t escapes literal colons in SSIDs as \: so we handle that.
-printf '%s\n' "$RAW" | awk -F':' '
-BEGIN { printf "[" ; first=1 }
+printf '%s\n' "$RAW" | awk -F':' -v active="$ACTIVE_SSIDS" '
+BEGIN { printf "[" ; first=1; split(active, a, "\n"); for (i in a) active_map[a[i]]=1 }
 {
-  # Field 1: IN-USE (* or empty)
-  in_use = ($1 == "*") ? "true" : "false"
+  # Field 1: IN-USE (* or empty) — may be unreliable right after rescan
+  scan_in_use = ($1 == "*") ? 1 : 0
 
   # Field 2: SIGNAL (integer)
   signal = $2 + 0
@@ -50,6 +57,9 @@ BEGIN { printf "[" ; first=1 }
 
   # Skip hidden/empty SSIDs
   if (ssid == "" || ssid == "--") next
+
+  # Use active connection list as authoritative source; fall back to scan flag
+  in_use = (ssid in active_map || scan_in_use) ? "true" : "false"
 
   # Determine band from frequency (MHz)
   freq_mhz = freq_raw + 0
