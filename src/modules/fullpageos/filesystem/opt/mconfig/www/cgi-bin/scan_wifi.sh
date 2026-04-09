@@ -19,8 +19,15 @@ sleep 2
 
 # Get the currently-connected SSID(s) reliably from active connections
 # (wifi list's IN-USE can lag behind after a rescan)
-ACTIVE_SSIDS=$(nmcli -t -f TYPE,NAME,DEVICE connection show --active 2>/dev/null \
-  | awk -F: '$1=="802-11-wireless"{print $2}')
+# nmcli -t -f ... connection show --active gives profile names, not SSIDs.
+# So we query each wifi interface's current SSID directly instead.
+ACTIVE_SSIDS=""
+for iface in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1}'); do
+  ssid=$(iwgetid -r "$iface" 2>/dev/null || true)
+  if [ -n "$ssid" ] && [ "$ssid" != "--" ]; then
+    ACTIVE_SSIDS="${ACTIVE_SSIDS}${ssid}"$'\n'
+  fi
+done
 
 # nmcli fields: IN-USE, SIGNAL, SECURITY, SSID, FREQ
 # Using terse/fields mode for reliable parsing
