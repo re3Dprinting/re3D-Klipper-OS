@@ -9,7 +9,7 @@
   /* WiFi network list */
   .wifi-list{display:grid;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
   .wifi-item{
-    display:grid;grid-template-columns:32px 1fr auto auto;align-items:center;gap:10px;
+    display:grid;grid-template-columns:32px 1fr auto auto auto;align-items:center;gap:10px;
     padding:10px 12px;border-radius:8px;background:#1C1C1E;border:1px solid transparent;
     cursor:pointer;transition:border-color .12s ease, background .12s ease;
   }
@@ -31,6 +31,14 @@
   .wifi-badge.secure{color:var(--brand)}
   .wifi-badge.open{color:var(--warn)}
   .wifi-badge.connected-badge{color:var(--success);background:var(--success-bg);border:1px solid var(--success-border)}
+
+  /* Action buttons on network items */
+  .wifi-actions{display:flex;gap:4px;align-items:center}
+  .wifi-actions button{padding:4px 10px;font-size:11px;font-weight:700;border-radius:6px;border:none;cursor:pointer;transition:background .12s ease,opacity .12s ease}
+  .wifi-actions .btn-disconnect{background:var(--error-bg);color:var(--error);border:1px solid var(--error-border)}
+  .wifi-actions .btn-disconnect:hover{background:var(--error);color:#fff}
+  .wifi-actions .btn-forget{background:#262628;color:var(--muted)}
+  .wifi-actions .btn-forget:hover{background:#393B3E;color:var(--fg)}
 
   /* Password modal overlay */
   .wifi-modal-overlay{
@@ -160,16 +168,22 @@
     listEl.innerHTML = unique.map(n => {
       const isOpen = !n.security || n.security === '--' || n.security === '';
       const secLabel = isOpen ? 'Open' : n.security.replace(/\\s+/g, '/');
+      const eSsid = n.ssid.replace(/"/g, '&quot;');
+      const hSsid = n.ssid.replace(/</g, '&lt;');
       return `
-        <div class="wifi-item${n.in_use ? ' connected' : ''}" data-ssid="${n.ssid.replace(/"/g, '&quot;')}" data-open="${isOpen}">
+        <div class="wifi-item${n.in_use ? ' connected' : ''}" data-ssid="${eSsid}" data-open="${isOpen}" data-in-use="${n.in_use}">
           <div class="wifi-signal">${signalBars(n.signal, n.in_use)}</div>
           <div>
-            <div class="wifi-ssid">${n.ssid.replace(/</g, '&lt;')}</div>
+            <div class="wifi-ssid">${hSsid}</div>
             <div class="wifi-meta">
               ${n.freq !== '?' ? `<span class="wifi-badge">${n.freq} GHz</span>` : ''}
-              <span class="wifi-badge ${isOpen ? 'open' : 'secure'}">${isOpen ? '🔓 Open' : '🔒 ' + secLabel}</span>
+              <span class="wifi-badge ${isOpen ? 'open' : 'secure'}">${isOpen ? '\uD83D\uDD13 Open' : '\uD83D\uDD12 ' + secLabel}</span>
               ${n.in_use ? '<span class="wifi-badge connected-badge">Connected</span>' : ''}
             </div>
+          </div>
+          <div class="wifi-actions">
+            ${n.in_use ? `<button class="btn-disconnect" data-action="disconnect" data-ssid="${eSsid}" title="Disconnect">Disconnect</button>` : ''}
+            ${n.in_use ? `<button class="btn-forget" data-action="forget" data-ssid="${eSsid}" title="Forget this network">Forget</button>` : ''}
           </div>
           <div style="font-size:11px;color:var(--muted)">${n.signal}%</div>
         </div>`;
@@ -177,9 +191,21 @@
 
     // Bind clicks
     listEl.querySelectorAll('.wifi-item').forEach(el => {
+      // Action buttons (disconnect/forget) — stop propagation so row click doesn't fire
+      el.querySelectorAll('.wifi-actions button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const action = btn.dataset.action;
+          const ssid = btn.dataset.ssid;
+          doAction(action, ssid);
+        });
+      });
+
       el.addEventListener('click', () => {
         const ssid = el.dataset.ssid;
         const isOpen = el.dataset.open === 'true';
+        const inUse = el.dataset.inUse === 'true';
+        if (inUse) return; // already connected; use buttons instead
         selectedSsid = ssid;
         if (isOpen) {
           doConnect(ssid, '');
@@ -208,6 +234,30 @@
     scanBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg> Scan';
   }
   scanBtn.addEventListener('click', scan);
+
+  // ── Disconnect / Forget action ──
+  async function doAction(action, ssid) {
+    const label = action === 'disconnect' ? 'Disconnecting' : 'Forgetting';
+    outEl.style.display = 'block';
+    outEl.innerHTML = `<span class="spinner"></span> ${label} <b>${ssid.replace(/</g, '&lt;')}</b>&hellip;`;
+    try {
+      const body = new URLSearchParams({ action, ssid });
+      const r = await fetch('/cgi-bin/wifi_action.sh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      const text = await r.text();
+      const ok = text.includes('\u2705');
+      outEl.innerHTML = ok
+        ? `<span style="color:var(--success)">${text.trim()}</span>`
+        : `<span style="color:var(--error)">${text.replace(/</g, '&lt;').trim()}</span>`;
+      // Refresh the list and status after action
+      setTimeout(() => scan(), 1000);
+    } catch (err) {
+      outEl.innerHTML = `<span style="color:var(--error)">Error: ${err}</span>`;
+    }
+  }
 
   // ── Modal ──
   function showModal(ssid) {
