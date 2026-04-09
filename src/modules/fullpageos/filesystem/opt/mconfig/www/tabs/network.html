@@ -53,6 +53,15 @@
   .scan-btn{display:inline-flex;align-items:center;gap:6px}
   .scan-btn .spinner{width:12px;height:12px}
   .scan-btn.scanning{opacity:.7;pointer-events:none}
+
+  /* Connection status banner */
+  .wifi-status{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px}
+  .wifi-status.online{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
+  .wifi-status.offline{background:var(--error-bg);border:1px solid var(--error-border);color:var(--error)}
+  .wifi-status .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .wifi-status.online .status-dot{background:var(--success);box-shadow:0 0 6px var(--success)}
+  .wifi-status.offline .status-dot{background:var(--error)}
+  .wifi-status .status-detail{color:var(--muted);font-size:11px;margin-left:auto}
 </style>
 
 <div class="content" data-page="network">
@@ -61,10 +70,11 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div style="font-weight:800">Wi-Fi Networks</div>
       <button class="btn-ghost scan-btn" id="btn-scan" type="button">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M14 8A6 6 0 1 1 2 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 2V1M8 15v-1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg>
         Scan
       </button>
     </div>
+    <div id="wifi-status" class="wifi-status" style="display:none"></div>
     <div id="wifi-list" class="wifi-list">
       <div class="hint" style="padding:20px;text-align:center">Scanning for networks&hellip; <span class="spinner"></span></div>
     </div>
@@ -184,6 +194,7 @@
   async function scan() {
     scanBtn.classList.add('scanning');
     scanBtn.innerHTML = '<span class="spinner"></span> Scanning&hellip;';
+    updateConnectionStatus();
     try {
       const r = await fetch('/cgi-bin/scan_wifi.sh', { cache: 'no-store' });
       const data = await r.json();
@@ -194,7 +205,7 @@
     }
     render();
     scanBtn.classList.remove('scanning');
-    scanBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M14 8A6 6 0 1 1 2 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 2V1M8 15v-1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Scan';
+    scanBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg> Scan';
   }
   scanBtn.addEventListener('click', scan);
 
@@ -270,6 +281,27 @@
     });
   }
   wireAjaxForm('host-form', 'out-host');
+
+  // ── Connection status banner ──
+  const statusBanner = document.getElementById('wifi-status');
+  async function updateConnectionStatus() {
+    try {
+      const r = await fetch('/cgi-bin/net_info.sh', { cache: 'no-store' });
+      const info = await r.json();
+      const wlan = (info.interfaces || []).find(i => i.if && i.if.startsWith('wlan') && i.ipv4 && i.ipv4.length > 0);
+      if (wlan) {
+        statusBanner.className = 'wifi-status online';
+        statusBanner.innerHTML = `<span class="status-dot"></span> Connected via <b>${wlan.if}</b> &mdash; ${wlan.ipv4[0]}<span class="status-detail">${info.hostname || ''}.local</span>`;
+        statusBanner.style.display = 'flex';
+      } else {
+        statusBanner.className = 'wifi-status offline';
+        statusBanner.innerHTML = '<span class="status-dot"></span> Not connected to any Wi-Fi network';
+        statusBanner.style.display = 'flex';
+      }
+    } catch (e) {
+      statusBanner.style.display = 'none';
+    }
+  }
 
   // Initial scan on page load
   scan();
