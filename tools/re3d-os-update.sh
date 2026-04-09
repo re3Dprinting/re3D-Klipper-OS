@@ -272,6 +272,80 @@ else
   fi
 fi
 
+# ---------- 9.5) Wayland/labwc migration (from X11) ----------
+set_progress 85
+
+log "${LOG_TAG} Checking Wayland/labwc migration..."
+
+SRC_LABWC="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/.config/labwc"
+SRC_RUN_ONEPAGEOS="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/run_onepageos"
+SRC_CHROMIUM_SCRIPT="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/start_chromium_browser"
+SRC_FULLSCREEN="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/fullscreen"
+SRC_REFRESH="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/refresh"
+SRC_SAFE_REFRESH="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/safe_refresh"
+
+# a) Install Wayland packages if labwc is not present
+if ! command -v labwc >/dev/null 2>&1; then
+  log "${LOG_TAG} Installing Wayland/labwc packages..."
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    labwc lightdm lightdm-gtk-greeter accountsservice \
+    wayvnc wtype swaybg wlr-randr
+fi
+
+# b) Set graphical target
+systemctl set-default graphical.target 2>/dev/null || true
+
+# c) Configure LightDM for labwc autologin
+if ! grep -q 'autologin-session=labwc' /etc/lightdm/lightdm.conf 2>/dev/null; then
+  log "${LOG_TAG} Configuring LightDM for labwc Wayland session..."
+  cat > /etc/lightdm/lightdm.conf <<'LIGHTDM_EOF'
+[LightDM]
+
+[Seat:*]
+greeter-session=lightdm-gtk-greeter
+user-session=labwc
+autologin-session=labwc
+autologin-user=pi
+autologin-user-timeout=0
+
+[XDMCPServer]
+
+[VNCServer]
+LIGHTDM_EOF
+fi
+
+# d) Deploy labwc config files (autostart, rc.xml, environment)
+mkdir -p /home/pi/.config/labwc
+if [ -d "${SRC_LABWC}" ]; then
+  for f in "${SRC_LABWC}"/autostart "${SRC_LABWC}"/rc.xml "${SRC_LABWC}"/environment; do
+    [ -f "$f" ] && install -m 0644 -o pi -g pi "$f" /home/pi/.config/labwc/
+  done
+  chmod +x /home/pi/.config/labwc/autostart 2>/dev/null || true
+fi
+
+# e) Update kiosk scripts
+for src_dst in \
+  "${SRC_RUN_ONEPAGEOS}:/opt/custompios/scripts/run_onepageos" \
+  "${SRC_CHROMIUM_SCRIPT}:/opt/custompios/scripts/start_chromium_browser" \
+  "${SRC_FULLSCREEN}:/opt/custompios/scripts/fullscreen" \
+  "${SRC_REFRESH}:/opt/custompios/scripts/refresh" \
+  "${SRC_SAFE_REFRESH}:/opt/custompios/scripts/safe_refresh"; do
+  src="${src_dst%%:*}"
+  dst="${src_dst##*:}"
+  [ -f "$src" ] && install -m 0755 "$src" "$dst"
+done
+
+# f) Apply build-time placeholder in run_onepageos
+sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' \
+  /opt/custompios/scripts/run_onepageos 2>/dev/null || true
+
+# g) Disable legacy x11vnc (wayvnc starts from labwc autostart)
+systemctl disable x11vnc.service 2>/dev/null || true
+systemctl stop x11vnc.service 2>/dev/null || true
+
+log "${LOG_TAG} Wayland/labwc migration complete."
+
 # ---------- 10) Reload services (best-effort, no "not found" noise) ----------
 set_progress 90
 
