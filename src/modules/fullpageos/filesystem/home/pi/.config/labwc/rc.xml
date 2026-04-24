@@ -7,4 +7,10 @@
   <theme>
     <cornerRadius>0</cornerRadius>
   </theme>
+  <windowRules>
+    <!-- Force KlipperScreen to fill the display when in kiosk mode -->
+    <windowRule identifier="KlipperScreen" matchOnce="true">
+      <action name="Fullscreen"/>
+    </windowRule>
+  </windowRules>
 </labwc_config>

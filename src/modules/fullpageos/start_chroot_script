@@ -990,10 +990,8 @@ sudo -u "${BASE_USER}" bash -lc '
 sudo -u "${BASE_USER}" bash -lc '
   mkdir -p ~/.config/KlipperScreen
   if [ ! -f ~/.config/KlipperScreen/KlipperScreen.conf ]; then
-    cat > ~/.config/KlipperScreen/KlipperScreen.conf <<'"'"'KSCONF'"'"'
-[main]
-fullscreen = True
-KSCONF
+    # Minimal config — fullscreen is enforced via labwc windowRules, not KlipperScreen config
+    printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
   fi
 '
 
