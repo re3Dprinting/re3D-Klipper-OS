@@ -1,6 +1,4 @@
 #!/bin/bash
-export DISPLAY=:0
+# Refresh: restart Chromium; the kiosk loop (run_onepageos) will relaunch it
 sleep 1
-WID=$(xdotool search --onlyvisible --class chromium|head -1)
-xdotool windowactivate ${WID}
-xdotool key ctrl+F5
+pkill -f 'chromium.*--kiosk' 2>/dev/null || pkill -f chromium 2>/dev/null || true

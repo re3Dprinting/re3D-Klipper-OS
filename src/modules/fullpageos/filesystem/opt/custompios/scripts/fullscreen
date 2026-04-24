@@ -1,6 +1,4 @@
 #!/bin/bash
-export DISPLAY=:0
-WID=$(xdotool search --onlyvisible --class chromium|head -1)
-xdotool windowactivate ${WID}
-xdotool key F11
-xdotool mousemove 9000 9000
+# Chromium runs in --kiosk mode under Wayland/labwc, already fullscreen.
+# This script is a no-op on Wayland.
+echo "Chromium is already fullscreen in kiosk mode."

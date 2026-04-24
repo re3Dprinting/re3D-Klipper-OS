@@ -69,8 +69,8 @@ apt-get remove -y --purge  $remove_extra
 apt-get autoremove -y
 
 step_start "Base Package Install"
-# apt-get tools
-apt-get -y --force-yes install git screen checkinstall avahi-daemon libavahi-compat-libdnssd1 xterm xdotool vim expect feh pulseaudio python3-matplotlib
+# apt-get tools (xdotool/feh removed: replaced by wtype/swaybg under Wayland)
+apt-get -y --force-yes install git screen checkinstall avahi-daemon libavahi-compat-libdnssd1 xterm vim expect pulseaudio python3-matplotlib
 step_end
 
 if [ "$FULLPAGEOS_INCLUDE_CHROMIUM" == "yes" ]
@@ -80,6 +80,35 @@ then
     sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' /opt/custompios/scripts/run_onepageos
     step_end
 fi
+
+# --- Wayland / labwc kiosk setup ---
+step_start "Wayland Kiosk Setup"
+apt-get install -y --no-install-recommends \
+  labwc lightdm lightdm-gtk-greeter accountsservice \
+  wayvnc wtype swaybg wlr-randr
+
+systemctl set-default graphical.target
+
+# Configure LightDM for autologin with labwc Wayland session
+cat > /etc/lightdm/lightdm.conf <<'LIGHTDM_EOF'
+[LightDM]
+
+[Seat:*]
+greeter-session=lightdm-gtk-greeter
+user-session=labwc
+autologin-session=labwc
+autologin-user=pi
+autologin-user-timeout=0
+
+[XDMCPServer]
+
+[VNCServer]
+LIGHTDM_EOF
+
+# Ensure labwc config is owned by the user (unpacked from filesystem)
+chown -R "${BASE_USER}:${BASE_USER}" /home/"${BASE_USER}"/.config/labwc || true
+chmod +x /home/"${BASE_USER}"/.config/labwc/autostart || true
+step_end
 
 # Install web stack (optional lighttpd)
 if [ "$FULLPAGEOS_INCLUDE_LIGHTTPD" == "yes" ]
@@ -153,41 +182,10 @@ then
     echo "${BASE_USER}:$FULLPAGEOS_OVERRIDE_PASSWORD" | chpasswd
 fi
 
-# Setup x11vnc
-if [ "$FULLPAGEOS_INCLUDE_X11VNC"  == "yes" ]
-then
-    apt-get install -y --force-yes x11vnc
-    mkdir -p /opt/custompios/vnc
-    chown "${BASE_USER}":"${BASE_USER}" /opt/custompios/vnc
-    if [ "$FULLPAGEOS_OVERRIDE_PASSWORD" != "default" ]
-    then
-        sudo -u "${BASE_USER}" /opt/custompios/scripts/setX11vncPass "$FULLPAGEOS_OVERRIDE_PASSWORD"
-        sync
-        if [ ! -f /opt/custompios/vnc/passwd ] || [ ! -s /opt/custompios/vnc/passwd ]; then
-          echo "/opt/custompios/vnc/passwd was not created. Trying again."
-          sudo -u "${BASE_USER}" /opt/custompios/scripts/setX11vncPass "$FULLPAGEOS_OVERRIDE_PASSWORD"
-          sync
-          if [ ! -f /opt/custompios/vnc/passwd ] || [ ! -s /opt/custompios/vnc/passwd ]; then
-            echo "Failed to set a VNC password. Aborting build."
-            exit 1
-           fi
-        fi
-    else
-        sudo -u "${BASE_USER}" /opt/custompios/scripts/setX11vncPass raspberry
-        sync
-        if [ ! -f /opt/custompios/vnc/passwd ] || [ ! -s /opt/custompios/vnc/passwd ]; then
-          echo "/opt/custompios/vnc/passwd was not created. Trying again."
-          sudo -u "${BASE_USER}" /opt/custompios/scripts/setX11vncPass raspberry
-          sync
-          if [ ! -f /opt/custompios/vnc/passwd ] || [ ! -s /opt/custompios/vnc/passwd ]; then
-            echo "Failed to set a VNC password. Aborting build."
-            exit 1
-          fi
-        fi
-    fi
-    ls -l /opt/custompios/vnc/passwd
-    systemctl enable x11vnc.service
-fi
+# VNC: wayvnc is installed in the Wayland Kiosk Setup step and launched
+# from ~/.config/labwc/autostart (inherits the Wayland session environment).
+# No separate systemd enable is needed. x11vnc is no longer used.
+echo "[re3D-OS] wayvnc will be launched from labwc autostart."
 
 # Toolchains (from docs - Klipper deps)
 apt-get install -y --no-install-recommends \
