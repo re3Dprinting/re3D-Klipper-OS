@@ -19,6 +19,7 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_SESSION_TYPE=wayland
 export GDK_BACKEND=wayland
 export GTK_A11Y=none          # skip accessibility bus; avoids dbus timeouts
+export GTK_CSD=0              # disable GTK client-side decorations inside cage
 
 echo "[$(date)] XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR} WAYLAND_DISPLAY=${WAYLAND_DISPLAY}"
 
@@ -64,14 +65,15 @@ for _i in $(seq 1 30); do
   curl -s --max-time 2 http://localhost:7125/server/info >/dev/null 2>&1 && break
   sleep 2
 done
-echo "[$(date)] Proceeding to launch KlipperScreen..."
+echo "[$(date)] Proceeding to launch KlipperScreen via cage..."
 
 # --- Launch loop ---------------------------------------------------------
-# Restart KlipperScreen on crash; revert to Mainsail after MAX_FAILS.
+# cage is a single-app kiosk Wayland compositor — labwc fullscreens it via rc.xml.
+# Restart on crash; revert to Mainsail after MAX_FAILS.
 while true; do
   FAIL_COUNT=$((FAIL_COUNT + 1))
-  echo "[$(date)] Starting KlipperScreen (attempt ${FAIL_COUNT})..."
-  "${KS_ENV}/bin/python" "${KS_DIR}/screen.py"
+  echo "[$(date)] Starting KlipperScreen via cage (attempt ${FAIL_COUNT})..."
+  cage -- "${KS_ENV}/bin/python" "${KS_DIR}/screen.py"
   _exit=$?
   echo "[$(date)] KlipperScreen exited with code ${_exit}"
 

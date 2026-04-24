@@ -296,16 +296,16 @@ fi
 # b) Set graphical target
 systemctl set-default graphical.target 2>/dev/null || true
 
-# c) Configure LightDM for labwc autologin
-if ! grep -q 'autologin-session=labwc' /etc/lightdm/lightdm.conf 2>/dev/null; then
-  log "${LOG_TAG} Configuring LightDM for labwc Wayland session..."
+# c) Configure LightDM for re3d-kiosk session (migrate from labwc direct if needed)
+if ! grep -q 'autologin-session=re3d-kiosk' /etc/lightdm/lightdm.conf 2>/dev/null; then
+  log "${LOG_TAG} Updating LightDM to use re3d-kiosk session..."
   cat > /etc/lightdm/lightdm.conf <<'LIGHTDM_EOF'
 [LightDM]
 
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
-user-session=labwc
-autologin-session=labwc
+user-session=re3d-kiosk
+autologin-session=re3d-kiosk
 autologin-user=pi
 autologin-user-timeout=0
 
@@ -315,7 +315,18 @@ autologin-user-timeout=0
 LIGHTDM_EOF
 fi
 
-# d) Deploy labwc config files (autostart, rc.xml, environment)
+# d) Install re3d-kiosk Wayland session desktop file
+install -d -m 0755 /usr/share/wayland-sessions
+if [ ! -f /usr/share/wayland-sessions/re3d-kiosk.desktop ]; then
+  cat > /usr/share/wayland-sessions/re3d-kiosk.desktop <<'EOF'
+[Desktop Entry]
+Name=re3D Kiosk
+Comment=re3D-OS kiosk display session (Mainsail or KlipperScreen)
+Exec=/opt/custompios/scripts/re3d-session
+DesktopNames=re3d-kiosk
+Type=Application
+EOF
+fi
 mkdir -p /home/pi/.config/labwc
 if [ -d "${SRC_LABWC}" ]; then
   for f in "${SRC_LABWC}"/autostart "${SRC_LABWC}"/rc.xml "${SRC_LABWC}"/environment; do
@@ -324,8 +335,9 @@ if [ -d "${SRC_LABWC}" ]; then
   chmod +x /home/pi/.config/labwc/autostart 2>/dev/null || true
 fi
 
-# e) Update kiosk scripts
+# e) Update kiosk scripts (including new re3d-session wrapper)
 for src_dst in \
+  "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/re3d-session:/opt/custompios/scripts/re3d-session" \
   "${SRC_RUN_ONEPAGEOS}:/opt/custompios/scripts/run_onepageos" \
   "${SRC_CHROMIUM_SCRIPT}:/opt/custompios/scripts/start_chromium_browser" \
   "${SRC_FULLSCREEN}:/opt/custompios/scripts/fullscreen" \
@@ -336,7 +348,7 @@ for src_dst in \
   [ -f "$src" ] && install -m 0755 "$src" "$dst"
 done
 
-# f) Deploy start_klipperscreen script
+# f) Deploy start_klipperscreen script (kept for compatibility)
 SRC_KS_SCRIPT="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/start_klipperscreen"
 [ -f "${SRC_KS_SCRIPT}" ] && install -m 0755 "${SRC_KS_SCRIPT}" /opt/custompios/scripts/start_klipperscreen
 
@@ -358,13 +370,13 @@ log "${LOG_TAG} Checking KlipperScreen..."
 KS_DIR="/home/pi/KlipperScreen"
 KS_ENV="/home/pi/klipperscreen-env"
 
-# Ensure GTK3 / PyGObject system packages are present
-if ! python3 -c "import gi" >/dev/null 2>&1; then
-  log "${LOG_TAG} Installing KlipperScreen system dependencies..."
+# Ensure GTK3 / PyGObject / cage packages are present
+if ! command -v cage >/dev/null 2>&1 || ! python3 -c "import gi" >/dev/null 2>&1; then
+  log "${LOG_TAG} Installing KlipperScreen system dependencies (incl. cage)..."
   apt-get install -y --no-install-recommends \
     python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-pango-1.0 \
     gir1.2-gdk-3.0 libgtk-3-0 python3-cairo python3-setuptools \
-    libdbus-1-dev dbus
+    libdbus-1-dev dbus cage
 fi
 
 # Clone or update KlipperScreen repo

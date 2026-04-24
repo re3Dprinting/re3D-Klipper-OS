@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# re3D-OS display session wrapper.
+# LightDM autologin-session=re3d-kiosk calls this script as the top-level session.
+#
+# Reads /etc/re3d-display-mode:
+#   mainsail (default) → exec labwc  (Chromium kiosk, unchanged behaviour)
+#   klipperscreen      → run KlipperScreen under cage as the top-level compositor
+#
+# Running cage at the top level (not nested inside labwc) gives true fullscreen
+# and zero decorations — no window-inside-window artefacts.
+
+LOG="/tmp/re3d-session.log"
+MODE_FILE="/etc/re3d-display-mode"
+KS_DIR="/home/pi/KlipperScreen"
+KS_ENV="/home/pi/klipperscreen-env"
+MAX_FAILS=3
+
+exec >> "$LOG" 2>&1
+
+MODE=$(cat "$MODE_FILE" 2>/dev/null || echo "mainsail")
+echo "[$(date)] re3d-session started — mode: ${MODE}"
+
+if [ "$MODE" = "klipperscreen" ]; then
+
+  # --- Sanity checks -------------------------------------------------------
+  _ok=1
+  if [ ! -d "${KS_DIR}" ]; then
+    echo "[$(date)] KlipperScreen directory missing at ${KS_DIR}"; _ok=0
+  fi
+  if [ ! -x "${KS_ENV}/bin/python" ]; then
+    echo "[$(date)] KlipperScreen venv missing at ${KS_ENV}"; _ok=0
+  fi
+  if ! command -v cage >/dev/null 2>&1; then
+    echo "[$(date)] cage not installed"; _ok=0
+  fi
+
+  if [ "${_ok}" -eq 0 ]; then
+    echo "[$(date)] Prerequisites missing — reverting to Mainsail."
+    echo "mainsail" > "${MODE_FILE}"
+  else
+    # --- Wait for Moonraker (max 60 s) before KlipperScreen connects -------
+    for _i in $(seq 1 30); do
+      curl -s --max-time 2 http://localhost:7125/server/info >/dev/null 2>&1 && break
+      sleep 2
+    done
+    echo "[$(date)] Proceeding to launch KlipperScreen."
+
+    # --- Launch loop --------------------------------------------------------
+    FAIL_COUNT=0
+    while true; do
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      echo "[$(date)] Starting KlipperScreen via cage (attempt ${FAIL_COUNT})..."
+      GTK_A11Y=none \
+      GDK_BACKEND=wayland \
+        cage -d -- "${KS_ENV}/bin/python" "${KS_DIR}/screen.py"
+      _exit=$?
+      echo "[$(date)] cage/KlipperScreen exited (code ${_exit})"
+
+      # Exit code 0 = intentional clean shutdown (e.g. system going to reboot)
+      [ "${_exit}" -eq 0 ] && break
+
+      if [ "${FAIL_COUNT}" -ge "${MAX_FAILS}" ]; then
+        echo "[$(date)] Crashed ${MAX_FAILS} times — reverting to Mainsail."
+        echo "mainsail" > "${MODE_FILE}"
+        break
+      fi
+      sleep 3
+    done
+  fi
+fi
+
+# Mainsail mode (or fallback after KlipperScreen failures)
+echo "[$(date)] Starting labwc (Mainsail/Chromium mode)..."
+exec labwc
