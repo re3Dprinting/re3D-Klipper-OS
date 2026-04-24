@@ -3,27 +3,94 @@
     margin-top:4px;padding:8px 10px;border-radius:10px;background:#1C1C1E;
     border:1px solid var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
-  /* Compact network spacing */
   .net-wrap{display:grid;gap:12px}
   .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+
+  /* WiFi network list */
+  .wifi-list{display:grid;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
+  .wifi-item{
+    display:grid;grid-template-columns:32px 1fr auto auto auto;align-items:center;gap:10px;
+    padding:10px 12px;border-radius:8px;background:#1C1C1E;border:1px solid transparent;
+    cursor:pointer;transition:border-color .12s ease, background .12s ease;
+  }
+  .wifi-item:hover{background:#262628;border-color:var(--border)}
+  .wifi-item.active{border-color:var(--brand);background:rgba(255,212,0,.06)}
+  .wifi-item.connected{border-color:var(--success);background:var(--success-bg)}
+
+  .wifi-signal{display:flex;align-items:flex-end;gap:2px;height:18px}
+  .wifi-signal .bar{width:3px;border-radius:1px;background:#393B3E;transition:background .15s ease}
+  .wifi-signal .bar.on{background:var(--brand)}
+  .wifi-signal .bar.connected{background:var(--success)}
+
+  .wifi-ssid{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wifi-meta{font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  .wifi-badge{
+    font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;
+    background:#262628;color:var(--muted);white-space:nowrap;
+  }
+  .wifi-badge.secure{color:var(--brand)}
+  .wifi-badge.open{color:var(--warn)}
+  .wifi-badge.connected-badge{color:var(--success);background:var(--success-bg);border:1px solid var(--success-border)}
+
+  /* Action buttons on network items */
+  .wifi-actions{display:flex;gap:4px;align-items:center}
+  .wifi-actions button{padding:4px 10px;font-size:11px;font-weight:700;border-radius:6px;border:none;cursor:pointer;transition:background .12s ease,opacity .12s ease}
+  .wifi-actions .btn-disconnect{background:var(--error-bg);color:var(--error);border:1px solid var(--error-border)}
+  .wifi-actions .btn-disconnect:hover{background:var(--error);color:#fff}
+  .wifi-actions .btn-forget{background:#262628;color:var(--muted)}
+  .wifi-actions .btn-forget:hover{background:#393B3E;color:var(--fg)}
+
+  /* Password modal overlay */
+  .wifi-modal-overlay{
+    display:none;position:fixed;inset:0;z-index:100;
+    background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+    align-items:center;justify-content:center;
+  }
+  .wifi-modal-overlay.show{display:flex}
+  .wifi-modal{
+    background:var(--panel);border-radius:12px;padding:20px;width:360px;max-width:90vw;
+    box-shadow:0 8px 32px rgba(0,0,0,.5);
+  }
+  .wifi-modal h3{margin:0 0 4px;font-size:15px;font-weight:800}
+  .wifi-modal .modal-ssid{color:var(--brand);font-size:13px;margin-bottom:14px}
+  .wifi-modal label{display:block;margin-bottom:4px}
+  .wifi-modal input{margin-bottom:12px}
+  .wifi-modal .modal-btns{display:flex;gap:8px;justify-content:flex-end}
+  .wifi-modal .modal-status{margin-top:8px;font-size:12px;color:var(--muted);min-height:18px}
+
+  .scan-btn{display:inline-flex;align-items:center;gap:6px}
+  .scan-btn .spinner{width:12px;height:12px}
+  .scan-btn.scanning{opacity:.7;pointer-events:none}
+
+  /* Connection status banner */
+  .wifi-status{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px}
+  .wifi-status.online{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
+  .wifi-status.offline{background:var(--error-bg);border:1px solid var(--error-border);color:var(--error)}
+  .wifi-status .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .wifi-status.online .status-dot{background:var(--success);box-shadow:0 0 6px var(--success)}
+  .wifi-status.offline .status-dot{background:var(--error)}
+  .wifi-status .status-detail{color:var(--muted);font-size:11px;margin-left:auto}
 </style>
 
 <div class="content" data-page="network">
   <!-- Wi-Fi card -->
-  <form class="card" action="/cgi-bin/set_wifi.sh" method="post" id="wifi-form">
-    <div style="font-weight:800;margin-bottom:6px">Wi-Fi</div>
-    <div class="row">
-      <div><label>SSID</label><input name="ssid" placeholder="MyWiFi" required></div>
-      <div><label>Password</label><input name="psk" placeholder="••••••••" required></div>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-weight:800">Wi-Fi Networks</div>
+      <button class="btn-ghost scan-btn" id="btn-scan" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg>
+        Scan
+      </button>
     </div>
-    <div class="btn-row">
-      <button type="submit">Apply Wi-Fi</button>
+    <div id="wifi-status" class="wifi-status" style="display:none"></div>
+    <div id="wifi-list" class="wifi-list">
+      <div class="hint" style="padding:20px;text-align:center">Scanning for networks&hellip; <span class="spinner"></span></div>
     </div>
-    <div class="out mono" id="out-wifi"></div>
-  </form>
+    <div class="out mono" id="out-wifi" style="display:none"></div>
+  </div>
 
   <!-- Hostname card -->
-  <form class="card" action="/cgi-bin/set_hostname.sh" method="post" id="host-form">
+  <form class="card" action="/cgi-bin/set_hostname.sh" method="post" id="host-form" style="margin-top:12px">
     <div style="font-weight:800;margin-bottom:6px">Hostname</div>
     <div class="row">
       <div class="span2" style="grid-column:1 / -1">
@@ -39,28 +106,254 @@
   </form>
 </div>
 
+<!-- Password modal -->
+<div class="wifi-modal-overlay" id="wifi-modal-overlay">
+  <div class="wifi-modal">
+    <h3>Connect to Wi-Fi</h3>
+    <div class="modal-ssid" id="modal-ssid"></div>
+    <form id="wifi-connect-form">
+      <label>Password</label>
+      <input type="password" name="psk" id="modal-psk" placeholder="Enter password" autocomplete="off">
+      <div class="modal-btns">
+        <button type="button" class="btn-ghost" id="modal-cancel">Cancel</button>
+        <button type="submit" id="modal-connect">Connect</button>
+      </div>
+      <div class="modal-status" id="modal-status"></div>
+    </form>
+  </div>
+</div>
+
 <script>
 (() => {
-  function wireAjaxForm(formId,outId){
-    const f=document.getElementById(formId);
-    const out=document.getElementById(outId);
-    if(!f||!out) return;
-    f.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      out.textContent='Running…';
-      try{
-        const fd=new FormData(f);
-        const resp=await fetch(f.action,{
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(fd)
+  const listEl = document.getElementById('wifi-list');
+  const outEl = document.getElementById('out-wifi');
+  const scanBtn = document.getElementById('btn-scan');
+  const overlay = document.getElementById('wifi-modal-overlay');
+  const modalSsid = document.getElementById('modal-ssid');
+  const modalPsk = document.getElementById('modal-psk');
+  const modalStatus = document.getElementById('modal-status');
+  const modalCancel = document.getElementById('modal-cancel');
+  const connectForm = document.getElementById('wifi-connect-form');
+
+  let networks = [];
+  let selectedSsid = '';
+
+  // ── Signal bars SVG helper ──
+  function signalBars(strength, connected) {
+    const lvl = strength > 75 ? 4 : strength > 50 ? 3 : strength > 25 ? 2 : 1;
+    const cls = connected ? 'connected' : 'on';
+    return [4, 8, 12, 16].map((h, i) =>
+      `<div class="bar ${i < lvl ? cls : ''}" style="height:${h}px"></div>`
+    ).join('');
+  }
+
+  // ── Render network list ──
+  function render() {
+    if (!networks.length) {
+      listEl.innerHTML = '<div class="hint" style="padding:20px;text-align:center">No networks found. Try scanning again.</div>';
+      return;
+    }
+
+    // Deduplicate by SSID (keep strongest signal per SSID)
+    const byName = {};
+    networks.forEach(n => {
+      if (!byName[n.ssid] || n.signal > byName[n.ssid].signal) byName[n.ssid] = n;
+    });
+    const unique = Object.values(byName).sort((a, b) => {
+      if (a.in_use && !b.in_use) return -1;
+      if (!a.in_use && b.in_use) return 1;
+      return b.signal - a.signal;
+    });
+
+    listEl.innerHTML = unique.map(n => {
+      const isOpen = !n.security || n.security === '--' || n.security === '';
+      const secLabel = isOpen ? 'Open' : n.security.replace(/\\s+/g, '/');
+      const eSsid = n.ssid.replace(/"/g, '&quot;');
+      const hSsid = n.ssid.replace(/</g, '&lt;');
+      return `
+        <div class="wifi-item${n.in_use ? ' connected' : ''}" data-ssid="${eSsid}" data-open="${isOpen}" data-in-use="${n.in_use}">
+          <div class="wifi-signal">${signalBars(n.signal, n.in_use)}</div>
+          <div>
+            <div class="wifi-ssid">${hSsid}</div>
+            <div class="wifi-meta">
+              ${n.freq !== '?' ? `<span class="wifi-badge">${n.freq} GHz</span>` : ''}
+              <span class="wifi-badge ${isOpen ? 'open' : 'secure'}">${isOpen ? '\uD83D\uDD13 Open' : '\uD83D\uDD12 ' + secLabel}</span>
+              ${n.in_use ? '<span class="wifi-badge connected-badge">Connected</span>' : ''}
+            </div>
+          </div>
+          <div class="wifi-actions">
+            ${n.in_use ? `<button class="btn-disconnect" data-action="disconnect" data-ssid="${eSsid}" title="Disconnect">Disconnect</button>` : ''}
+            ${n.in_use ? `<button class="btn-forget" data-action="forget" data-ssid="${eSsid}" title="Forget this network">Forget</button>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--muted)">${n.signal}%</div>
+        </div>`;
+    }).join('');
+
+    // Bind clicks
+    listEl.querySelectorAll('.wifi-item').forEach(el => {
+      // Action buttons (disconnect/forget) — stop propagation so row click doesn't fire
+      el.querySelectorAll('.wifi-actions button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const action = btn.dataset.action;
+          const ssid = btn.dataset.ssid;
+          doAction(action, ssid);
         });
-        const text=await resp.text();
-        out.textContent=text.trim()||'Done.';
-      }catch(err){ out.textContent=`Error: ${err}`; }
+      });
+
+      el.addEventListener('click', () => {
+        const ssid = el.dataset.ssid;
+        const isOpen = el.dataset.open === 'true';
+        const inUse = el.dataset.inUse === 'true';
+        if (inUse) return; // already connected; use buttons instead
+        selectedSsid = ssid;
+        if (isOpen) {
+          doConnect(ssid, '');
+        } else {
+          showModal(ssid);
+        }
+      });
     });
   }
-  wireAjaxForm('wifi-form','out-wifi');
-  wireAjaxForm('host-form','out-host');
+
+  // ── Scan ──
+  async function scan() {
+    scanBtn.classList.add('scanning');
+    scanBtn.innerHTML = '<span class="spinner"></span> Scanning&hellip;';
+    try {
+      const r = await fetch('/cgi-bin/scan_wifi.sh', { cache: 'no-store' });
+      const data = await r.json();
+      networks = Array.isArray(data) ? data : (data.networks || []);
+    } catch (e) {
+      networks = [];
+      listEl.innerHTML = `<div class="hint" style="padding:20px;text-align:center;color:var(--error)">Scan failed: ${e}</div>`;
+    }
+    render();
+    updateConnectionStatus();
+    scanBtn.classList.remove('scanning');
+    scanBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg> Scan';
+  }
+  scanBtn.addEventListener('click', scan);
+
+  // ── Disconnect / Forget action ──
+  async function doAction(action, ssid) {
+    const label = action === 'disconnect' ? 'Disconnecting' : 'Forgetting';
+    outEl.style.display = 'block';
+    outEl.innerHTML = `<span class="spinner"></span> ${label} <b>${ssid.replace(/</g, '&lt;')}</b>&hellip;`;
+    try {
+      const body = new URLSearchParams({ action, ssid });
+      const r = await fetch('/cgi-bin/wifi_action.sh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      const text = await r.text();
+      const ok = text.includes('\u2705');
+      outEl.innerHTML = ok
+        ? `<span style="color:var(--success)">${text.trim()}</span>`
+        : `<span style="color:var(--error)">${text.replace(/</g, '&lt;').trim()}</span>`;
+      // Refresh the list and status after action
+      setTimeout(() => scan(), 1000);
+    } catch (err) {
+      outEl.innerHTML = `<span style="color:var(--error)">Error: ${err}</span>`;
+    }
+  }
+
+  // ── Modal ──
+  function showModal(ssid) {
+    modalSsid.textContent = ssid;
+    modalPsk.value = '';
+    modalStatus.textContent = '';
+    overlay.classList.add('show');
+    setTimeout(() => modalPsk.focus(), 100);
+  }
+  function hideModal() {
+    overlay.classList.remove('show');
+    selectedSsid = '';
+  }
+  modalCancel.addEventListener('click', hideModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) hideModal(); });
+
+  connectForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const psk = modalPsk.value;
+    await doConnect(selectedSsid, psk);
+  });
+
+  // ── Connect ──
+  async function doConnect(ssid, psk) {
+    const statusEl = overlay.classList.contains('show') ? modalStatus : outEl;
+    if (statusEl === outEl) outEl.style.display = 'block';
+    statusEl.innerHTML = '<span class="spinner"></span> Connecting to <b>' + ssid.replace(/</g, '&lt;') + '</b>&hellip;';
+
+    const connectBtn = document.getElementById('modal-connect');
+    if (connectBtn) connectBtn.disabled = true;
+
+    try {
+      const body = new URLSearchParams({ ssid, psk: psk || '-' });
+      const r = await fetch('/cgi-bin/set_wifi.sh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      const text = await r.text();
+      const ok = text.includes('✅') || text.includes('connected');
+      statusEl.innerHTML = ok
+        ? '<span style="color:var(--success)">✅ Connected to <b>' + ssid.replace(/</g, '&lt;') + '</b></span>'
+        : '<span style="color:var(--error)">❌ ' + text.replace(/</g, '&lt;').trim() + '</span>';
+      if (ok) {
+        setTimeout(() => { hideModal(); scan(); }, 1500);
+      }
+    } catch (err) {
+      statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + String(err) + '</span>';
+    }
+    if (connectBtn) connectBtn.disabled = false;
+  }
+
+  // ── Hostname form ──
+  function wireAjaxForm(formId, outId) {
+    const f = document.getElementById(formId);
+    const out = document.getElementById(outId);
+    if (!f || !out) return;
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      out.textContent = 'Running…';
+      try {
+        const fd = new FormData(f);
+        const resp = await fetch(f.action, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(fd)
+        });
+        const text = await resp.text();
+        out.textContent = text.trim() || 'Done.';
+      } catch (err) { out.textContent = `Error: ${err}`; }
+    });
+  }
+  wireAjaxForm('host-form', 'out-host');
+
+  // ── Connection status banner ──
+  const statusBanner = document.getElementById('wifi-status');
+  async function updateConnectionStatus() {
+    try {
+      const r = await fetch('/cgi-bin/net_info.sh', { cache: 'no-store' });
+      const info = await r.json();
+      const wlan = (info.interfaces || []).find(i => i.if && i.if.startsWith('wlan') && i.ipv4 && i.ipv4.length > 0);
+      if (wlan) {
+        statusBanner.className = 'wifi-status online';
+        statusBanner.innerHTML = `<span class="status-dot"></span> Connected via <b>${wlan.if}</b> &mdash; ${wlan.ipv4[0]}<span class="status-detail">${info.hostname || ''}.local</span>`;
+        statusBanner.style.display = 'flex';
+      } else {
+        statusBanner.className = 'wifi-status offline';
+        statusBanner.innerHTML = '<span class="status-dot"></span> Not connected to any Wi-Fi network';
+        statusBanner.style.display = 'flex';
+      }
+    } catch (e) {
+      statusBanner.style.display = 'none';
+    }
+  }
+
+  // Initial scan on page load
+  scan();
 })();
 </script>
