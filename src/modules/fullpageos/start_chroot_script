@@ -968,26 +968,21 @@ sudo -u "${BASE_USER}" bash -lc '
 
 # Create venv with access to system PyGObject packages
 sudo -u "${BASE_USER}" bash -lc '
-  set -e
   if [ ! -d "$HOME/klipperscreen-env/bin" ]; then
     echo "Creating klipperscreen-env..."
     python3 -m venv --system-site-packages ~/klipperscreen-env
-    ~/klipperscreen-env/bin/pip install --no-cache-dir \
-      -r ~/KlipperScreen/requirements.txt
-    REQS_HASH=$(md5sum ~/KlipperScreen/requirements.txt | cut -d" " -f1)
-    echo "$REQS_HASH" > ~/klipperscreen-env/.requirements-hash
   else
-    echo "klipperscreen-env already present; checking requirements..."
-    REQS_FILE="$HOME/KlipperScreen/requirements.txt"
-    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
-    HASH_FILE="$HOME/klipperscreen-env/.requirements-hash"
-    if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
-      ~/klipperscreen-env/bin/pip install --no-cache-dir -r "$REQS_FILE"
-      echo "$REQS_HASH" > "$HASH_FILE"
-    else
-      echo "KlipperScreen requirements unchanged, skipping."
-    fi
+    echo "klipperscreen-env already present."
   fi
+
+  # Always install/repair requirements at build time.
+  # Use --prefer-binary to avoid source builds that fail in QEMU ARM chroots.
+  echo "Installing KlipperScreen Python dependencies (prefer-binary)..."
+  ~/klipperscreen-env/bin/pip install --no-cache-dir --prefer-binary \
+    -r ~/KlipperScreen/requirements.txt \
+    && md5sum ~/KlipperScreen/requirements.txt | cut -d" " -f1 \
+         > ~/klipperscreen-env/.requirements-hash \
+    || echo "WARNING: KlipperScreen pip install had errors — will retry on first update."
 '
 
 # Default KlipperScreen config (fullscreen)
@@ -1008,7 +1003,9 @@ chmod +x /opt/custompios/scripts/start_klipperscreen || true
 if [ ! -f /etc/re3d-display-mode ]; then
   echo "mainsail" > /etc/re3d-display-mode
 fi
-chmod 0644 /etc/re3d-display-mode
+# Group-writable so user 'pi' can revert mode without sudo
+chown root:"${BASE_USER}" /etc/re3d-display-mode
+chmod 0664 /etc/re3d-display-mode
 
 step_end
 ###############################################################################

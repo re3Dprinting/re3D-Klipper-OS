@@ -400,9 +400,20 @@ if [ ! -x "${KS_ENV}/bin/python" ]; then
   log "${LOG_TAG} Creating klipperscreen-env..."
   sudo -u pi python3 -m venv --system-site-packages "${KS_ENV}" \
     2>&1 | tee -a "${LOG_FILE}" || true
-  if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_DIR}/requirements.txt" ]; then
+fi
+
+# Always verify pip requirements are installed (repairs failed chroot builds)
+if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_DIR}/requirements.txt" ]; then
+  KS_REQS_HASH=$(md5sum "${KS_DIR}/requirements.txt" | cut -d' ' -f1)
+  KS_HASH_FILE="${KS_ENV}/.requirements-hash"
+  if [ ! -f "${KS_HASH_FILE}" ] || [ "$(cat "${KS_HASH_FILE}" 2>/dev/null)" != "${KS_REQS_HASH}" ]; then
+    log "${LOG_TAG} Installing/repairing KlipperScreen Python dependencies..."
     sudo -u pi "${KS_ENV}/bin/pip" install --no-cache-dir \
-      -r "${KS_DIR}/requirements.txt" 2>&1 | tee -a "${LOG_FILE}" || true
+      -r "${KS_DIR}/requirements.txt" 2>&1 | tee -a "${LOG_FILE}" \
+      && echo "${KS_REQS_HASH}" > "${KS_HASH_FILE}" \
+      || log "${LOG_TAG} WARNING: KlipperScreen pip install had errors (see above)"
+  else
+    log "${LOG_TAG} KlipperScreen Python dependencies up-to-date."
   fi
 fi
 
@@ -418,7 +429,9 @@ sudo -u pi bash -c '
 if [ ! -f /etc/re3d-display-mode ]; then
   echo "mainsail" > /etc/re3d-display-mode
 fi
-chmod 0644 /etc/re3d-display-mode
+# Group-writable so user 'pi' can revert mode without sudo
+chown root:pi /etc/re3d-display-mode
+chmod 0664 /etc/re3d-display-mode
 
 log "${LOG_TAG} KlipperScreen check complete."
 
