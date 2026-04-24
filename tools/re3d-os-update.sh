@@ -336,15 +336,91 @@ for src_dst in \
   [ -f "$src" ] && install -m 0755 "$src" "$dst"
 done
 
-# f) Apply build-time placeholder in run_onepageos
+# f) Deploy start_klipperscreen script
+SRC_KS_SCRIPT="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/start_klipperscreen"
+[ -f "${SRC_KS_SCRIPT}" ] && install -m 0755 "${SRC_KS_SCRIPT}" /opt/custompios/scripts/start_klipperscreen
+
+# g) Apply build-time placeholder in run_onepageos
 sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' \
   /opt/custompios/scripts/run_onepageos 2>/dev/null || true
 
-# g) Disable legacy x11vnc (wayvnc starts from labwc autostart)
+# h) Disable legacy x11vnc (wayvnc starts from labwc autostart)
 systemctl disable x11vnc.service 2>/dev/null || true
 systemctl stop x11vnc.service 2>/dev/null || true
 
 log "${LOG_TAG} Wayland/labwc migration complete."
+
+# ---------- 9.6) KlipperScreen: install or update ----------
+set_progress 88
+
+log "${LOG_TAG} Checking KlipperScreen..."
+
+KS_DIR="/home/pi/KlipperScreen"
+KS_ENV="/home/pi/klipperscreen-env"
+
+# Ensure GTK3 / PyGObject system packages are present
+if ! python3 -c "import gi" >/dev/null 2>&1; then
+  log "${LOG_TAG} Installing KlipperScreen system dependencies..."
+  apt-get install -y --no-install-recommends \
+    python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-pango-1.0 \
+    gir1.2-gdk-3.0 libgtk-3-0 python3-cairo python3-setuptools \
+    libdbus-1-dev dbus
+fi
+
+# Clone or update KlipperScreen repo
+export GIT_CONFIG_COUNT=3
+export GIT_CONFIG_KEY_2=safe.directory
+export GIT_CONFIG_VALUE_2="${KS_DIR}"
+
+if [ ! -d "${KS_DIR}/.git" ]; then
+  log "${LOG_TAG} Cloning KlipperScreen..."
+  sudo -u pi git clone --depth 1 https://github.com/KlipperScreen/KlipperScreen.git "${KS_DIR}" \
+    2>&1 | tee -a "${LOG_FILE}" || true
+else
+  log "${LOG_TAG} Updating KlipperScreen..."
+  cd "${KS_DIR}"
+  sudo -u pi git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
+  LOCAL_KS=$(git rev-parse HEAD)
+  REMOTE_KS=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
+  if [ -n "${REMOTE_KS}" ] && [ "${LOCAL_KS}" != "${REMOTE_KS}" ]; then
+    sudo -u pi git reset --hard "${REMOTE_KS}" 2>&1 | tee -a "${LOG_FILE}"
+    log "${LOG_TAG} KlipperScreen updated (${LOCAL_KS:0:8} → ${REMOTE_KS:0:8})."
+    # Reinstall Python deps after a repo update
+    if [ -x "${KS_ENV}/bin/pip" ]; then
+      sudo -u pi "${KS_ENV}/bin/pip" install --no-cache-dir \
+        -r "${KS_DIR}/requirements.txt" 2>&1 | tee -a "${LOG_FILE}" || true
+    fi
+  else
+    log "${LOG_TAG} KlipperScreen is already up-to-date."
+  fi
+fi
+
+# Create venv if missing
+if [ ! -x "${KS_ENV}/bin/python" ]; then
+  log "${LOG_TAG} Creating klipperscreen-env..."
+  sudo -u pi python3 -m venv --system-site-packages "${KS_ENV}" \
+    2>&1 | tee -a "${LOG_FILE}" || true
+  if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_DIR}/requirements.txt" ]; then
+    sudo -u pi "${KS_ENV}/bin/pip" install --no-cache-dir \
+      -r "${KS_DIR}/requirements.txt" 2>&1 | tee -a "${LOG_FILE}" || true
+  fi
+fi
+
+# Ensure default config (fullscreen) exists
+sudo -u pi bash -c '
+  mkdir -p ~/.config/KlipperScreen
+  if [ ! -f ~/.config/KlipperScreen/KlipperScreen.conf ]; then
+    printf "[main]\nfullscreen = True\n" > ~/.config/KlipperScreen/KlipperScreen.conf
+  fi
+' || true
+
+# Ensure display mode flag exists (default: mainsail)
+if [ ! -f /etc/re3d-display-mode ]; then
+  echo "mainsail" > /etc/re3d-display-mode
+fi
+chmod 0644 /etc/re3d-display-mode
+
+log "${LOG_TAG} KlipperScreen check complete."
 
 # ---------- 10) Reload services (best-effort, no "not found" noise) ----------
 set_progress 90

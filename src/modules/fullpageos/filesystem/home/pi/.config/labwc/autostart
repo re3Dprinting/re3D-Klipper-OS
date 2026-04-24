@@ -7,5 +7,13 @@ if command -v wayvnc >/dev/null 2>&1; then
   wayvnc --render-cursor 0.0.0.0 5900 &
 fi
 
-# Kiosk browser loop (waits for web server, then launches Chromium)
-exec /opt/custompios/scripts/run_onepageos
+# Display mode: read flag file to choose the frontend.
+# "mainsail"      → Chromium kiosk showing Mainsail (default)
+# "klipperscreen" → KlipperScreen native Wayland app
+MODE=$(cat /etc/re3d-display-mode 2>/dev/null || echo "mainsail")
+
+if [ "$MODE" = "klipperscreen" ]; then
+  exec /opt/custompios/scripts/start_klipperscreen
+else
+  exec /opt/custompios/scripts/run_onepageos
+fi

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# re3D-OS: Start KlipperScreen as a native Wayland (GTK3) application inside labwc.
+# Invoked by ~/.config/labwc/autostart when /etc/re3d-display-mode == "klipperscreen".
+
+set -u
+
+KS_DIR="/home/pi/KlipperScreen"
+KS_ENV="/home/pi/klipperscreen-env"
+LOG="/tmp/klipperscreen-launch.log"
+
+# Ensure Wayland environment is set (inherited from labwc, but be explicit)
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export GDK_BACKEND=wayland
+
+exec >> "$LOG" 2>&1
+echo "[$(date)] start_klipperscreen launched"
+
+# Sanity checks
+if [ ! -d "${KS_DIR}" ]; then
+  echo "[$(date)] ERROR: KlipperScreen not found at ${KS_DIR}. Switch back to Mainsail."
+  exit 1
+fi
+if [ ! -x "${KS_ENV}/bin/python" ]; then
+  echo "[$(date)] ERROR: KlipperScreen venv missing at ${KS_ENV}. Switch back to Mainsail."
+  exit 1
+fi
+
+# Wait for Moonraker to become available (max 60 s) before KlipperScreen connects
+for i in $(seq 1 30); do
+  if curl -s --max-time 2 http://localhost:7125/server/info >/dev/null 2>&1; then
+    echo "[$(date)] Moonraker ready after $((i * 2))s"
+    break
+  fi
+  sleep 2
+done
+
+echo "[$(date)] Launching KlipperScreen..."
+exec "${KS_ENV}/bin/python" "${KS_DIR}/screen.py"

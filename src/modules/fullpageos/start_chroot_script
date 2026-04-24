@@ -941,6 +941,78 @@ command -v systemctl >/dev/null && systemctl enable klipper-autostart.service ||
 [ -f /usr/local/bin/flash_once.sh ] && chmod +x /usr/local/bin/flash_once.sh || true
 [ -f /home/pi/wait.html ] && chown pi:pi /home/pi/wait.html || true
 
+###############################################################################
+# KlipperScreen: manual clone + Python venv (GTK3 Wayland native)
+###############################################################################
+step_start "KlipperScreen Install"
+
+# System packages: GTK3 runtime + PyGObject + touch input libs
+apt-get install -y --no-install-recommends \
+  python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-pango-1.0 \
+  gir1.2-gdk-3.0 libgtk-3-0 python3-cairo python3-setuptools \
+  libdbus-1-dev dbus
+
+# Clone KlipperScreen
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  if [ ! -d "$HOME/KlipperScreen/.git" ]; then
+    echo "Cloning KlipperScreen..."
+    git clone --depth 1 https://github.com/KlipperScreen/KlipperScreen.git ~/KlipperScreen
+  else
+    echo "KlipperScreen already present; updating..."
+    cd ~/KlipperScreen
+    git fetch --all -p
+    git reset --hard origin/master || git reset --hard origin/main
+  fi
+'
+
+# Create venv with access to system PyGObject packages
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  if [ ! -d "$HOME/klipperscreen-env/bin" ]; then
+    echo "Creating klipperscreen-env..."
+    python3 -m venv --system-site-packages ~/klipperscreen-env
+    ~/klipperscreen-env/bin/pip install --no-cache-dir \
+      -r ~/KlipperScreen/requirements.txt
+    REQS_HASH=$(md5sum ~/KlipperScreen/requirements.txt | cut -d" " -f1)
+    echo "$REQS_HASH" > ~/klipperscreen-env/.requirements-hash
+  else
+    echo "klipperscreen-env already present; checking requirements..."
+    REQS_FILE="$HOME/KlipperScreen/requirements.txt"
+    REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
+    HASH_FILE="$HOME/klipperscreen-env/.requirements-hash"
+    if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
+      ~/klipperscreen-env/bin/pip install --no-cache-dir -r "$REQS_FILE"
+      echo "$REQS_HASH" > "$HASH_FILE"
+    else
+      echo "KlipperScreen requirements unchanged, skipping."
+    fi
+  fi
+'
+
+# Default KlipperScreen config (fullscreen)
+sudo -u "${BASE_USER}" bash -lc '
+  mkdir -p ~/.config/KlipperScreen
+  if [ ! -f ~/.config/KlipperScreen/KlipperScreen.conf ]; then
+    cat > ~/.config/KlipperScreen/KlipperScreen.conf <<'"'"'KSCONF'"'"'
+[main]
+fullscreen = True
+KSCONF
+  fi
+'
+
+# Mark the start_klipperscreen script as executable
+chmod +x /opt/custompios/scripts/start_klipperscreen || true
+
+# Default mode: Mainsail (Chromium) — unchanged on upgrades
+if [ ! -f /etc/re3d-display-mode ]; then
+  echo "mainsail" > /etc/re3d-display-mode
+fi
+chmod 0644 /etc/re3d-display-mode
+
+step_end
+###############################################################################
+
 touch /etc/firstboot-splash
 
 echo "server time.nist.gov" >> /etc/ntp.conf
