@@ -977,10 +977,11 @@ sudo -u "${BASE_USER}" bash -lc '
 
   # Always install/repair requirements at build time.
   # Use --prefer-binary to avoid source builds that fail in QEMU ARM chroots.
+  KS_REQS="$HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
   echo "Installing KlipperScreen Python dependencies (prefer-binary)..."
   ~/klipperscreen-env/bin/pip install --no-cache-dir --prefer-binary \
-    -r ~/KlipperScreen/requirements.txt \
-    && md5sum ~/KlipperScreen/requirements.txt | cut -d" " -f1 \
+    -r "$KS_REQS" \
+    && md5sum "$KS_REQS" | cut -d" " -f1 \
          > ~/klipperscreen-env/.requirements-hash \
     || echo "WARNING: KlipperScreen pip install had errors — will retry on first update."
 '

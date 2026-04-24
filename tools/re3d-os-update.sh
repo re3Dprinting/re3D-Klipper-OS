@@ -403,18 +403,21 @@ if [ ! -x "${KS_ENV}/bin/python" ]; then
 fi
 
 # Always verify pip requirements are installed (repairs failed chroot builds)
-if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_DIR}/requirements.txt" ]; then
-  KS_REQS_HASH=$(md5sum "${KS_DIR}/requirements.txt" | cut -d' ' -f1)
+KS_REQS="${KS_DIR}/scripts/KlipperScreen-requirements.txt"
+if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_REQS}" ]; then
+  KS_REQS_HASH=$(md5sum "${KS_REQS}" | cut -d' ' -f1)
   KS_HASH_FILE="${KS_ENV}/.requirements-hash"
   if [ ! -f "${KS_HASH_FILE}" ] || [ "$(cat "${KS_HASH_FILE}" 2>/dev/null)" != "${KS_REQS_HASH}" ]; then
     log "${LOG_TAG} Installing/repairing KlipperScreen Python dependencies..."
     sudo -u pi "${KS_ENV}/bin/pip" install --no-cache-dir \
-      -r "${KS_DIR}/requirements.txt" 2>&1 | tee -a "${LOG_FILE}" \
+      -r "${KS_REQS}" 2>&1 | tee -a "${LOG_FILE}" \
       && echo "${KS_REQS_HASH}" > "${KS_HASH_FILE}" \
       || log "${LOG_TAG} WARNING: KlipperScreen pip install had errors (see above)"
   else
     log "${LOG_TAG} KlipperScreen Python dependencies up-to-date."
   fi
+else
+  log "${LOG_TAG} WARNING: ${KS_REQS} not found — skipping KlipperScreen dep install."
 fi
 
 # Ensure default config (fullscreen) exists
