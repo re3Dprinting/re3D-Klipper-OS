@@ -346,6 +346,8 @@ systemctl stop x11vnc.service 2>/dev/null || true
 
 log "${LOG_TAG} Wayland/labwc migration complete."
 
+systemctl disable splash_video.service 2>/dev/null || true
+
 # ---------- 10) Reload services (best-effort, no "not found" noise) ----------
 set_progress 90
 
