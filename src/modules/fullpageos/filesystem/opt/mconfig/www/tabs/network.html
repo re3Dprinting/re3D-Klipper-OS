@@ -1,24 +1,24 @@
 <style>
   .out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#1C1C1E;
+    margin-top:6px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);
     border:1px solid var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
   .net-wrap{display:grid;gap:12px}
   .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 
   /* WiFi network list */
-  .wifi-list{display:grid;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
+  .wifi-list{display:grid;gap:4px;max-height:340px;overflow-y:auto;padding:2px}
   .wifi-item{
     display:grid;grid-template-columns:32px 1fr auto auto auto;align-items:center;gap:10px;
-    padding:10px 12px;border-radius:8px;background:#1C1C1E;border:1px solid transparent;
-    cursor:pointer;transition:border-color .12s ease, background .12s ease;
+    padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);border:1px solid transparent;
+    cursor:pointer;transition:border-color .15s, background .15s;
   }
-  .wifi-item:hover{background:#262628;border-color:var(--border)}
+  .wifi-item:hover{background:var(--surface-2);border-color:var(--border)}
   .wifi-item.active{border-color:var(--brand);background:rgba(255,212,0,.06)}
   .wifi-item.connected{border-color:var(--success);background:var(--success-bg)}
 
   .wifi-signal{display:flex;align-items:flex-end;gap:2px;height:18px}
-  .wifi-signal .bar{width:3px;border-radius:1px;background:#393B3E;transition:background .15s ease}
+  .wifi-signal .bar{width:3px;border-radius:1px;background:var(--surface-3);transition:background .15s}
   .wifi-signal .bar.on{background:var(--brand)}
   .wifi-signal .bar.connected{background:var(--success)}
 
@@ -26,33 +26,34 @@
   .wifi-meta{font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center}
   .wifi-badge{
     font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;
-    background:#262628;color:var(--muted);white-space:nowrap;
+    background:var(--surface-2);color:var(--muted);white-space:nowrap;border:1px solid var(--border);
   }
-  .wifi-badge.secure{color:var(--brand)}
+  .wifi-badge.secure{color:var(--brand);border-color:rgba(255,212,0,.2)}
   .wifi-badge.open{color:var(--warn)}
   .wifi-badge.connected-badge{color:var(--success);background:var(--success-bg);border:1px solid var(--success-border)}
 
   /* Action buttons on network items */
   .wifi-actions{display:flex;gap:4px;align-items:center}
-  .wifi-actions button{padding:4px 10px;font-size:11px;font-weight:700;border-radius:6px;border:none;cursor:pointer;transition:background .12s ease,opacity .12s ease}
+  .wifi-actions button{padding:4px 10px;font-size:11px;font-weight:700;border-radius:6px;border:none;cursor:pointer;transition:background .15s,opacity .15s}
   .wifi-actions .btn-disconnect{background:var(--error-bg);color:var(--error);border:1px solid var(--error-border)}
   .wifi-actions .btn-disconnect:hover{background:var(--error);color:#fff}
-  .wifi-actions .btn-forget{background:#262628;color:var(--muted)}
-  .wifi-actions .btn-forget:hover{background:#393B3E;color:var(--fg)}
+  .wifi-actions .btn-forget{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+  .wifi-actions .btn-forget:hover{background:var(--surface-3);color:var(--fg)}
 
   /* Password modal overlay */
   .wifi-modal-overlay{
     display:none;position:fixed;inset:0;z-index:100;
-    background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+    background:rgba(0,0,0,.65);backdrop-filter:blur(6px);
     align-items:center;justify-content:center;
   }
   .wifi-modal-overlay.show{display:flex}
   .wifi-modal{
-    background:var(--panel);border-radius:12px;padding:20px;width:360px;max-width:90vw;
-    box-shadow:0 8px 32px rgba(0,0,0,.5);
+    background:var(--surface-1);border:1px solid var(--border-2);border-radius:var(--radius);
+    padding:22px;width:360px;max-width:90vw;
+    box-shadow:var(--shadow-lg);
   }
   .wifi-modal h3{margin:0 0 4px;font-size:15px;font-weight:800}
-  .wifi-modal .modal-ssid{color:var(--brand);font-size:13px;margin-bottom:14px}
+  .wifi-modal .modal-ssid{color:var(--brand);font-size:13px;margin-bottom:16px}
   .wifi-modal label{display:block;margin-bottom:4px}
   .wifi-modal input{margin-bottom:12px}
   .wifi-modal .modal-btns{display:flex;gap:8px;justify-content:flex-end}
@@ -63,7 +64,7 @@
   .scan-btn.scanning{opacity:.7;pointer-events:none}
 
   /* Connection status banner */
-  .wifi-status{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px}
+  .wifi-status{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:8px;font-size:13px}
   .wifi-status.online{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
   .wifi-status.offline{background:var(--error-bg);border:1px solid var(--error-border);color:var(--error)}
   .wifi-status .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}

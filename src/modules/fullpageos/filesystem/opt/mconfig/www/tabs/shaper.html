@@ -1,18 +1,18 @@
 <!-- Input Shaper tab -->
 <style>
   .out{
-    margin-top:4px;padding:8px 10px;border-radius:10px;background:#1C1C1E;
+    margin-top:4px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);
     border:1px solid var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
   }
   .coming-soon-wrap{position:relative}
   .coming-soon-overlay{
-    position:absolute; inset:0; border-radius:10px;
-    background:rgba(17,17,18,.8); backdrop-filter:saturate(0.6) blur(2px);
+    position:absolute; inset:0; border-radius:var(--radius);
+    background:rgba(8,11,18,.85); backdrop-filter:saturate(0.6) blur(3px);
     display:flex; align-items:center; justify-content:center; text-align:center;
     color:var(--gray-200); z-index:5; pointer-events:auto;
     border:1px solid var(--border);
   }
-  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:16px}
+  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:20px}
   .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
   .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
   .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}

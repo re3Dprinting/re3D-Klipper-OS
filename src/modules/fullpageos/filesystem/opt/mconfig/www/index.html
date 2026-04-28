@@ -11,144 +11,325 @@
 <meta http-equiv="Expires" content="0">
 
 <style>
-  /* ── Global style-guide tokens ─────────────────────────────────────────── */
-  :root{
-    --brand:#FFD400; --brand-600:#FFC800; --brand-700:#FFBD00; --brand-800:#FFB300;
-    --white:#FFFFFF; --gray-050:#F2F2F2; --gray-100:#E6E6E6; --gray-200:#D9D9D9;
-    --gray-300:#CCCCCC; --gray-400:#BCBEC0; --gray-800:#393B3E; --gray-850:#2B2E33;
-    --gray-900:#1C1C1E; --gray-950:#111112; --near-black:#111112; --black:#000000;
+  /* ── Design Tokens ──────────────────────────────────────────────────────── */
+  :root {
+    /* Brand */
+    --brand: #FFD400;
+    --brand-600: #FFC800;
+    --brand-700: #F0BD00;
+    --brand-800: #E6B400;
+    --brand-dim: rgba(255,212,0,.12);
 
-    --bg:#111112;
-    --panel:#303133;
-    --panel-outer:#1C1C1E;
-    --border:#393B3E;
-    --fg:#F2F2F2;
-    --muted:#BCBEC0;
+    /* Surfaces — layered navy-dark scale */
+    --bg:        #080B12;
+    --surface-0: #0C0F17;
+    --surface-1: #111520;
+    --surface-2: #161A27;
+    --surface-3: #1C2130;
 
-    --radius:10px; --pad:14px;
-    --focus-ring:0 0 0 2px rgba(255,212,0,.35);
-    --card-shadow:3px 3px 0px 0px #000, -0.5px -0.5px 0px 0px #393b3e;
+    /* Borders */
+    --border:   #1F2535;
+    --border-2: #283045;
 
-    --success:#22c55e; --success-bg:rgba(34,197,94,.1); --success-border:rgba(34,197,94,.3);
-    --warn:#f97316;   --warn-bg:rgba(249,115,22,.1);  --warn-border:rgba(249,115,22,.3);
-    --error:#ef4444;  --error-bg:rgba(239,68,68,.08);  --error-border:rgba(239,68,68,.3);
+    /* Text */
+    --fg:    #E8ECF6;
+    --muted: #6B7590;
+    --dim:   #40485F;
+
+    /* Status */
+    --success: #22c55e;  --success-bg: rgba(34,197,94,.1);   --success-border: rgba(34,197,94,.3);
+    --warn:    #f97316;  --warn-bg:    rgba(249,115,22,.1);   --warn-border:    rgba(249,115,22,.3);
+    --error:   #ef4444;  --error-bg:   rgba(239,68,68,.08);   --error-border:   rgba(239,68,68,.3);
+
+    /* Geometry */
+    --radius:    12px;
+    --radius-sm: 8px;
+    --radius-xs: 6px;
+    --pad:       18px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.03);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.5);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.5);
+
+    /* Focus */
+    --focus-ring: 0 0 0 2.5px rgba(255,212,0,.45);
+
+    /* Legacy aliases — used by tabs */
+    --panel:       var(--surface-2);
+    --panel-outer: var(--surface-1);
+    --card-shadow: var(--shadow-sm);
+    --white:      #FFFFFF;
+    --black:      #000000;
+    --near-black: #080B12;
+    --gray-050:   #E8ECF6;
+    --gray-100:   #C0C8DC;
+    --gray-200:   #96A0B8;
+    --gray-300:   #6B7590;
+    --gray-400:   #4E5878;
+    --gray-800:   #1C2130;
+    --gray-850:   #161A27;
+    --gray-900:   #111520;
+    --gray-950:   #080B12;
   }
 
-  /* ── Global base / layout ──────────────────────────────────────────────── */
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0;background:var(--bg);color:var(--fg);
-    font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
-    text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
+  /* ── Reset / Base ────────────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box }
+  html, body { height: 100%; margin: 0 }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(ellipse 100% 40% at 50% 0%, rgba(255,212,0,.04) 0%, transparent 70%);
+    color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
-  [hidden]{display:none!important}
+  [hidden] { display: none !important }
 
-  .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px}
-
-  .app{
-    display:grid;gap:12px;
-    grid-template-rows:56px auto;
-    min-height:100dvh;
-    align-content:start;
+  /* ── Layout ──────────────────────────────────────────────────────────────── */
+  .wrap {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 20px 28px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
   }
 
-  /* ── Global tabs/nav ───────────────────────────────────────────────────── */
-  .tabs{
-    position:relative;z-index:10;
-    display:flex;align-items:center;gap:8px;
-    padding:6px;background:#000;border:none;
-    border-radius:var(--radius);
-    box-shadow:var(--card-shadow);
-    overflow-x:auto;overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;
-    scroll-behavior:smooth;
+  /* ── App top-bar (brand + nav + cta) ─────────────────────────────────────── */
+  .app-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
   }
-  .tabs > *{flex-shrink:0}
+  .app-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .brand-logo {
+    height: 24px;
+    width: auto;
+  }
+  .brand-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border-2);
+    flex-shrink: 0;
+  }
+  .brand-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dim);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
 
-  .tab{
-    appearance:none;border:1px solid transparent;background:#262628;
-    color:var(--fg);padding:10px 14px;border-radius:8px;cursor:pointer;user-select:none;
-    font-weight:700;letter-spacing:.2px;text-decoration:none;display:inline-block;
-    transition:background .12s ease, border-color .12s ease, box-shadow .12s ease, color .12s ease, opacity .12s ease, filter .12s ease;
+  /* ── Navigation tabs ─────────────────────────────────────────────────────── */
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    padding: 3px;
+    background: var(--surface-0);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
   }
-  .tab:hover{background:#393B3E}
-  .tab:focus-visible{outline:none;box-shadow:var(--focus-ring)}
-  .tab.active{background:var(--brand);border-color:var(--brand-700);color:#000}
+  .tabs::-webkit-scrollbar { display: none }
+  .tabs > * { flex-shrink: 0 }
 
-  .tabs .spacer{flex:1}
-  .tabs .divider{width:1px;height:32px;background:#393B3E;border-radius:1px}
-  .tab.cta{
-    background:var(--brand);border-color:var(--brand-700);color:#000;
-    font-size:15px;padding:12px 18px;font-weight:900;
-    box-shadow:2px 2px 0px 0px rgb(0 0 0 / 30%), -0.5px -0.5px 0px 0px #feeb33;
+  .tab {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    padding: 7px 12px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    transition: background .15s, color .15s, border-color .15s;
   }
-  .tab.cta:hover{background:var(--brand-600)}
-  .tab.cta:active{background:var(--brand-700);transform:translateY(1px)}
-  .tab.cta:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+  .tab:hover { background: var(--surface-2); color: var(--fg) }
+  .tab:focus-visible { outline: none; box-shadow: inset var(--focus-ring) }
+  .tab.active { background: var(--brand); color: #000; font-weight: 600; border-color: transparent }
 
-  /* ── Global page background card & utilities ───────────────────────────── */
-  .pages{
-    background:var(--panel-outer);border:none;border-radius:var(--radius);
-    padding:14px;display:grid;grid-template-rows:auto auto;align-content:start;align-items:start;
-    box-shadow:var(--card-shadow);
-  }
-  .page-title{
-    font-size:16px;font-weight:800;color:var(--fg);display:flex;align-items:center;gap:10px;
-    padding-bottom:8px;border-bottom:2px solid var(--brand);margin-bottom:4px;
-  }
-  .page-host{margin-top:8px}
+  .tabs .spacer { flex: 1 }
+  .tabs .divider { display: none }
 
-  /* Useful shared utilities tabs can reuse */
-  .card{border:none;border-radius:10px;background:var(--panel);padding:12px;box-shadow:var(--card-shadow)}
-  .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
-  label{color:var(--muted);font-size:12px}
-  input,select{
-    width:100%;padding:10px 12px;border-radius:8px;border:1px solid #262628;
-    background:#1C1C1E;color:var(--fg);transition:border-color .12s ease, box-shadow .12s ease;
+  /* CTA — lives outside .tabs, always visible */
+  .tab.cta {
+    background: var(--brand);
+    color: #000;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    border: none;
+    flex-shrink: 0;
+    letter-spacing: 0.1px;
+    transition: background .15s, transform .1s;
   }
-  input:focus-visible,select:focus-visible{outline:none;border-color:var(--brand-700);box-shadow:var(--focus-ring)}
-  button{
-    border:0;padding:10px 14px;border-radius:8px;background:var(--brand);
-    color:#000;font-weight:900;cursor:pointer;letter-spacing:.2px;
-    box-shadow:2px 2px 0px 0px rgb(0 0 0 / 30%), -0.5px -0.5px 0px 0px #feeb33;
-    transition:transform .06s ease, background .12s ease, box-shadow .12s ease;
-  }
-  button:hover{background:var(--brand-600)}
-  button:active{transform:translateY(1px);background:var(--brand-700)}
-  button:focus-visible{outline:none;box-shadow:var(--focus-ring)}
-  .btn-ghost{background:#262628;color:var(--fg);box-shadow:2px 2px 0px 0px rgb(0 0 0 / 30%), -0.5px -0.5px 0px 0px #666868}
-  .btn-ghost:hover{background:#393B3E}
-  .hint{color:var(--muted);font-size:12px}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .btn-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+  .tab.cta:hover { background: var(--brand-600) }
+  .tab.cta:active { background: var(--brand-700); transform: translateY(1px) }
+  .tab.cta:focus-visible { outline: none; box-shadow: var(--focus-ring) }
 
-  /* Spinner (global) */
-  .spinner{
-    width:14px;height:14px;border:2px solid rgba(255,255,255,0.12);border-top-color:var(--brand);
-    border-radius:50%;display:inline-block;vertical-align:middle;animation:spin 1s linear infinite;
+  /* ── Content area ────────────────────────────────────────────────────────── */
+  .pages {
+    flex: 1;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 16px;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    align-content: start;
   }
-  @keyframes spin{to{transform:rotate(360deg)}}
+  .page-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+    letter-spacing: -0.2px;
+  }
+  .page-title::before {
+    content: '';
+    width: 3px;
+    height: 17px;
+    background: var(--brand);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .page-host { margin-top: 0 }
 
-  @media(max-width:980px){ .row{grid-template-columns:1fr} }
+  /* ── Shared global utilities ─────────────────────────────────────────────── */
+  .card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    padding: var(--pad);
+    box-shadow: var(--shadow-sm);
+  }
+  .row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr }
+  @media (max-width: 980px) { .row { grid-template-columns: 1fr } }
+
+  label {
+    display: block;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 500;
+    margin-bottom: 5px;
+    letter-spacing: 0.25px;
+  }
+  input, select {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-2);
+    background: var(--surface-0);
+    color: var(--fg);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input::placeholder { color: var(--dim) }
+  input:hover, select:hover { border-color: var(--muted) }
+  input:focus, select:focus,
+  input:focus-visible, select:focus-visible {
+    border-color: var(--brand-700);
+    box-shadow: var(--focus-ring);
+    outline: none;
+  }
+  button {
+    border: none;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--brand);
+    color: #000;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.1px;
+    transition: background .15s, transform .1s;
+    white-space: nowrap;
+  }
+  button:hover { background: var(--brand-600) }
+  button:active { background: var(--brand-700); transform: translateY(1px) }
+  button:focus-visible { outline: none; box-shadow: var(--focus-ring) }
+  button:disabled { opacity: .35; cursor: not-allowed; transform: none; pointer-events: none }
+
+  .btn-ghost {
+    background: var(--surface-3);
+    color: var(--fg);
+    border: 1px solid var(--border-2);
+    box-shadow: none;
+  }
+  .btn-ghost:hover { background: var(--surface-3); filter: brightness(1.25) }
+  .btn-ghost:active { transform: translateY(1px) }
+
+  .btn-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.55 }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.08);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: middle;
+    animation: spin .85s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg) } }
 </style>
 </head>
 <body>
 <div class="wrap app">
-  <nav class="tabs" id="tabbar">
-    <button class="tab" data-page="machine">Machine</button>
-    <button class="tab" data-page="network">Network</button>
-    <button class="tab" data-page="tuning">Tuning</button>
-    <button class="tab" data-page="shaper">Input Shaper</button>
-    <button class="tab" data-page="calibration">Calibration</button>
-    <button class="tab" data-page="troubleshoot">Troubleshooting</button>
-    <button class="tab" data-page="system">System</button>
-
-    <span class="spacer"></span>
-    <span class="divider" aria-hidden="true"></span>
+  <div class="app-topbar">
+    <div class="app-brand">
+      <img src="/img/re3d-logo.png" alt="re3D" class="brand-logo">
+      <span class="brand-sep" aria-hidden="true"></span>
+      <span class="brand-name">Configurator</span>
+    </div>
+    <nav class="tabs" id="tabbar">
+      <button class="tab" data-page="machine">Machine</button>
+      <button class="tab" data-page="network">Network</button>
+      <button class="tab" data-page="tuning">Tuning</button>
+      <button class="tab" data-page="shaper">Input Shaper</button>
+      <button class="tab" data-page="calibration">Calibration</button>
+      <button class="tab" data-page="troubleshoot">Troubleshooting</button>
+      <button class="tab" data-page="system">System</button>
+      <span class="spacer"></span>
+    </nav>
     <!-- Default to localhost; JS will swap to LAN IP when possible -->
     <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Printer Control ↗</a>
-  </nav>
+  </div>
 
   <section class="pages">
     <div class="page-title" id="page-title">Machine</div>
