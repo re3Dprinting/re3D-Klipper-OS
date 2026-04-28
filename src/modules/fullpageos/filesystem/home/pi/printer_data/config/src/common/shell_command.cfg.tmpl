@@ -202,6 +202,24 @@ gcode:
     RESPOND TYPE=command MSG="action:prompt_show"
 
 
+# ─── Display mode switching ──────────────────────────────────────────────────
+
+[gcode_shell_command switch_display_mode]
+command: sudo bash /usr/local/bin/switch_display_mode.sh
+timeout: 30.
+verbose: True
+
+[gcode_macro SWITCH_TO_KLIPPERSCREEN]
+description: Switch the touchscreen display to KlipperScreen and reboot
+gcode:
+    RUN_SHELL_COMMAND CMD=switch_display_mode PARAMS=klipperscreen
+
+[gcode_macro SWITCH_TO_MAINSAIL]
+description: Switch the touchscreen display to Mainsail (Chromium) and reboot
+gcode:
+    RUN_SHELL_COMMAND CMD=switch_display_mode PARAMS=mainsail
+
+
 
 
 

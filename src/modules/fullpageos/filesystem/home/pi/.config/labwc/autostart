@@ -1,6 +1,6 @@
 #!/bin/sh
 # re3D-OS labwc kiosk autostart
-# This file is executed by labwc when the Wayland session starts.
+# This file runs only in Mainsail mode (re3d-session execs labwc for Mainsail).
 
 # VNC server for remote access (if installed)
 if command -v wayvnc >/dev/null 2>&1; then

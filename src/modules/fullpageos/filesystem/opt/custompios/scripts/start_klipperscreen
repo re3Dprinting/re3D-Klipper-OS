@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# re3D-OS: Start KlipperScreen as a native Wayland (GTK3) application inside labwc.
+# Invoked by ~/.config/labwc/autostart when /etc/re3d-display-mode == "klipperscreen".
+
+KS_DIR="/home/pi/KlipperScreen"
+KS_ENV="/home/pi/klipperscreen-env"
+MODE_FILE="/etc/re3d-display-mode"
+LOG="/tmp/klipperscreen-launch.log"
+MAX_FAILS=3
+FAIL_COUNT=0
+
+exec >> "$LOG" 2>&1
+echo "[$(date)] start_klipperscreen launched (pid $$)"
+
+# --- Wayland environment --------------------------------------------------
+# labwc should have already set these; provide safe fallbacks.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export XDG_SESSION_TYPE=wayland
+export GDK_BACKEND=wayland
+export GTK_A11Y=none          # skip accessibility bus; avoids dbus timeouts
+export GTK_CSD=0              # disable GTK client-side decorations inside cage
+
+echo "[$(date)] XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR} WAYLAND_DISPLAY=${WAYLAND_DISPLAY}"
+
+# --- Wait for Wayland compositor socket ---------------------------------
+# labwc writes the socket a moment after launching autostart.
+_WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
+for _i in $(seq 1 20); do
+  [ -S "${_WAYLAND_SOCKET}" ] && break
+  sleep 1
+done
+if [ ! -S "${_WAYLAND_SOCKET}" ]; then
+  # Try wayland-1 as fallback (some labwc versions use it)
+  if [ -S "${XDG_RUNTIME_DIR}/wayland-1" ]; then
+    export WAYLAND_DISPLAY=wayland-1
+    echo "[$(date)] Switched to wayland-1 socket"
+  else
+    echo "[$(date)] ERROR: Wayland socket not found — falling back to Mainsail."
+    echo "mainsail" > "${MODE_FILE}"
+    exec /opt/custompios/scripts/run_onepageos
+  fi
+fi
+echo "[$(date)] Wayland socket ready: ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
+
+# --- Show background immediately so the screen isn't blank ---------------
+swaybg -c '#111112' &
+
+# --- Sanity checks -------------------------------------------------------
+_fallback() {
+  echo "[$(date)] $1 — reverting to Mainsail mode."
+  echo "mainsail" > "${MODE_FILE}"
+  exec /opt/custompios/scripts/run_onepageos
+}
+
+if [ ! -d "${KS_DIR}" ]; then
+  _fallback "KlipperScreen not installed at ${KS_DIR}"
+fi
+if [ ! -x "${KS_ENV}/bin/python" ]; then
+  _fallback "KlipperScreen venv missing at ${KS_ENV}"
+fi
+
+# --- Wait for Moonraker (max 60 s) before connecting --------------------
+for _i in $(seq 1 30); do
+  curl -s --max-time 2 http://localhost:7125/server/info >/dev/null 2>&1 && break
+  sleep 2
+done
+echo "[$(date)] Proceeding to launch KlipperScreen via cage..."
+
+# --- Launch loop ---------------------------------------------------------
+# cage is a single-app kiosk Wayland compositor — labwc fullscreens it via rc.xml.
+# Restart on crash; revert to Mainsail after MAX_FAILS.
+while true; do
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "[$(date)] Starting KlipperScreen via cage (attempt ${FAIL_COUNT})..."
+  cage -- "${KS_ENV}/bin/python" "${KS_DIR}/screen.py"
+  _exit=$?
+  echo "[$(date)] KlipperScreen exited with code ${_exit}"
+
+  if [ "${FAIL_COUNT}" -ge "${MAX_FAILS}" ]; then
+    _fallback "KlipperScreen crashed ${MAX_FAILS} times"
+  fi
+
+  echo "[$(date)] Restarting in 3s..."
+  sleep 3
+done

@@ -198,6 +198,20 @@
         <div id="ni-ifs" style="margin-top:8px"></div>
       </div>
     </div>
+
+    <!-- Display Mode -->
+    <div class="card sys-card">
+      <div class="sys-title">Display Mode</div>
+      <div class="sys-subtitle">
+        <span>Choose the touchscreen interface. A reboot is required to switch.</span>
+        <span class="chip dim" id="display-mode-pill">Loading…</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+        <button type="button" id="btn-use-mainsail" disabled>Mainsail (Chromium)</button>
+        <button type="button" id="btn-use-klipperscreen" disabled>KlipperScreen</button>
+      </div>
+      <div class="hint" id="display-mode-hint" style="display:none;margin-top:4px;"></div>
+    </div>
   </div>
 
   <!-- Right column: reports / history -->
@@ -590,5 +604,65 @@
       window.open('tabs/report.html', '_blank');
     });
   }
+
+  // ---- Display Mode toggle ----
+  const btnMainsail       = document.getElementById('btn-use-mainsail');
+  const btnKlipperscreen  = document.getElementById('btn-use-klipperscreen');
+  const modePill          = document.getElementById('display-mode-pill');
+  const modeHint          = document.getElementById('display-mode-hint');
+
+  async function loadDisplayMode(){
+    try {
+      const r = await fetch('/cgi-bin/get_display_mode.sh', {cache:'no-store'});
+      const mode = r.ok ? (await r.text()).trim() : 'mainsail';
+      applyDisplayMode(mode);
+    } catch(_) {
+      applyDisplayMode('mainsail');
+    }
+  }
+
+  function applyDisplayMode(mode){
+    if (!modePill) return;
+    if (mode === 'klipperscreen') {
+      modePill.textContent = 'KlipperScreen';
+      modePill.style.color = 'var(--brand)';
+      modePill.style.borderColor = 'var(--brand)';
+    } else {
+      modePill.textContent = 'Mainsail';
+      modePill.style.color = 'var(--success)';
+      modePill.style.borderColor = 'var(--success)';
+    }
+    if (btnMainsail)      { btnMainsail.disabled      = (mode !== 'klipperscreen'); }
+    if (btnKlipperscreen) { btnKlipperscreen.disabled  = (mode === 'klipperscreen'); }
+  }
+
+  async function setDisplayMode(mode){
+    if (!modeHint) return;
+    modeHint.style.display = 'block';
+    modeHint.textContent   = 'Switching… printer will reboot.';
+    if (btnMainsail)      btnMainsail.disabled      = true;
+    if (btnKlipperscreen) btnKlipperscreen.disabled  = true;
+    try {
+      await fetch('/cgi-bin/set_display_mode.sh', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded',
+                  'Content-Length': ('mode=' + mode).length},
+        body: 'mode=' + mode,
+        cache: 'no-store'
+      });
+      modeHint.textContent = 'Mode saved — rebooting…';
+    } catch(_) {
+      modeHint.textContent = 'Request sent — rebooting…';
+    }
+  }
+
+  if (btnMainsail) {
+    btnMainsail.addEventListener('click', () => setDisplayMode('mainsail'));
+  }
+  if (btnKlipperscreen) {
+    btnKlipperscreen.addEventListener('click', () => setDisplayMode('klipperscreen'));
+  }
+
+  loadDisplayMode();
 })();
 </script>

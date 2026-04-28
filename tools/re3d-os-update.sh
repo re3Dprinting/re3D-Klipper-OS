@@ -57,6 +57,7 @@ DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 DST_COMMON="/home/pi/printer_data/config/src/common"
 DST_SHELL_CMDS="/usr/local/bin"
+DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
 
 # ---------- Start ----------
@@ -142,10 +143,18 @@ fi
 set_progress 45
 
 if [ -d "${SRC_SHELL_CMDS}" ]; then
-  log "${LOG_TAG} Syncing shell commands to ${DST_SHELL_CMDS}..."
-  # Install each file with correct perms (matches chroot build behaviour)
-  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f -print0 \
+  log "${LOG_TAG} Syncing shell scripts to ${DST_SHELL_CMDS}..."
+  # Install executable scripts (non-.cfg) to /usr/local/bin
+  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
     | xargs -0 -I{} install -m 0755 -o root -g root "{}" "${DST_SHELL_CMDS}/"
+
+  # Deploy shell_command.cfg from the template (setup_printer.py is the renderer,
+  # but we can also re-run it here so the live file stays in sync with the template)
+  SRC_TMPL="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common/shell_command.cfg.tmpl"
+  if [ -f "${SRC_TMPL}" ]; then
+    install -m 0644 -o pi -g pi "${SRC_TMPL}" "${DST_SHELL_CFG}/shell_command.cfg"
+    log "${LOG_TAG} shell_command.cfg deployed from template to ${DST_SHELL_CFG}/"
+  fi
 else
   log "${LOG_TAG} WARNING: Source ${SRC_SHELL_CMDS} not found, skipping shell commands."
 fi
@@ -296,16 +305,16 @@ fi
 # b) Set graphical target
 systemctl set-default graphical.target 2>/dev/null || true
 
-# c) Configure LightDM for labwc autologin
-if ! grep -q 'autologin-session=labwc' /etc/lightdm/lightdm.conf 2>/dev/null; then
-  log "${LOG_TAG} Configuring LightDM for labwc Wayland session..."
+# c) Configure LightDM for re3d-kiosk session (migrate from labwc direct if needed)
+if ! grep -q 'autologin-session=re3d-kiosk' /etc/lightdm/lightdm.conf 2>/dev/null; then
+  log "${LOG_TAG} Updating LightDM to use re3d-kiosk session..."
   cat > /etc/lightdm/lightdm.conf <<'LIGHTDM_EOF'
 [LightDM]
 
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
-user-session=labwc
-autologin-session=labwc
+user-session=re3d-kiosk
+autologin-session=re3d-kiosk
 autologin-user=pi
 autologin-user-timeout=0
 
@@ -315,7 +324,18 @@ autologin-user-timeout=0
 LIGHTDM_EOF
 fi
 
-# d) Deploy labwc config files (autostart, rc.xml, environment)
+# d) Install re3d-kiosk Wayland session desktop file
+install -d -m 0755 /usr/share/wayland-sessions
+if [ ! -f /usr/share/wayland-sessions/re3d-kiosk.desktop ]; then
+  cat > /usr/share/wayland-sessions/re3d-kiosk.desktop <<'EOF'
+[Desktop Entry]
+Name=re3D Kiosk
+Comment=re3D-OS kiosk display session (Mainsail or KlipperScreen)
+Exec=/opt/custompios/scripts/re3d-session
+DesktopNames=re3d-kiosk
+Type=Application
+EOF
+fi
 mkdir -p /home/pi/.config/labwc
 if [ -d "${SRC_LABWC}" ]; then
   for f in "${SRC_LABWC}"/autostart "${SRC_LABWC}"/rc.xml "${SRC_LABWC}"/environment; do
@@ -324,8 +344,9 @@ if [ -d "${SRC_LABWC}" ]; then
   chmod +x /home/pi/.config/labwc/autostart 2>/dev/null || true
 fi
 
-# e) Update kiosk scripts
+# e) Update kiosk scripts (including new re3d-session wrapper)
 for src_dst in \
+  "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/re3d-session:/opt/custompios/scripts/re3d-session" \
   "${SRC_RUN_ONEPAGEOS}:/opt/custompios/scripts/run_onepageos" \
   "${SRC_CHROMIUM_SCRIPT}:/opt/custompios/scripts/start_chromium_browser" \
   "${SRC_FULLSCREEN}:/opt/custompios/scripts/fullscreen" \
@@ -336,15 +357,105 @@ for src_dst in \
   [ -f "$src" ] && install -m 0755 "$src" "$dst"
 done
 
-# f) Apply build-time placeholder in run_onepageos
+# f) Deploy start_klipperscreen script (kept for compatibility)
+SRC_KS_SCRIPT="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/start_klipperscreen"
+[ -f "${SRC_KS_SCRIPT}" ] && install -m 0755 "${SRC_KS_SCRIPT}" /opt/custompios/scripts/start_klipperscreen
+
+# g) Apply build-time placeholder in run_onepageos
 sed -i 's@%BROWSER_START_SCRIPT%@/opt/custompios/scripts/start_chromium_browser@g' \
   /opt/custompios/scripts/run_onepageos 2>/dev/null || true
 
-# g) Disable legacy x11vnc (wayvnc starts from labwc autostart)
+# h) Disable legacy x11vnc (wayvnc starts from labwc autostart)
 systemctl disable x11vnc.service 2>/dev/null || true
 systemctl stop x11vnc.service 2>/dev/null || true
 
 log "${LOG_TAG} Wayland/labwc migration complete."
+
+# ---------- 9.6) KlipperScreen: install or update ----------
+set_progress 88
+
+log "${LOG_TAG} Checking KlipperScreen..."
+
+KS_DIR="/home/pi/KlipperScreen"
+KS_ENV="/home/pi/klipperscreen-env"
+
+# Ensure GTK3 / PyGObject / cage packages are present
+if ! command -v cage >/dev/null 2>&1 || ! python3 -c "import gi" >/dev/null 2>&1; then
+  log "${LOG_TAG} Installing KlipperScreen system dependencies (incl. cage)..."
+  apt-get install -y --no-install-recommends \
+    python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-pango-1.0 \
+    gir1.2-gdk-3.0 libgtk-3-0 python3-cairo python3-setuptools \
+    libdbus-1-dev dbus cage
+fi
+
+# Clone or update KlipperScreen repo
+export GIT_CONFIG_COUNT=3
+export GIT_CONFIG_KEY_2=safe.directory
+export GIT_CONFIG_VALUE_2="${KS_DIR}"
+
+if [ ! -d "${KS_DIR}/.git" ]; then
+  log "${LOG_TAG} Cloning KlipperScreen..."
+  sudo -u pi git clone --depth 1 https://github.com/KlipperScreen/KlipperScreen.git "${KS_DIR}" \
+    2>&1 | tee -a "${LOG_FILE}" || true
+else
+  log "${LOG_TAG} Updating KlipperScreen..."
+  cd "${KS_DIR}"
+  sudo -u pi git fetch origin 2>&1 | tee -a "${LOG_FILE}" || true
+  LOCAL_KS=$(git rev-parse HEAD)
+  REMOTE_KS=$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/master 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
+  if [ -n "${REMOTE_KS}" ] && [ "${LOCAL_KS}" != "${REMOTE_KS}" ]; then
+    sudo -u pi git reset --hard "${REMOTE_KS}" 2>&1 | tee -a "${LOG_FILE}"
+    log "${LOG_TAG} KlipperScreen updated (${LOCAL_KS:0:8} → ${REMOTE_KS:0:8})."
+    # Reinstall Python deps after a repo update
+    if [ -x "${KS_ENV}/bin/pip" ]; then
+      sudo -u pi "${KS_ENV}/bin/pip" install --no-cache-dir \
+        -r "${KS_DIR}/requirements.txt" 2>&1 | tee -a "${LOG_FILE}" || true
+    fi
+  else
+    log "${LOG_TAG} KlipperScreen is already up-to-date."
+  fi
+fi
+
+# Create venv if missing
+if [ ! -x "${KS_ENV}/bin/python" ]; then
+  log "${LOG_TAG} Creating klipperscreen-env..."
+  sudo -u pi python3 -m venv --system-site-packages "${KS_ENV}" \
+    2>&1 | tee -a "${LOG_FILE}" || true
+fi
+
+# Always verify pip requirements are installed (repairs failed chroot builds)
+KS_REQS="${KS_DIR}/scripts/KlipperScreen-requirements.txt"
+if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_REQS}" ]; then
+  KS_REQS_HASH=$(md5sum "${KS_REQS}" | cut -d' ' -f1)
+  KS_HASH_FILE="${KS_ENV}/.requirements-hash"
+  if [ ! -f "${KS_HASH_FILE}" ] || [ "$(cat "${KS_HASH_FILE}" 2>/dev/null)" != "${KS_REQS_HASH}" ]; then
+    log "${LOG_TAG} Installing/repairing KlipperScreen Python dependencies..."
+    sudo -u pi "${KS_ENV}/bin/pip" install --no-cache-dir \
+      -r "${KS_REQS}" 2>&1 | tee -a "${LOG_FILE}" \
+      && echo "${KS_REQS_HASH}" > "${KS_HASH_FILE}" \
+      || log "${LOG_TAG} WARNING: KlipperScreen pip install had errors (see above)"
+  else
+    log "${LOG_TAG} KlipperScreen Python dependencies up-to-date."
+  fi
+else
+  log "${LOG_TAG} WARNING: ${KS_REQS} not found — skipping KlipperScreen dep install."
+fi
+
+# Always write correct KlipperScreen config (removes any stale/unrecognized options)
+sudo -u pi bash -c '
+  mkdir -p ~/.config/KlipperScreen
+  printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
+' || true
+
+# Ensure display mode flag exists (default: mainsail)
+if [ ! -f /etc/re3d-display-mode ]; then
+  echo "mainsail" > /etc/re3d-display-mode
+fi
+# Group-writable so user 'pi' can revert mode without sudo
+chown root:pi /etc/re3d-display-mode
+chmod 0664 /etc/re3d-display-mode
+
+log "${LOG_TAG} KlipperScreen check complete."
 
 systemctl disable splash_video.service 2>/dev/null || true
 
@@ -352,6 +463,19 @@ systemctl disable splash_video.service 2>/dev/null || true
 set_progress 90
 
 log "${LOG_TAG} Reloading services (best-effort)..."
+systemctl daemon-reload || true
+
+# Ensure crowsnest doesn't block boot waiting for network-online.target
+mkdir -p /etc/systemd/system/crowsnest.service.d
+cat > /etc/systemd/system/crowsnest.service.d/no-network-wait.conf <<'DROPIN_EOF'
+[Unit]
+After=
+After=network.target
+Wants=
+DROPIN_EOF
+
+# Disable NetworkManager-wait-online — blocks network-online.target for up to 2 min
+systemctl disable NetworkManager-wait-online.service || true
 systemctl daemon-reload || true
 
 for svc in klipper moonraker mainsail nginx crowsnest; do

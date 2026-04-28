@@ -89,14 +89,14 @@ apt-get install -y --no-install-recommends \
 
 systemctl set-default graphical.target
 
-# Configure LightDM for autologin with labwc Wayland session
+# Configure LightDM for autologin with re3d-kiosk session
 cat > /etc/lightdm/lightdm.conf <<'LIGHTDM_EOF'
 [LightDM]
 
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
-user-session=labwc
-autologin-session=labwc
+user-session=re3d-kiosk
+autologin-session=re3d-kiosk
 autologin-user=pi
 autologin-user-timeout=0
 
@@ -790,6 +790,20 @@ if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true
 mkdir -p /etc/systemd/system/multi-user.target.wants
 [ -e /lib/systemd/system/crowsnest.service ] && ln -sf /lib/systemd/system/crowsnest.service /etc/systemd/system/multi-user.target.wants/crowsnest.service || true
 
+# Drop-in: remove crowsnest's network-online.target dependency so it doesn't
+# block graphical.target (and therefore LightDM) from starting.
+mkdir -p /etc/systemd/system/crowsnest.service.d
+cat > /etc/systemd/system/crowsnest.service.d/no-network-wait.conf <<'DROPIN_EOF'
+[Unit]
+After=
+After=network.target
+Wants=
+DROPIN_EOF
+
+# Disable NetworkManager-wait-online — it blocks all of network-online.target
+# for up to 2 minutes. Services that need the network retry on their own.
+systemctl disable NetworkManager-wait-online.service || true
+
 ###############################################################################
 # Beacon3D – beacon_klipper (run after Klipper + klippy-env are created)
 ###############################################################################
@@ -849,11 +863,20 @@ DST="/usr/local/bin"
 
 if [ -d "$SRC" ]; then
   install -d -m 0755 "$DST"
-  find "$SRC" -maxdepth 1 -type f -print0 \
+  # Install executable scripts (non-.cfg) to /usr/local/bin
+  find "$SRC" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
     | xargs -0 -I{} install -m 0755 -o root -g root "{}" "$DST/"
 
+  # Deploy shell_command.cfg to printer_data/config/ so Klipper's [include *shell_command.cfg] picks it up
+  if [ -f "$SRC/shell_command.cfg" ]; then
+    install -m 0644 -o "${BASE_USER}" -g "${BASE_USER}" \
+      "$SRC/shell_command.cfg" \
+      "/home/${BASE_USER}/printer_data/config/shell_command.cfg"
+    echo "Installed shell_command.cfg to /home/${BASE_USER}/printer_data/config/"
+  fi
+
   echo "Installed custom shell commands to $DST:"
-  find "$SRC" -maxdepth 1 -type f -printf "  -> %f\n"
+  find "$SRC" -maxdepth 1 -type f ! -name '*.cfg' -printf "  -> %f\n"
 else
   echo "NOTE: $SRC not found; skipping shell command install."
 fi
@@ -940,6 +963,84 @@ command -v systemctl >/dev/null && systemctl enable klipper-autostart.service ||
 
 [ -f /usr/local/bin/flash_once.sh ] && chmod +x /usr/local/bin/flash_once.sh || true
 [ -f /home/pi/wait.html ] && chown pi:pi /home/pi/wait.html || true
+
+###############################################################################
+# KlipperScreen: manual clone + Python venv (GTK3 Wayland native)
+###############################################################################
+step_start "KlipperScreen Install"
+
+# System packages: GTK3 runtime + PyGObject + touch input libs + cage kiosk compositor
+apt-get install -y --no-install-recommends \
+  python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-pango-1.0 \
+  gir1.2-gdk-3.0 libgtk-3-0 python3-cairo python3-setuptools \
+  libdbus-1-dev dbus cage
+
+# Clone KlipperScreen
+sudo -u "${BASE_USER}" bash -lc '
+  set -e
+  if [ ! -d "$HOME/KlipperScreen/.git" ]; then
+    echo "Cloning KlipperScreen..."
+    git clone --depth 1 https://github.com/KlipperScreen/KlipperScreen.git ~/KlipperScreen
+  else
+    echo "KlipperScreen already present; updating..."
+    cd ~/KlipperScreen
+    git fetch --all -p
+    git reset --hard origin/master || git reset --hard origin/main
+  fi
+'
+
+# Create venv with access to system PyGObject packages
+sudo -u "${BASE_USER}" bash -lc '
+  if [ ! -d "$HOME/klipperscreen-env/bin" ]; then
+    echo "Creating klipperscreen-env..."
+    python3 -m venv --system-site-packages ~/klipperscreen-env
+  else
+    echo "klipperscreen-env already present."
+  fi
+
+  # Always install/repair requirements at build time.
+  # Use --prefer-binary to avoid source builds that fail in QEMU ARM chroots.
+  KS_REQS="$HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
+  echo "Installing KlipperScreen Python dependencies (prefer-binary)..."
+  ~/klipperscreen-env/bin/pip install --no-cache-dir --prefer-binary \
+    -r "$KS_REQS" \
+    && md5sum "$KS_REQS" | cut -d" " -f1 \
+         > ~/klipperscreen-env/.requirements-hash \
+    || echo "WARNING: KlipperScreen pip install had errors — will retry on first update."
+'
+
+# Default KlipperScreen config (fullscreen)
+sudo -u "${BASE_USER}" bash -lc '
+  # Always write config — ensures no stale options from previous builds remain
+  mkdir -p ~/.config/KlipperScreen
+  printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
+'
+
+# Mark kiosk scripts as executable
+chmod +x /opt/custompios/scripts/start_klipperscreen || true
+chmod +x /opt/custompios/scripts/re3d-session || true
+
+# Install re3d-kiosk Wayland session desktop file for LightDM
+install -d -m 0755 /usr/share/wayland-sessions
+cat > /usr/share/wayland-sessions/re3d-kiosk.desktop <<'EOF'
+[Desktop Entry]
+Name=re3D Kiosk
+Comment=re3D-OS kiosk display session (Mainsail or KlipperScreen)
+Exec=/opt/custompios/scripts/re3d-session
+DesktopNames=re3d-kiosk
+Type=Application
+EOF
+
+# Default mode: Mainsail (Chromium) — unchanged on upgrades
+if [ ! -f /etc/re3d-display-mode ]; then
+  echo "mainsail" > /etc/re3d-display-mode
+fi
+# Group-writable so user 'pi' can revert mode without sudo
+chown root:"${BASE_USER}" /etc/re3d-display-mode
+chmod 0664 /etc/re3d-display-mode
+
+step_end
+###############################################################################
 
 touch /etc/firstboot-splash
 
