@@ -148,13 +148,12 @@ if [ -d "${SRC_SHELL_CMDS}" ]; then
   find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
     | xargs -0 -I{} install -m 0755 -o root -g root "{}" "${DST_SHELL_CMDS}/"
 
-  # Deploy shell_command.cfg to its Klipper config location
-  if [ -f "${SRC_SHELL_CMDS}/shell_command.cfg" ]; then
-    install -d -m 0755 -o pi -g pi "${DST_SHELL_CFG}"  # already exists, harmless
-    install -m 0644 -o pi -g pi \
-      "${SRC_SHELL_CMDS}/shell_command.cfg" \
-      "${DST_SHELL_CFG}/shell_command.cfg"
-    log "${LOG_TAG} shell_command.cfg deployed to ${DST_SHELL_CFG}/"
+  # Deploy shell_command.cfg from the template (setup_printer.py is the renderer,
+  # but we can also re-run it here so the live file stays in sync with the template)
+  SRC_TMPL="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common/shell_command.cfg.tmpl"
+  if [ -f "${SRC_TMPL}" ]; then
+    install -m 0644 -o pi -g pi "${SRC_TMPL}" "${DST_SHELL_CFG}/shell_command.cfg"
+    log "${LOG_TAG} shell_command.cfg deployed from template to ${DST_SHELL_CFG}/"
   fi
 else
   log "${LOG_TAG} WARNING: Source ${SRC_SHELL_CMDS} not found, skipping shell commands."
