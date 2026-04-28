@@ -36,9 +36,9 @@
   /* "Terminal" style output – used for save + graphs sections */
   .logs-out {
     margin-top: 4px;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: #1C1C1E;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
     border: 1px solid var(--border);
     max-height: 220px;
     overflow: auto;
@@ -103,11 +103,11 @@
 
   /* One block per log file (e.g. klippy.log, klippy.log.2025-05-12) */
   .log-errors-file {
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
-    background: #111112;
+    background: var(--surface-0);
     padding: 10px 12px;
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-sm);
   }
 
   .log-file-title {

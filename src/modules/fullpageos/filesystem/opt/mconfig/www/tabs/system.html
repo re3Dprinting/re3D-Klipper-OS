@@ -14,11 +14,11 @@
   }
 
   .sys-section-label{
-    font-size:11px;
+    font-size:10.5px;
     font-weight:700;
-    letter-spacing:0.08em;
+    letter-spacing:0.1em;
     text-transform:uppercase;
-    color:var(--gray-400);
+    color:var(--dim);
     margin:0 0 4px 2px;
   }
 
@@ -58,9 +58,9 @@
 
   .sys-out{
     margin-top:4px;
-    padding:8px 10px;
-    border-radius:10px;
-    background:#1C1C1E;
+    padding:10px 12px;
+    border-radius:var(--radius-sm);
+    background:var(--surface-1);
     border:1px solid var(--border);
     max-height:220px;
     overflow:auto;
@@ -80,13 +80,14 @@
 
   .chip{
     display:inline-block;
-    padding:2px 6px;
-    border:1px solid var(--border);
+    padding:2px 8px;
+    border:1px solid var(--border-2);
     border-radius:8px;
     margin:2px 4px 2px 0;
     font-size:11px;
     line-height:1.3;
     white-space:nowrap;
+    background:var(--surface-2);
   }
 
   .iface{
@@ -106,10 +107,10 @@
   }
 
   .ph-panel{
-    border-radius:10px;
+    border-radius:var(--radius-sm);
     border:1px solid var(--border);
-    padding:8px 10px;
-    background:#111112;
+    padding:12px;
+    background:var(--surface-0);
     display:flex;
     flex-direction:column;
     gap:6px;
@@ -137,21 +138,21 @@
   /* Modal (matches Machine tab style) */
   .modal-wrap{
     position:fixed; inset:0; display:grid; place-items:center;
-    background:rgba(0,0,0,.45); backdrop-filter:saturate(.8) blur(2px); z-index:999;
+    background:rgba(0,0,0,.6); backdrop-filter:saturate(.8) blur(4px); z-index:999;
   }
   .modal{
     width:min(520px, calc(100vw - 32px));
-    background:var(--panel-outer);
-    border:none;
-    border-radius:10px;
-    box-shadow:0 10px 40px rgba(0,0,0,.6);
-    display:grid; gap:12px; padding:14px;
+    background:var(--surface-1);
+    border:1px solid var(--border-2);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow-lg);
+    display:grid; gap:12px; padding:20px;
   }
-  .modal h3{margin:0; font-size:16px; font-weight:900; color:var(--fg);}
-  .modal p{margin:0; color:var(--muted); font-size:13px; line-height:1.45;}
+  .modal h3{margin:0; font-size:16px; font-weight:800; color:var(--fg);}
+  .modal p{margin:0; color:var(--muted); font-size:13px; line-height:1.5;}
   .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:4px;}
-  .btn-ghost{background:#262628; color:var(--fg); border:none;box-shadow:2px 2px 0px 0px rgb(0 0 0 / 30%), -0.5px -0.5px 0px 0px #666868}
-  .btn-ghost:hover{background:#393B3E}
+  .btn-ghost{background:var(--surface-3); color:var(--fg); border:1px solid var(--border-2);box-shadow:none}
+  .btn-ghost:hover{filter:brightness(1.25)}
 </style>
 
 <div class="content sys-content">
@@ -173,9 +174,9 @@
         Internet connection required to check for or install updates.
       </div>
       <div id="klipper-card-warn" style="display:none;
-        background:#451a03; border:1px solid #f97316; border-radius:6px;
+        background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:6px;
         padding:8px 12px; margin-top:6px; color:#fed7aa; font-size:12.5px; line-height:1.4;">
-        <strong style="color:#fb923c;">&#9888; Klipper update available</strong> &mdash;
+        <strong style="color:var(--warn);">&#9888; Klipper update available</strong> &mdash;
         The Archimajor board will need to be re-flashed after this update.
       </div>
       <div class="btn-row">
@@ -277,9 +278,9 @@
       and Mainsail updates. The printer will reboot automatically when complete.
     </p>
     <div class="klipper-warn" id="klipper-warn" style="display:none;
-      background:#451a03; border:1px solid #f97316; border-radius:6px;
+      background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:6px;
       padding:10px 14px; margin:8px 0; color:#fed7aa; font-size:13px; line-height:1.45;">
-      <strong style="color:#fb923c; font-size:14px;">&#9888; Klipper update detected</strong><br>
+      <strong style="color:var(--warn); font-size:14px;">&#9888; Klipper update detected</strong><br>
       A Klipper firmware update is available. After this update completes and the system reboots,
       <strong style="color:#fbbf24;">the Archimajor board must be re-flashed</strong> with the new firmware.
     </div>
