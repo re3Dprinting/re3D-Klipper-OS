@@ -988,11 +988,9 @@ sudo -u "${BASE_USER}" bash -lc '
 
 # Default KlipperScreen config (fullscreen)
 sudo -u "${BASE_USER}" bash -lc '
+  # Always write config — ensures no stale options from previous builds remain
   mkdir -p ~/.config/KlipperScreen
-  if [ ! -f ~/.config/KlipperScreen/KlipperScreen.conf ]; then
-    # Minimal config — fullscreen is enforced via labwc windowRules, not KlipperScreen config
-    printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
-  fi
+  printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
 '
 
 # Mark kiosk scripts as executable

@@ -432,12 +432,10 @@ else
   log "${LOG_TAG} WARNING: ${KS_REQS} not found — skipping KlipperScreen dep install."
 fi
 
-# Ensure default config (fullscreen) exists
+# Always write correct KlipperScreen config (removes any stale/unrecognized options)
 sudo -u pi bash -c '
   mkdir -p ~/.config/KlipperScreen
-  if [ ! -f ~/.config/KlipperScreen/KlipperScreen.conf ]; then
-    printf "[main]\nfullscreen = True\n" > ~/.config/KlipperScreen/KlipperScreen.conf
-  fi
+  printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
 ' || true
 
 # Ensure display mode flag exists (default: mainsail)
