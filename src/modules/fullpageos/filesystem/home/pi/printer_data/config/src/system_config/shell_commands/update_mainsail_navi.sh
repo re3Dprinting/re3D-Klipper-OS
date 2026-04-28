@@ -47,7 +47,14 @@ pick_ip() {
   echo "127.0.0.1"
 }
 
-IP="$(pick_ip)"
+# Wait up to 30 s for a real IP (network may not be up yet even if network-online.target fired)
+IP=""
+for _i in $(seq 1 15); do
+  IP="$(pick_ip)"
+  [ "${IP}" != "127.0.0.1" ] && break
+  sleep 2
+done
+
 URL="http://${IP}:${PORT}/"
 
 TMP="$(mktemp)"

@@ -790,6 +790,20 @@ if command -v systemctl >/dev/null 2>&1; then systemctl enable crowsnest || true
 mkdir -p /etc/systemd/system/multi-user.target.wants
 [ -e /lib/systemd/system/crowsnest.service ] && ln -sf /lib/systemd/system/crowsnest.service /etc/systemd/system/multi-user.target.wants/crowsnest.service || true
 
+# Drop-in: remove crowsnest's network-online.target dependency so it doesn't
+# block graphical.target (and therefore LightDM) from starting.
+mkdir -p /etc/systemd/system/crowsnest.service.d
+cat > /etc/systemd/system/crowsnest.service.d/no-network-wait.conf <<'DROPIN_EOF'
+[Unit]
+After=
+After=network.target
+Wants=
+DROPIN_EOF
+
+# Disable NetworkManager-wait-online — it blocks all of network-online.target
+# for up to 2 minutes. Services that need the network retry on their own.
+systemctl disable NetworkManager-wait-online.service || true
+
 ###############################################################################
 # Beacon3D – beacon_klipper (run after Klipper + klippy-env are created)
 ###############################################################################

@@ -463,6 +463,19 @@ set_progress 90
 log "${LOG_TAG} Reloading services (best-effort)..."
 systemctl daemon-reload || true
 
+# Ensure crowsnest doesn't block boot waiting for network-online.target
+mkdir -p /etc/systemd/system/crowsnest.service.d
+cat > /etc/systemd/system/crowsnest.service.d/no-network-wait.conf <<'DROPIN_EOF'
+[Unit]
+After=
+After=network.target
+Wants=
+DROPIN_EOF
+
+# Disable NetworkManager-wait-online — blocks network-online.target for up to 2 min
+systemctl disable NetworkManager-wait-online.service || true
+systemctl daemon-reload || true
+
 for svc in klipper moonraker mainsail nginx crowsnest; do
   log "${LOG_TAG} Restarting ${svc}.service (best-effort)..."
   systemctl restart "${svc}.service" || true
