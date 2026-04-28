@@ -849,11 +849,20 @@ DST="/usr/local/bin"
 
 if [ -d "$SRC" ]; then
   install -d -m 0755 "$DST"
-  find "$SRC" -maxdepth 1 -type f -print0 \
+  # Install executable scripts (non-.cfg) to /usr/local/bin
+  find "$SRC" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
     | xargs -0 -I{} install -m 0755 -o root -g root "{}" "$DST/"
 
+  # Deploy shell_command.cfg to printer_data/config/ so Klipper's [include *shell_command.cfg] picks it up
+  if [ -f "$SRC/shell_command.cfg" ]; then
+    install -m 0644 -o "${BASE_USER}" -g "${BASE_USER}" \
+      "$SRC/shell_command.cfg" \
+      "/home/${BASE_USER}/printer_data/config/shell_command.cfg"
+    echo "Installed shell_command.cfg to /home/${BASE_USER}/printer_data/config/"
+  fi
+
   echo "Installed custom shell commands to $DST:"
-  find "$SRC" -maxdepth 1 -type f -printf "  -> %f\n"
+  find "$SRC" -maxdepth 1 -type f ! -name '*.cfg' -printf "  -> %f\n"
 else
   echo "NOTE: $SRC not found; skipping shell command install."
 fi

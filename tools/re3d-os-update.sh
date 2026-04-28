@@ -57,6 +57,7 @@ DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 DST_COMMON="/home/pi/printer_data/config/src/common"
 DST_SHELL_CMDS="/usr/local/bin"
+DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
 
 # ---------- Start ----------
@@ -142,10 +143,19 @@ fi
 set_progress 45
 
 if [ -d "${SRC_SHELL_CMDS}" ]; then
-  log "${LOG_TAG} Syncing shell commands to ${DST_SHELL_CMDS}..."
-  # Install each file with correct perms (matches chroot build behaviour)
-  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f -print0 \
+  log "${LOG_TAG} Syncing shell scripts to ${DST_SHELL_CMDS}..."
+  # Install executable scripts (non-.cfg) to /usr/local/bin
+  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
     | xargs -0 -I{} install -m 0755 -o root -g root "{}" "${DST_SHELL_CMDS}/"
+
+  # Deploy shell_command.cfg to its Klipper config location
+  if [ -f "${SRC_SHELL_CMDS}/shell_command.cfg" ]; then
+    install -d -m 0755 -o pi -g pi "${DST_SHELL_CFG}"  # already exists, harmless
+    install -m 0644 -o pi -g pi \
+      "${SRC_SHELL_CMDS}/shell_command.cfg" \
+      "${DST_SHELL_CFG}/shell_command.cfg"
+    log "${LOG_TAG} shell_command.cfg deployed to ${DST_SHELL_CFG}/"
+  fi
 else
   log "${LOG_TAG} WARNING: Source ${SRC_SHELL_CMDS} not found, skipping shell commands."
 fi
