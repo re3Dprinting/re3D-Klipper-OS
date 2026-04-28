@@ -38,12 +38,7 @@ if [ "$MODE" = "klipperscreen" ]; then
     echo "[$(date)] Prerequisites missing — reverting to Mainsail."
     echo "mainsail" > "${MODE_FILE}"
   else
-    # --- Wait for Moonraker (max 60 s) before KlipperScreen connects -------
-    for _i in $(seq 1 30); do
-      curl -s --max-time 2 http://localhost:7125/server/info >/dev/null 2>&1 && break
-      sleep 2
-    done
-    echo "[$(date)] Proceeding to launch KlipperScreen."
+    echo "[$(date)] Launching KlipperScreen (Moonraker connection handled by KlipperScreen itself)."
 
     # --- Launch loop --------------------------------------------------------
     FAIL_COUNT=0
