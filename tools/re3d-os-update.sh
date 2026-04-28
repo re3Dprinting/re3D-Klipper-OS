@@ -457,6 +457,8 @@ chmod 0664 /etc/re3d-display-mode
 
 log "${LOG_TAG} KlipperScreen check complete."
 
+systemctl disable splash_video.service 2>/dev/null || true
+
 # ---------- 10) Reload services (best-effort, no "not found" noise) ----------
 set_progress 90
 
