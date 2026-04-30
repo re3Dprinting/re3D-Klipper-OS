@@ -1,0 +1,723 @@
+<!-- tabs/recovery.html — Print Recovery -->
+<style>
+  .rec-wrap {
+    display: grid;
+    gap: 12px;
+    max-width: 860px;
+  }
+
+  .rec-title {
+    font-weight: 800;
+    color: var(--gray-050);
+    margin-bottom: 2px;
+  }
+
+  .rec-sub {
+    font-size: 12px;
+    color: var(--gray-300);
+    line-height: 1.5;
+  }
+
+  /* Status bar across the top of the monitor card */
+  .rec-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+    border: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .rec-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .rec-pill.ok    { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+  .rec-pill.warn  { background: var(--warn-bg);    border-color: var(--warn-border);    color: var(--warn); }
+  .rec-pill.error { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
+  .rec-pill.brand { background: var(--brand-dim);  border-color: var(--brand-700);      color: var(--brand); }
+
+  .rec-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+    animation: rec-pulse 1.4s ease-in-out infinite;
+  }
+  .rec-dot.static { animation: none }
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1 }
+    50%       { opacity: 0.3 }
+  }
+
+  /* Progress bar */
+  .rec-progress-wrap {
+    margin-top: 4px;
+  }
+  .rec-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .rec-progress-track {
+    height: 6px;
+    background: var(--surface-0);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .rec-progress-fill {
+    height: 100%;
+    background: var(--brand);
+    border-radius: 999px;
+    transition: width 1s linear;
+    width: 0%;
+  }
+
+  /* File info grid */
+  .rec-kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+  }
+  .rec-kv .k { color: var(--muted) }
+  .rec-kv .v { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all }
+
+  /* Recovery action card */
+  .rec-action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  @media (max-width: 680px) {
+    .rec-action-grid { grid-template-columns: 1fr }
+  }
+
+  .rec-action-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rec-action-title { font-weight: 600; font-size: 13px; color: var(--fg) }
+  .rec-action-hint  { font-size: 11px; color: var(--gray-300); line-height: 1.4 }
+
+  .rec-out {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    max-height: 200px;
+    overflow: auto;
+    font-size: 12px;
+    color: var(--gray-200);
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* Layer jump controls */
+  .rec-layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .rec-layer-row input[type="number"] {
+    width: 90px;
+  }
+  .rec-layer-row input[type="text"] {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .btn-danger {
+    background: rgba(239,68,68,.15);
+    border: 1px solid var(--error-border);
+    color: var(--error);
+  }
+  .btn-danger:hover { background: var(--error); color: #fff }
+
+  .rec-warn-box {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: var(--radius-xs);
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #fed7aa;
+    line-height: 1.4;
+  }
+  .rec-warn-box strong { color: var(--warn) }
+
+  .rec-section-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 4px 0 2px 2px;
+  }
+</style>
+
+<div class="content rec-wrap">
+
+  <!-- ── Section: Live Monitor ───────────────────────────────────── -->
+  <div class="rec-section-label">Live print monitor</div>
+
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div>
+      <div class="rec-title">Print Progress</div>
+      <div class="rec-sub">Monitors the active print via Moonraker WebSocket. Recovery data is captured automatically while a print is running.</div>
+    </div>
+
+    <div class="rec-status-bar">
+      <span class="rec-pill" id="rec-ws-pill"><span class="rec-dot static" id="rec-ws-dot"></span>WS: —</span>
+      <span class="rec-pill" id="rec-state-pill">State: —</span>
+      <span class="rec-pill" id="rec-pos-pill">Position: —</span>
+      <span class="rec-pill" id="rec-z-pill">Z: —</span>
+      <span class="rec-pill" id="rec-speed-pill">Speed: —</span>
+    </div>
+
+    <div class="rec-progress-wrap">
+      <div class="rec-progress-label">
+        <span id="rec-file-label">No active print</span>
+        <span id="rec-pct-label">—</span>
+      </div>
+      <div class="rec-progress-track">
+        <div class="rec-progress-fill" id="rec-progress-fill"></div>
+      </div>
+    </div>
+
+    <div class="rec-kv" id="rec-file-kv" style="display:none">
+      <span class="k">File</span>       <span class="v" id="rec-kv-file">—</span>
+      <span class="k">File size</span>  <span class="v" id="rec-kv-size">—</span>
+      <span class="k">Captured Z</span> <span class="v" id="rec-kv-z">—</span>
+      <span class="k">Byte offset</span><span class="v" id="rec-kv-pos">—</span>
+    </div>
+
+    <div id="rec-snapshot-status" class="rec-warn-box" style="display:none"></div>
+  </div>
+
+  <!-- ── Section: Recovery Actions ─────────────────────────────── -->
+  <div class="rec-section-label">Recovery actions</div>
+
+  <!-- Power-loss / interrupt recovery -->
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div>
+      <div class="rec-title">Recover Interrupted Print</div>
+      <div class="rec-sub">
+        Uses the last captured byte position to slice the original G-code file.
+        A new <span style="font-family:monospace">reCover_*.gcode</span> file is written to the gcodes folder and queued for printing.
+        The original file is kept as a <span style="font-family:monospace">.backup</span>.
+      </div>
+    </div>
+
+    <div id="rec-no-snapshot" class="rec-warn-box">
+      <strong>No recovery snapshot available.</strong>
+      Start a print while this tab is open (or re-open the tab during a print) to capture position data. You can also supply values manually below.
+    </div>
+
+    <div class="rec-kv" id="rec-snapshot-kv" style="display:none">
+      <span class="k">Snapshot file</span>  <span class="v" id="snap-file">—</span>
+      <span class="k">Byte position</span>   <span class="v" id="snap-pos">—</span>
+      <span class="k">Last Z</span>          <span class="v" id="snap-z">—</span>
+      <span class="k">Last speed</span>      <span class="v" id="snap-speed">—</span>
+    </div>
+
+    <div class="rec-action-grid">
+      <!-- Auto-recover using snapshot -->
+      <div class="rec-action-panel">
+        <div class="rec-action-title">Auto-recover from snapshot</div>
+        <div class="rec-action-hint">Slice the file at the captured byte position. Requires a snapshot from the monitor above.</div>
+        <div style="margin-top:4px">
+          <button type="button" id="btn-auto-recover" disabled>Generate Recovery File</button>
+        </div>
+      </div>
+
+      <!-- Manual recover -->
+      <div class="rec-action-panel">
+        <div class="rec-action-title">Manual recovery</div>
+        <div class="rec-action-hint">Provide the file name and byte position yourself (useful after a power loss with no running session).</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+          <div>
+            <label>G-code filename (in <span style="font-family:monospace">/gcodes/</span>)</label>
+            <input type="text" id="manual-file" placeholder="my_print.gcode">
+          </div>
+          <div class="rec-layer-row">
+            <div style="flex:1">
+              <label>Byte position</label>
+              <input type="number" id="manual-pos" min="0" placeholder="0">
+            </div>
+            <div style="flex:1">
+              <label>Last Z (mm)</label>
+              <input type="number" id="manual-z" min="0" step="0.01" placeholder="auto">
+            </div>
+          </div>
+          <div>
+            <label>Last speed (mm/min, optional)</label>
+            <input type="number" id="manual-speed" min="0" placeholder="auto">
+          </div>
+          <div class="btn-row" style="justify-content:flex-start;margin-top:2px">
+            <button type="button" id="btn-manual-recover">Generate Recovery File</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rec-out" id="out-recover" style="display:none"></div>
+  </div>
+
+  <!-- ── Section: Resume from Layer ───────────────────────────── -->
+  <div class="rec-section-label">Resume from layer (no snapshot needed)</div>
+
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div>
+      <div class="rec-title">Slice at Layer / Z Height</div>
+      <div class="rec-sub">
+        Choose a G-code file and provide a target Z height. The tool will search the file for
+        the nearest layer change at or above that height and produce a
+        <span style="font-family:monospace">reCover_*.gcode</span> starting from that point.
+        Useful when you know roughly how far a print got before failing.
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div>
+        <label>G-code file</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="layer-file-select" style="flex:1">
+            <option value="">— select a file —</option>
+          </select>
+          <button type="button" id="btn-refresh-files" class="btn-ghost" style="white-space:nowrap;padding:8px 12px">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="rec-layer-row">
+        <div>
+          <label>Resume Z height (mm)</label>
+          <input type="number" id="layer-z" min="0" step="0.01" placeholder="e.g. 12.4">
+        </div>
+        <div style="flex:1">
+          <label>Custom output name (optional)</label>
+          <input type="text" id="layer-outname" placeholder="auto: reCover_<filename>">
+        </div>
+      </div>
+
+      <div id="layer-file-info" class="rec-kv" style="display:none">
+        <span class="k">Detected layers</span><span class="v" id="lfi-layers">—</span>
+        <span class="k">Max Z</span>           <span class="v" id="lfi-maxz">—</span>
+        <span class="k">File size</span>       <span class="v" id="lfi-size">—</span>
+      </div>
+
+      <div class="btn-row" style="justify-content:flex-start">
+        <button type="button" id="btn-analyze">Analyze File</button>
+        <button type="button" id="btn-layer-recover" disabled>Generate Recovery File</button>
+      </div>
+    </div>
+
+    <div class="rec-out" id="out-layer" style="display:none"></div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  /* ── Moonraker connection ── */
+  const host = location.hostname || 'localhost';
+  const MR   = (localStorage.getItem('moonrakerUrl') || `http://${host}:7125`).replace(/\/+$/, '');
+  const WS_URL = `ws://${new URL(MR).host}/websocket`;
+
+  /* ── Snapshot state (session memory) ── */
+  let snapshot = null; // { file, filePath, fileSize, filePosition, lastZ, lastSpeed }
+
+  /* ── UI refs ── */
+  const wsPill      = document.getElementById('rec-ws-pill');
+  const wsDot       = document.getElementById('rec-ws-dot');
+  const statePill   = document.getElementById('rec-state-pill');
+  const posPill     = document.getElementById('rec-pos-pill');
+  const zPill       = document.getElementById('rec-z-pill');
+  const speedPill   = document.getElementById('rec-speed-pill');
+  const progFill    = document.getElementById('rec-progress-fill');
+  const progFile    = document.getElementById('rec-file-label');
+  const progPct     = document.getElementById('rec-pct-label');
+  const fileKv      = document.getElementById('rec-file-kv');
+  const kvFile      = document.getElementById('rec-kv-file');
+  const kvSize      = document.getElementById('rec-kv-size');
+  const kvZ         = document.getElementById('rec-kv-z');
+  const kvPos       = document.getElementById('rec-kv-pos');
+  const snapStatus  = document.getElementById('rec-snapshot-status');
+  const noSnap      = document.getElementById('rec-no-snapshot');
+  const snapKv      = document.getElementById('rec-snapshot-kv');
+  const snapFile    = document.getElementById('snap-file');
+  const snapPos     = document.getElementById('snap-pos');
+  const snapZ       = document.getElementById('snap-z');
+  const snapSpeed   = document.getElementById('snap-speed');
+  const btnAutoRec  = document.getElementById('btn-auto-recover');
+  const outRecover  = document.getElementById('out-recover');
+  const btnManRec   = document.getElementById('btn-manual-recover');
+  const manFile     = document.getElementById('manual-file');
+  const manPos      = document.getElementById('manual-pos');
+  const manZ        = document.getElementById('manual-z');
+  const manSpeed    = document.getElementById('manual-speed');
+  const fileSelect  = document.getElementById('layer-file-select');
+  const btnRefresh  = document.getElementById('btn-refresh-files');
+  const layerZ      = document.getElementById('layer-z');
+  const layerOut    = document.getElementById('layer-outname');
+  const lfiWrap     = document.getElementById('layer-file-info');
+  const lfiLayers   = document.getElementById('lfi-layers');
+  const lfiMaxZ     = document.getElementById('lfi-maxz');
+  const lfiSize     = document.getElementById('lfi-size');
+  const btnAnalyze  = document.getElementById('btn-analyze');
+  const btnLayerRec = document.getElementById('btn-layer-recover');
+  const outLayer    = document.getElementById('out-layer');
+
+  /* ── Helpers ── */
+  function fmtBytes(n){
+    if (n == null) return '—';
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+    return (n/1048576).toFixed(2) + ' MB';
+  }
+
+  function setPillTone(el, tone){
+    el.classList.remove('ok','warn','error','brand');
+    if (tone) el.classList.add(tone);
+  }
+
+  function logTo(el, msg, clear=false){
+    if (clear) el.textContent = '';
+    el.textContent += (el.textContent ? '\n' : '') + msg;
+    el.style.display = 'block';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /* ── Snapshot UI update ── */
+  function updateSnapshotUI(){
+    if (!snapshot){
+      noSnap.style.display = 'block';
+      snapKv.style.display = 'none';
+      btnAutoRec.disabled = true;
+      return;
+    }
+    noSnap.style.display = 'none';
+    snapKv.style.display = 'grid';
+    snapFile.textContent  = snapshot.file || '—';
+    snapPos.textContent   = snapshot.filePosition != null ? snapshot.filePosition + ' B' : '—';
+    snapZ.textContent     = snapshot.lastZ   != null ? snapshot.lastZ + ' mm' : '—';
+    snapSpeed.textContent = snapshot.lastSpeed != null ? snapshot.lastSpeed + ' mm/min' : '—';
+    btnAutoRec.disabled   = !snapshot.file || snapshot.filePosition == null;
+  }
+
+  /* ── Live monitor state ── */
+  let liveState = 'unknown';
+  let liveFile  = null;
+  let liveFileSize = null;
+  let liveLastZ = null;
+  let liveLastSpeed = null;
+  let livePos   = null;
+
+  function applyStatusUpdate(vsd, gcodeMove){
+    if (gcodeMove){
+      if (typeof gcodeMove.speed === 'number') liveLastSpeed = Math.round(gcodeMove.speed);
+      // Extract Z from position array [x,y,z,e]
+      if (Array.isArray(gcodeMove.position) && gcodeMove.position.length >= 3){
+        const z = gcodeMove.position[2];
+        if (typeof z === 'number' && z > 0) liveLastZ = z;
+      }
+    }
+    if (vsd){
+      if (typeof vsd.progress === 'number'){
+        const pct = Math.round(vsd.progress * 100);
+        progFill.style.width = pct + '%';
+        progPct.textContent  = pct + '%';
+      }
+      if (typeof vsd.file_position === 'number') livePos = vsd.file_position;
+      if (typeof vsd.file_size     === 'number') liveFileSize = vsd.file_size;
+      if (typeof vsd.file_path     === 'string' && vsd.file_path){
+        liveFile = vsd.file_path;
+      }
+      if (typeof vsd.is_active === 'boolean'){
+        liveState = vsd.is_active ? 'printing' : 'idle';
+        if (!vsd.is_active && liveFile && livePos != null && livePos > 0){
+          // print just stopped — seal the snapshot
+          commitSnapshot('Print stopped — snapshot sealed.');
+        }
+      }
+    }
+    renderLiveUI();
+  }
+
+  function commitSnapshot(msg){
+    if (!liveFile || livePos == null || livePos <= 0) return;
+    snapshot = {
+      file:         liveFile.replace(/^.*\//, ''),  // basename
+      filePath:     liveFile,
+      fileSize:     liveFileSize,
+      filePosition: livePos,
+      lastZ:        liveLastZ,
+      lastSpeed:    liveLastSpeed,
+    };
+    snapStatus.textContent = '✓ ' + msg;
+    snapStatus.style.display = 'block';
+    snapStatus.style.background = 'var(--success-bg)';
+    snapStatus.style.borderColor = 'var(--success-border)';
+    snapStatus.style.color = 'var(--success)';
+    updateSnapshotUI();
+  }
+
+  function renderLiveUI(){
+    const printing = liveState === 'printing';
+    setPillTone(statePill, printing ? 'ok' : '');
+    statePill.textContent = 'State: ' + liveState;
+
+    posPill.textContent = 'Position: ' + (livePos != null ? fmtBytes(livePos) : '—');
+    zPill.textContent   = 'Z: ' + (liveLastZ != null ? liveLastZ.toFixed(3) + ' mm' : '—');
+    speedPill.textContent = 'Speed: ' + (liveLastSpeed != null ? liveLastSpeed + ' mm/min' : '—');
+
+    if (liveFile){
+      const basename = liveFile.replace(/^.*\//, '');
+      progFile.textContent = basename;
+      fileKv.style.display = 'grid';
+      kvFile.textContent = basename;
+      kvSize.textContent = fmtBytes(liveFileSize);
+      kvZ.textContent    = liveLastZ != null ? liveLastZ.toFixed(3) + ' mm' : '—';
+      kvPos.textContent  = livePos != null ? livePos + ' B' : '—';
+    } else {
+      progFile.textContent = 'No active print';
+      fileKv.style.display = 'none';
+    }
+
+    // Save snapshot while printing at each position update
+    if (printing && liveFile && livePos != null && livePos > 0){
+      snapshot = {
+        file:         liveFile.replace(/^.*\//, ''),
+        filePath:     liveFile,
+        fileSize:     liveFileSize,
+        filePosition: livePos,
+        lastZ:        liveLastZ,
+        lastSpeed:    liveLastSpeed,
+      };
+      updateSnapshotUI();
+    }
+  }
+
+  /* ── WebSocket ── */
+  let ws, wsConnected = false;
+
+  function wsSend(obj){ try{ ws?.send(JSON.stringify(obj)); }catch{} }
+
+  function setWsState(ok){
+    wsConnected = !!ok;
+    wsPill.textContent = 'WS: ' + (ok ? 'connected' : 'offline');
+    setPillTone(wsPill, ok ? 'ok' : 'error');
+    wsDot.className = 'rec-dot' + (ok ? '' : ' static');
+  }
+
+  function openWs(){
+    try { ws = new WebSocket(WS_URL); } catch(e){ setWsState(false); return; }
+
+    ws.onopen = () => {
+      setWsState(true);
+      wsSend({
+        jsonrpc: '2.0',
+        method:  'printer.objects.subscribe',
+        params:  { objects: {
+          virtual_sdcard: null,
+          gcode_move:     ['speed', 'position'],
+        }},
+        id: 10,
+      });
+    };
+
+    ws.onclose = () => { setWsState(false); setTimeout(openWs, 2500); };
+    ws.onerror = () => {};
+
+    ws.onmessage = (ev) => {
+      let data; try { data = JSON.parse(ev.data); } catch { return; }
+
+      // Initial subscription response contains current state
+      if (data?.id === 10 && data?.result?.status){
+        const s = data.result.status;
+        applyStatusUpdate(s.virtual_sdcard, s.gcode_move);
+        return;
+      }
+
+      if (data?.method === 'notify_status_update' && Array.isArray(data.params) && data.params[0]){
+        const p = data.params[0];
+        applyStatusUpdate(p.virtual_sdcard, p.gcode_move);
+      }
+    };
+  }
+
+  openWs();
+
+  /* ── Moonraker file list ── */
+  async function loadFileList(){
+    fileSelect.innerHTML = '<option value="">— loading… —</option>';
+    try {
+      const r = await fetch(`${MR}/server/files/list?root=gcodes`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const files = (data?.result || []).filter(f => /\.gcode$/i.test(f.path || f.filename || ''));
+      files.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+      fileSelect.innerHTML = '<option value="">— select a file —</option>';
+      files.forEach(f => {
+        const name = f.path || f.filename;
+        if (!name) return;
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        fileSelect.appendChild(opt);
+      });
+      if (!files.length) fileSelect.innerHTML = '<option value="">No .gcode files found</option>';
+    } catch(e) {
+      fileSelect.innerHTML = '<option value="">Error loading files: ' + e.message + '</option>';
+    }
+    lfiWrap.style.display = 'none';
+    btnLayerRec.disabled = true;
+  }
+
+  loadFileList();
+  btnRefresh.addEventListener('click', loadFileList);
+  fileSelect.addEventListener('change', () => {
+    lfiWrap.style.display = 'none';
+    btnLayerRec.disabled = true;
+  });
+
+  /* ── Analyze file (get layer count / max Z) ── */
+  btnAnalyze.addEventListener('click', async () => {
+    const fname = fileSelect.value;
+    if (!fname){ alert('Select a G-code file first.'); return; }
+    btnAnalyze.disabled = true;
+    btnAnalyze.textContent = 'Analyzing…';
+    outLayer.style.display = 'none';
+    outLayer.textContent   = '';
+    lfiWrap.style.display  = 'none';
+
+    try {
+      const params = new URLSearchParams({ file: fname });
+      const r = await fetch('/cgi-bin/analyze_gcode.sh?' + params, { cache: 'no-store' });
+      const text = await r.text();
+      if (!r.ok) throw new Error(text.trim() || 'HTTP ' + r.status);
+
+      // Expected: JSON {"layers":N,"max_z":Z,"file_size":S}
+      let info;
+      try { info = JSON.parse(text); } catch { throw new Error('Bad response: ' + text.trim()); }
+
+      lfiLayers.textContent = info.layers  != null ? info.layers  : '—';
+      lfiMaxZ.textContent   = info.max_z   != null ? info.max_z + ' mm' : '—';
+      lfiSize.textContent   = fmtBytes(info.file_size);
+      lfiWrap.style.display = 'grid';
+      btnLayerRec.disabled  = false;
+    } catch(e) {
+      logTo(outLayer, 'Error: ' + e.message, true);
+    } finally {
+      btnAnalyze.disabled    = false;
+      btnAnalyze.textContent = 'Analyze File';
+    }
+  });
+
+  /* ── Layer-based recovery ── */
+  btnLayerRec.addEventListener('click', async () => {
+    const fname = fileSelect.value;
+    if (!fname){ alert('Select a G-code file first.'); return; }
+    const z = parseFloat(layerZ.value);
+    if (!Number.isFinite(z) || z < 0){ alert('Enter a valid Z height (mm).'); return; }
+    const outname = layerOut.value.trim();
+
+    btnLayerRec.disabled    = true;
+    outLayer.style.display  = 'none';
+    outLayer.textContent    = '';
+
+    logTo(outLayer, `Slicing "${fname}" from Z=${z} mm…`, true);
+
+    try {
+      const params = new URLSearchParams({ file: fname, z: z.toFixed(3) });
+      if (outname) params.append('outname', outname);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      const text = (await r.text()).trim();
+      logTo(outLayer, text);
+      if (!r.ok) throw new Error('Script returned error status');
+    } catch(e) {
+      logTo(outLayer, 'Error: ' + e.message);
+    } finally {
+      btnLayerRec.disabled = false;
+    }
+  });
+
+  /* ── Auto-recover from snapshot ── */
+  btnAutoRec.addEventListener('click', async () => {
+    if (!snapshot) return;
+    if (!confirm(
+      `Generate recovery file for:\n  ${snapshot.file}\n  at byte ${snapshot.filePosition}` +
+      (snapshot.lastZ != null ? `, Z=${snapshot.lastZ} mm` : '') +
+      '\n\nContinue?'
+    )) return;
+
+    btnAutoRec.disabled = true;
+    logTo(outRecover, `Recovering "${snapshot.file}" at byte ${snapshot.filePosition}…`, true);
+
+    try {
+      const params = new URLSearchParams({
+        file:     snapshot.file,
+        position: snapshot.filePosition,
+      });
+      if (snapshot.lastZ     != null) params.append('z',     snapshot.lastZ.toFixed(3));
+      if (snapshot.lastSpeed != null) params.append('speed', snapshot.lastSpeed);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      const text = (await r.text()).trim();
+      logTo(outRecover, text);
+    } catch(e) {
+      logTo(outRecover, 'Error: ' + e.message);
+    } finally {
+      btnAutoRec.disabled = false;
+    }
+  });
+
+  /* ── Manual recover ── */
+  btnManRec.addEventListener('click', async () => {
+    const fname = manFile.value.trim();
+    const pos   = parseInt(manPos.value, 10);
+    if (!fname){ alert('Enter a G-code filename.'); return; }
+    if (!Number.isFinite(pos) || pos < 0){ alert('Enter a valid byte position.'); return; }
+
+    btnManRec.disabled = true;
+    logTo(outRecover, `Manual recovery: "${fname}" at byte ${pos}…`, true);
+
+    try {
+      const params = new URLSearchParams({ file: fname, position: pos });
+      const z = parseFloat(manZ.value);
+      if (Number.isFinite(z) && z > 0) params.append('z', z.toFixed(3));
+      const speed = parseInt(manSpeed.value, 10);
+      if (Number.isFinite(speed) && speed > 0) params.append('speed', speed);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      const text = (await r.text()).trim();
+      logTo(outRecover, text);
+    } catch(e) {
+      logTo(outRecover, 'Error: ' + e.message);
+    } finally {
+      btnManRec.disabled = false;
+    }
+  });
+
+  /* ── Init snapshot UI ── */
+  updateSnapshotUI();
+})();
+</script>

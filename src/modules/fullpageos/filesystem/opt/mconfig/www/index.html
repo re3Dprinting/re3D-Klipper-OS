@@ -313,6 +313,7 @@
       <button class="tab" data-page="shaper">Input Shaper</button>
       <button class="tab" data-page="calibration">Calibration</button>
       <button class="tab" data-page="troubleshoot">Troubleshooting</button>
+      <button class="tab" data-page="recovery">Print Recovery</button>
       <button class="tab" data-page="system">System</button>
       <span class="spacer"></span>
     </nav>
@@ -337,7 +338,7 @@
    - Cleans previous tab’s styles/scripts via data attributes
 ─────────────────────────────────────────────────────────────────────────── */
 
-const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','system'];
+const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','recovery','system'];
 const titleEl = document.getElementById('page-title');
 const hostEl  = document.getElementById('page');
 const tabbar  = document.getElementById('tabbar');
@@ -354,7 +355,7 @@ function prettyName(pg){
   const m = {
     machine:'Machine', network:'Network', tuning:'Tuning',
     shaper:'Input Shaper', calibration:'Calibration',
-    troubleshoot:'Troubleshooting', system:'System'
+    troubleshoot:'Troubleshooting', recovery:'Print Recovery', system:'System'
   };
   return m[pg] || (pg[0].toUpperCase()+pg.slice(1));
 }
