@@ -1,2 +1,2 @@
 #!/bin/bash
-killall /usr/lib/chromium/chromium
+pkill -f 'chromium.*--kiosk' 2>/dev/null || pkill -f chromium 2>/dev/null || true
