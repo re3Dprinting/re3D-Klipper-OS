@@ -174,9 +174,60 @@
     color: var(--dim);
     margin: 4px 0 2px 2px;
   }
+
+  /* Power-loss persisted snapshot banner */
+  .rec-pls-banner {
+    border: 1px solid var(--warn-border);
+    background: var(--warn-bg);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .rec-pls-title {
+    font-weight: 800;
+    color: var(--warn);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rec-pls-sub {
+    font-size: 12px;
+    color: #fed7aa;
+    line-height: 1.5;
+    margin-top: 2px;
+  }
 </style>
 
 <div class="content rec-wrap">
+
+  <!-- ── Power-loss persisted snapshot (shown on load if state file exists) ── -->
+  <div id="pls-section" hidden>
+    <div class="rec-section-label">&#9889; Power-loss recovery</div>
+    <div class="rec-pls-banner">
+      <div>
+        <div class="rec-pls-title">&#9889; Power-loss snapshot found</div>
+        <div class="rec-pls-sub">
+          A print state was saved to disk before power was lost or the browser closed.
+          This snapshot survives reboots. Recover from it below, or clear it if it is stale.
+        </div>
+      </div>
+      <div class="rec-kv" id="pls-kv">
+        <span class="k">File</span>          <span class="v" id="pls-file">—</span>
+        <span class="k">Byte position</span> <span class="v" id="pls-pos">—</span>
+        <span class="k">Last Z</span>        <span class="v" id="pls-z">—</span>
+        <span class="k">Last speed</span>    <span class="v" id="pls-speed">—</span>
+        <span class="k">Saved at</span>      <span class="v" id="pls-time">—</span>
+      </div>
+      <div class="btn-row" style="justify-content:flex-start">
+        <button type="button" id="btn-pls-recover">Recover from this snapshot</button>
+        <button type="button" id="btn-pls-clear" class="btn-ghost">Clear snapshot</button>
+      </div>
+      <div class="rec-out" id="out-pls" style="display:none"></div>
+    </div>
+  </div>
 
   <!-- ── Section: Live Monitor ───────────────────────────────────── -->
   <div class="rec-section-label">Live print monitor</div>
@@ -347,6 +398,63 @@
   /* ── Snapshot state (session memory) ── */
   let snapshot = null; // { file, filePath, fileSize, filePosition, lastZ, lastSpeed }
 
+  /* ── Persisted state (power-loss) ── */
+  const FLUSH_INTERVAL_MS = 30_000; // write to disk every 30 s while printing
+  let flushTimer    = null;
+  let persistedSnap = null; // loaded from disk on init
+
+  async function loadPersistedState(){
+    try{
+      const r = await fetch('/cgi-bin/recovery_state.sh', { cache: 'no-store' });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.exists === false || !data.file) return;
+      persistedSnap = data;
+      plsFile.textContent  = data.file          || '—';
+      plsPos.textContent   = data.file_position != null ? data.file_position + ' B' : '—';
+      plsZ.textContent     = data.last_z        != null ? data.last_z + ' mm' : '—';
+      plsSpeed.textContent = data.last_speed    != null ? data.last_speed + ' mm/min' : '—';
+      plsTime.textContent  = data.timestamp     || '—';
+      plsSection.hidden = false;
+    }catch{ /* CGI may not exist yet */ }
+  }
+
+  async function flushStateToDisk(){
+    if (!snapshot || !snapshot.file || snapshot.filePosition == null) return;
+    try{
+      await fetch('/cgi-bin/recovery_state.sh', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file:          snapshot.file,
+          file_path:     snapshot.filePath || '',
+          file_position: snapshot.filePosition,
+          last_z:        snapshot.lastZ,
+          last_speed:    snapshot.lastSpeed,
+          timestamp:     new Date().toLocaleString(),
+        }),
+      });
+    }catch{ /* best-effort */ }
+  }
+
+  async function clearPersistedState(){
+    try{
+      await fetch('/cgi-bin/recovery_state.sh?action=clear', { cache: 'no-store' });
+    }catch{ /* best-effort */ }
+    persistedSnap = null;
+    plsSection.hidden = true;
+    outPls.style.display = 'none';
+  }
+
+  function startFlushTimer(){
+    if (flushTimer) return;
+    flushTimer = setInterval(flushStateToDisk, FLUSH_INTERVAL_MS);
+  }
+
+  function stopFlushTimer(){
+    if (flushTimer){ clearInterval(flushTimer); flushTimer = null; }
+  }
+
   /* ── UI refs ── */
   const wsPill      = document.getElementById('rec-ws-pill');
   const wsDot       = document.getElementById('rec-ws-dot');
@@ -387,6 +495,17 @@
   const btnAnalyze  = document.getElementById('btn-analyze');
   const btnLayerRec = document.getElementById('btn-layer-recover');
   const outLayer    = document.getElementById('out-layer');
+
+  // Power-loss banner refs
+  const plsSection  = document.getElementById('pls-section');
+  const plsFile     = document.getElementById('pls-file');
+  const plsPos      = document.getElementById('pls-pos');
+  const plsZ        = document.getElementById('pls-z');
+  const plsSpeed    = document.getElementById('pls-speed');
+  const plsTime     = document.getElementById('pls-time');
+  const btnPlsRec   = document.getElementById('btn-pls-recover');
+  const btnPlsClear = document.getElementById('btn-pls-clear');
+  const outPls      = document.getElementById('out-pls');
 
   /* ── Helpers ── */
   function fmtBytes(n){
@@ -480,6 +599,7 @@
     snapStatus.style.borderColor = 'var(--success-border)';
     snapStatus.style.color = 'var(--success)';
     updateSnapshotUI();
+    flushStateToDisk(); // persist to disk immediately when print stops
   }
 
   function renderLiveUI(){
@@ -515,6 +635,9 @@
         lastSpeed:    liveLastSpeed,
       };
       updateSnapshotUI();
+      startFlushTimer();
+    } else if (!printing){
+      stopFlushTimer();
     }
   }
 
@@ -684,6 +807,7 @@
       const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
       const text = (await r.text()).trim();
       logTo(outRecover, text);
+      if (r.ok && !text.startsWith('ERROR')) clearPersistedState();
     } catch(e) {
       logTo(outRecover, 'Error: ' + e.message);
     } finally {
@@ -710,6 +834,7 @@
       const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
       const text = (await r.text()).trim();
       logTo(outRecover, text);
+      if (r.ok && !text.startsWith('ERROR')) clearPersistedState();
     } catch(e) {
       logTo(outRecover, 'Error: ' + e.message);
     } finally {
@@ -717,7 +842,43 @@
     }
   });
 
-  /* ── Init snapshot UI ── */
+  /* ── Power-loss snapshot recover ── */
+  btnPlsRec.addEventListener('click', async () => {
+    if (!persistedSnap) return;
+    if (!confirm(
+      `Recover from power-loss snapshot?\n  File: ${persistedSnap.file}\n  Byte: ${persistedSnap.file_position}` +
+      (persistedSnap.last_z != null ? `\n  Z: ${persistedSnap.last_z} mm` : '') +
+      '\n\nContinue?'
+    )) return;
+
+    btnPlsRec.disabled = true;
+    logTo(outPls, `Recovering "${persistedSnap.file}" at byte ${persistedSnap.file_position}…`, true);
+
+    try {
+      const params = new URLSearchParams({
+        file:     persistedSnap.file,
+        position: persistedSnap.file_position,
+      });
+      if (persistedSnap.last_z    != null) params.append('z',     persistedSnap.last_z);
+      if (persistedSnap.last_speed != null) params.append('speed', persistedSnap.last_speed);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      const text = (await r.text()).trim();
+      logTo(outPls, text);
+      if (r.ok && !text.startsWith('ERROR')) clearPersistedState();
+    } catch(e) {
+      logTo(outPls, 'Error: ' + e.message);
+    } finally {
+      btnPlsRec.disabled = false;
+    }
+  });
+
+  btnPlsClear.addEventListener('click', async () => {
+    if (!confirm('Clear the saved power-loss snapshot?')) return;
+    await clearPersistedState();
+  });
+
+  /* ── Init ── */
   updateSnapshotUI();
+  loadPersistedState();
 })();
 </script>
