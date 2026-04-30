@@ -16,9 +16,10 @@
 #   - If only 'z' is given, scan the file for the first "G1 Z<N>" (or "G0 Z<N>") line
 #     where N >= z, then slice just before that line.
 #   - Writes a header block extracted from the original file (lines up to and
-#     including the first ';flag' comment, or the slicer HEADER_BLOCK if present).
-#   - Injects a G28 Z / G92 E0 preamble, the last known Z lift, speed restore, and
-#     then the remainder of the file from the slice point.
+#     including '; HEADER_BLOCK_END' from OrcaSlicer, or first 50 lines as fallback).
+#   - Injects SET_KINEMATIC_POSITION Z=<last_z> (declares position to Klipper, no
+#     movement), a 2 mm relative lift to clear the nozzle, speed restore, extruder
+#     reset, then the tail of the file.
 #   - Saves original as <file>.backup (non-destructive).
 #
 # Output: text/plain progress messages. Errors begin with "ERROR:".
@@ -142,14 +143,13 @@ fi
 
 # ── Extract header block from original file ──────────────────────────────────
 # Strategy (in order of preference):
-#   1. OrcaSlicer / Bambu: content up to and including '; HEADER_BLOCK_END'
-#   2. Generic: content up to and including the first ';flag' sentinel
-#   3. Fallback: first 50 lines
+#   1. OrcaSlicer: content up to and including '; HEADER_BLOCK_END'
+#   2. Fallback: first 50 lines
 HEADER_END_BYTE="$(python3 - "$FULL_PATH" <<'PYEOF'
 import sys
 
 path = sys.argv[1]
-sentinels = [b'; HEADER_BLOCK_END', b';HEADER_BLOCK_END', b';flag']
+sentinels = [b'; HEADER_BLOCK_END', b';HEADER_BLOCK_END']
 offset = 0
 with open(path, 'rb') as fh:
     for raw_line in fh:
@@ -235,12 +235,20 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
   fi
   printf '; ────────────────────────────────────────────────────────\n'
 
-  # 3. Safe move sequence: home Z, lift to resume height, reset extrusion
-  printf 'G28 Z           ; home Z axis\n'
-  printf 'G92 E0          ; reset extruder position\n'
+  # 3. Recovery move sequence — NO homing.
+  #    SET_KINEMATIC_POSITION tells Klipper where the toolhead physically is
+  #    without any movement, properly initialising the motion system.
+  #    G92 Z only applies a coordinate offset and is not sufficient in Klipper.
+  printf 'G90             ; absolute positioning\n'
   if [[ -n "$Z_TARGET" ]]; then
-    printf 'G1 Z%s F600     ; lift to resume height\n' "$Z_TARGET"
+    # Set kinematic position so Klipper knows where Z is (no movement)
+    printf 'SET_KINEMATIC_POSITION Z=%s  ; declare current Z position to Klipper\n' "$Z_TARGET"
+    # Lift 2 mm above the resume point to clear the nozzle from the print
+    printf 'G91             ; relative mode\n'
+    printf 'G1 Z2 F300      ; lift 2 mm clear of print\n'
+    printf 'G90             ; back to absolute mode\n'
   fi
+  printf 'G92 E0          ; reset extruder position\n'
   if [[ -n "$SPEED" ]] && echo "$SPEED" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
     printf 'G1 F%s          ; restore last known speed\n' "$SPEED"
   fi
