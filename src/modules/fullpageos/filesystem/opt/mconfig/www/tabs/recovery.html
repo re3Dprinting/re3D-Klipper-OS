@@ -96,28 +96,7 @@
   .rec-kv .k { color: var(--muted) }
   .rec-kv .v { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all }
 
-  /* Recovery action card */
-  .rec-action-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-top: 6px;
-  }
-  @media (max-width: 680px) {
-    .rec-action-grid { grid-template-columns: 1fr }
-  }
 
-  .rec-action-panel {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-0);
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .rec-action-title { font-weight: 600; font-size: 13px; color: var(--fg) }
-  .rec-action-hint  { font-size: 11px; color: var(--gray-300); line-height: 1.4 }
 
   .rec-out {
     margin-top: 6px;
@@ -282,7 +261,7 @@
 
     <div id="rec-no-snapshot" class="rec-warn-box">
       <strong>No recovery snapshot available.</strong>
-      Start a print while this tab is open (or re-open the tab during a print) to capture position data. You can also supply values manually below.
+      Start a print while this tab is open (or re-open the tab during a print) to capture position data.
     </div>
 
     <div class="rec-kv" id="rec-snapshot-kv" style="display:none">
@@ -292,44 +271,8 @@
       <span class="k">Last speed</span>      <span class="v" id="snap-speed">—</span>
     </div>
 
-    <div class="rec-action-grid">
-      <!-- Auto-recover using snapshot -->
-      <div class="rec-action-panel">
-        <div class="rec-action-title">Auto-recover from snapshot</div>
-        <div class="rec-action-hint">Slice the file at the captured byte position. Requires a snapshot from the monitor above.</div>
-        <div style="margin-top:4px">
-          <button type="button" id="btn-auto-recover" disabled>Generate Recovery File</button>
-        </div>
-      </div>
-
-      <!-- Manual recover -->
-      <div class="rec-action-panel">
-        <div class="rec-action-title">Manual recovery</div>
-        <div class="rec-action-hint">Provide the file name and byte position yourself (useful after a power loss with no running session).</div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
-          <div>
-            <label>G-code filename (in <span style="font-family:monospace">/gcodes/</span>)</label>
-            <input type="text" id="manual-file" placeholder="my_print.gcode">
-          </div>
-          <div class="rec-layer-row">
-            <div style="flex:1">
-              <label>Byte position</label>
-              <input type="number" id="manual-pos" min="0" placeholder="0">
-            </div>
-            <div style="flex:1">
-              <label>Last Z (mm)</label>
-              <input type="number" id="manual-z" min="0" step="0.01" placeholder="auto">
-            </div>
-          </div>
-          <div>
-            <label>Last speed (mm/min, optional)</label>
-            <input type="number" id="manual-speed" min="0" placeholder="auto">
-          </div>
-          <div class="btn-row" style="justify-content:flex-start;margin-top:2px">
-            <button type="button" id="btn-manual-recover">Generate Recovery File</button>
-          </div>
-        </div>
-      </div>
+    <div style="margin-top:4px">
+      <button type="button" id="btn-auto-recover" disabled>Generate Recovery File</button>
     </div>
 
     <div class="rec-out" id="out-recover" style="display:none"></div>
@@ -479,11 +422,6 @@
   const snapSpeed   = document.getElementById('snap-speed');
   const btnAutoRec  = document.getElementById('btn-auto-recover');
   const outRecover  = document.getElementById('out-recover');
-  const btnManRec   = document.getElementById('btn-manual-recover');
-  const manFile     = document.getElementById('manual-file');
-  const manPos      = document.getElementById('manual-pos');
-  const manZ        = document.getElementById('manual-z');
-  const manSpeed    = document.getElementById('manual-speed');
   const fileSelect  = document.getElementById('layer-file-select');
   const btnRefresh  = document.getElementById('btn-refresh-files');
   const layerZ      = document.getElementById('layer-z');
@@ -812,33 +750,6 @@
       logTo(outRecover, 'Error: ' + e.message);
     } finally {
       btnAutoRec.disabled = false;
-    }
-  });
-
-  /* ── Manual recover ── */
-  btnManRec.addEventListener('click', async () => {
-    const fname = manFile.value.trim();
-    const pos   = parseInt(manPos.value, 10);
-    if (!fname){ alert('Enter a G-code filename.'); return; }
-    if (!Number.isFinite(pos) || pos < 0){ alert('Enter a valid byte position.'); return; }
-
-    btnManRec.disabled = true;
-    logTo(outRecover, `Manual recovery: "${fname}" at byte ${pos}…`, true);
-
-    try {
-      const params = new URLSearchParams({ file: fname, position: pos });
-      const z = parseFloat(manZ.value);
-      if (Number.isFinite(z) && z > 0) params.append('z', z.toFixed(3));
-      const speed = parseInt(manSpeed.value, 10);
-      if (Number.isFinite(speed) && speed > 0) params.append('speed', speed);
-      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
-      const text = (await r.text()).trim();
-      logTo(outRecover, text);
-      if (r.ok && !text.startsWith('ERROR')) clearPersistedState();
-    } catch(e) {
-      logTo(outRecover, 'Error: ' + e.message);
-    } finally {
-      btnManRec.disabled = false;
     }
   });
 
