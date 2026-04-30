@@ -219,7 +219,7 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
 {
   # 1. Write the original header block
   if [[ -n "$HEADER_END_BYTE" && "$HEADER_END_BYTE" != "-1" && "$HEADER_END_BYTE" -gt 0 ]]; then
-    dd if="$FULL_PATH" bs=1 count="$HEADER_END_BYTE" 2>/dev/null
+    head -c "$HEADER_END_BYTE" "$FULL_PATH"
   else
     # Fallback: first 50 lines
     head -n 50 "$FULL_PATH"
@@ -256,7 +256,7 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
   printf '; ── resume from original file ──────────────────────────\n\n'
 
   # 4. Tail of original file from slice byte onwards
-  dd if="$FULL_PATH" bs=1 skip="$SLICE_BYTE" 2>/dev/null
+  tail -c +$((SLICE_BYTE + 1)) "$FULL_PATH"
 
 } > "$TMP_OUT"
 
