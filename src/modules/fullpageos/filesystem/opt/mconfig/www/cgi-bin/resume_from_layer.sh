@@ -39,6 +39,8 @@ SPEED=""
 OUTNAME=""
 HOTEND_TEMP=""
 BED_TEMP=""
+X_POS=""
+Y_POS=""
 
 parse_kv() {
   local kv="$1" k v
@@ -53,6 +55,8 @@ parse_kv() {
     outname)  OUTNAME="$v"     ;;
     hotend)   HOTEND_TEMP="$v" ;;
     bed)      BED_TEMP="$v"    ;;
+    x)        X_POS="$v"       ;;
+    y)        Y_POS="$v"       ;;
   esac
 }
 
@@ -153,6 +157,113 @@ PYEOF
     exit 0
   fi
   echo "Slice at    : byte $SLICE_BYTE (first Z >= ${Z_TARGET} mm)"
+fi
+
+# ── Find exact resume line ───────────────────────────────────────────────────
+# When toolhead XY is known (snapshot mode), scan backward from file_position
+# and find the last G0/G1 line whose parsed coordinates are within 0.1 mm of
+# the reported toolhead position.  This gives a ±1-line accurate resume point
+# because gcode_move.position is the physical position while file_position is
+# bytes-read-ahead (queued but not yet executed).
+#
+# If XY is unavailable (Z-based mode), fall back to rewinding 100 motion lines.
+RAW_SLICE_BYTE="$SLICE_BYTE"
+
+if [[ -n "$X_POS" && -n "$Y_POS" ]]; then
+  SLICE_BYTE="$(python3 - "$FULL_PATH" "$RAW_SLICE_BYTE" "$X_POS" "$Y_POS" <<'PYEOF'
+import sys, re, math
+
+path  = sys.argv[1]
+limit = int(sys.argv[2])
+tx    = float(sys.argv[3])
+ty    = float(sys.argv[4])
+
+move_re = re.compile(rb'^(?:G0|G1)\b', re.IGNORECASE)
+x_re    = re.compile(r'X([-\d.]+)', re.IGNORECASE)
+y_re    = re.compile(r'Y([-\d.]+)', re.IGNORECASE)
+
+# Forward pass: collect (byte_offset, interpolated_x, interpolated_y) for every
+# G0/G1 line, carrying forward the last known coordinate when an axis is omitted.
+lines  = []   # (byte_offset, x, y)
+cur_x  = None
+cur_y  = None
+offset = 0
+
+with open(path, 'rb') as fh:
+    for raw_line in fh:
+        if offset >= limit:
+            break
+        if move_re.match(raw_line.lstrip()):
+            line = raw_line.decode('utf-8', errors='replace')
+            mx = x_re.search(line)
+            my = y_re.search(line)
+            if mx: cur_x = float(mx.group(1))
+            if my: cur_y = float(my.group(1))
+            if cur_x is not None and cur_y is not None:
+                lines.append((offset, cur_x, cur_y))
+        offset += len(raw_line)
+
+if not lines:
+    print(limit)
+    sys.exit(0)
+
+# Find the last line within 0.1 mm (exact match window).
+# Fall back to nearest within 2 mm, then to 100-line rewind.
+TOLERANCE = 0.1
+FALLBACK  = 2.0
+
+exact_off = None   # last offset with dist <= TOLERANCE (nearest to file_position)
+best_off  = lines[0][0]
+best_dist = float('inf')
+
+for off, lx, ly in lines:
+    dist = math.sqrt((lx - tx)**2 + (ly - ty)**2)
+    if dist <= TOLERANCE:
+        exact_off = off      # keep overwriting → last occurrence wins
+    if dist < best_dist:
+        best_dist = dist
+        best_off  = off
+
+if exact_off is not None:
+    print(exact_off)
+elif best_dist <= FALLBACK:
+    print(best_off)
+else:
+    # Nothing close — rewind 100 motion lines as safety net
+    idx = max(0, len(lines) - 100)
+    print(lines[idx][0])
+PYEOF
+  )"
+  echo "Resume      : XY-matched → byte $SLICE_BYTE (toolhead X=${X_POS} Y=${Y_POS}, was $RAW_SLICE_BYTE)"
+else
+  # No XY available (Z-based mode) — rewind 100 motion lines
+  SLICE_BYTE="$(python3 - "$FULL_PATH" "$RAW_SLICE_BYTE" <<'PYEOF'
+import sys, re
+
+path    = sys.argv[1]
+limit   = int(sys.argv[2])
+rewind  = 100
+move_re = re.compile(rb'^(?:G0|G1|G2|G3)\b', re.IGNORECASE)
+
+offsets = []
+offset  = 0
+with open(path, 'rb') as fh:
+    for raw_line in fh:
+        if offset >= limit:
+            break
+        if move_re.match(raw_line.lstrip()):
+            offsets.append(offset)
+        offset += len(raw_line)
+
+if not offsets:
+    print(limit)
+    sys.exit(0)
+
+idx = max(0, len(offsets) - rewind)
+print(offsets[idx])
+PYEOF
+  )"
+  echo "Rewind      : 100 motion lines → byte $SLICE_BYTE (was $RAW_SLICE_BYTE)"
 fi
 
 # ── Extract header block from original file ──────────────────────────────────

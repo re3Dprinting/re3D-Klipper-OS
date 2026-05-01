@@ -86,6 +86,8 @@ def main():
 
         speed    = gmove.get("speed")
         position = gmove.get("position") or []
+        last_x   = position[0] if len(position) >= 1 else None
+        last_y   = position[1] if len(position) >= 2 else None
         last_z   = position[2] if len(position) >= 3 else None
 
         if is_active and file_path and file_position is not None:
@@ -102,6 +104,8 @@ def main():
                 "file_path":     file_path,
                 "file_position": file_position,
                 "file_size":     file_size,
+                "last_x":        round(last_x, 3) if last_x is not None else None,
+                "last_y":        round(last_y, 3) if last_y is not None else None,
                 "last_z":        round(last_z, 3) if last_z is not None else None,
                 "last_speed":    int(speed) if speed is not None else None,
                 "timestamp":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

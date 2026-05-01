@@ -372,6 +372,8 @@
           file:          snapshot.file,
           file_path:     snapshot.filePath || '',
           file_position: snapshot.filePosition,
+          last_x:        snapshot.lastX,
+          last_y:        snapshot.lastY,
           last_z:        snapshot.lastZ,
           last_speed:    snapshot.lastSpeed,
           timestamp:     new Date().toLocaleString(),
@@ -486,6 +488,8 @@
   let liveState = 'unknown';
   let liveFile  = null;
   let liveFileSize = null;
+  let liveLastX = null;
+  let liveLastY = null;
   let liveLastZ = null;
   let liveLastSpeed = null;
   let livePos   = null;
@@ -493,10 +497,12 @@
   function applyStatusUpdate(vsd, gcodeMove){
     if (gcodeMove){
       if (typeof gcodeMove.speed === 'number') liveLastSpeed = Math.round(gcodeMove.speed);
-      // Extract Z from position array [x,y,z,e]
+      // Extract X/Y/Z from position array [x,y,z,e]
       if (Array.isArray(gcodeMove.position) && gcodeMove.position.length >= 3){
-        const z = gcodeMove.position[2];
-        if (typeof z === 'number' && z > 0) liveLastZ = z;
+        const [px, py, pz] = gcodeMove.position;
+        if (typeof px === 'number') liveLastX = px;
+        if (typeof py === 'number') liveLastY = py;
+        if (typeof pz === 'number' && pz > 0) liveLastZ = pz;
       }
     }
     if (vsd){
@@ -528,6 +534,8 @@
       filePath:     liveFile,
       fileSize:     liveFileSize,
       filePosition: livePos,
+      lastX:        liveLastX,
+      lastY:        liveLastY,
       lastZ:        liveLastZ,
       lastSpeed:    liveLastSpeed,
     };
@@ -569,6 +577,8 @@
         filePath:     liveFile,
         fileSize:     liveFileSize,
         filePosition: livePos,
+        lastX:        liveLastX,
+        lastY:        liveLastY,
         lastZ:        liveLastZ,
         lastSpeed:    liveLastSpeed,
       };
@@ -740,6 +750,8 @@
         file:     snapshot.file,
         position: snapshot.filePosition,
       });
+      if (snapshot.lastX     != null) params.append('x',     snapshot.lastX.toFixed(3));
+      if (snapshot.lastY     != null) params.append('y',     snapshot.lastY.toFixed(3));
       if (snapshot.lastZ     != null) params.append('z',     snapshot.lastZ.toFixed(3));
       if (snapshot.lastSpeed != null) params.append('speed', snapshot.lastSpeed);
       const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
@@ -770,6 +782,8 @@
         file:     persistedSnap.file,
         position: persistedSnap.file_position,
       });
+      if (persistedSnap.last_x    != null) params.append('x',     persistedSnap.last_x);
+      if (persistedSnap.last_y    != null) params.append('y',     persistedSnap.last_y);
       if (persistedSnap.last_z    != null) params.append('z',     persistedSnap.last_z);
       if (persistedSnap.last_speed != null) params.append('speed', persistedSnap.last_speed);
       const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
