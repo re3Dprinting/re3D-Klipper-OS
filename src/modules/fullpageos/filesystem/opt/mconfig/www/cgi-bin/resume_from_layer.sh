@@ -93,14 +93,39 @@ echo "Source file : $CLEAN"
 echo "File size   : $FILE_SIZE bytes"
 
 # ── Auto-detect temperatures from file if not supplied ──────────────────────
-if [[ -z "$HOTEND_TEMP" ]]; then
-  HOTEND_TEMP="$(grep -m1 -oP '^M10[49]\s+S\K[0-9]+' "$FULL_PATH" || true)"
+# Scan backward from POSITION (or file end) to find the LAST M104/M109/M140/M190
+# actually commanded before the interruption — not the first preheat in the header.
+if [[ -z "$HOTEND_TEMP" || -z "$BED_TEMP" ]]; then
+  read -r _DETECTED_HOTEND _DETECTED_BED < <(python3 - "$FULL_PATH" "${POSITION:-$FILE_SIZE}" <<'PYEOF'
+import sys, re
+
+path  = sys.argv[1]
+limit = int(sys.argv[2])
+hotend_re = re.compile(r'^M10[49]\s+S([0-9]+)', re.IGNORECASE)
+bed_re    = re.compile(r'^M1[49]0\s+S([0-9]+)', re.IGNORECASE)
+
+last_hotend = ''
+last_bed    = ''
+offset = 0
+with open(path, 'rb') as fh:
+    for raw_line in fh:
+        if offset >= limit:
+            break
+        line = raw_line.decode('utf-8', errors='replace')
+        mh = hotend_re.match(line)
+        mb = bed_re.match(line)
+        if mh: last_hotend = mh.group(1)
+        if mb: last_bed    = mb.group(1)
+        offset += len(raw_line)
+
+print(last_hotend, last_bed)
+PYEOF
+  )
+  [[ -z "$HOTEND_TEMP" && -n "$_DETECTED_HOTEND" ]] && HOTEND_TEMP="$_DETECTED_HOTEND"
+  [[ -z "$BED_TEMP"    && -n "$_DETECTED_BED"    ]] && BED_TEMP="$_DETECTED_BED"
 fi
-if [[ -z "$BED_TEMP" ]]; then
-  BED_TEMP="$(grep -m1 -oP '^M1[49]0\s+S\K[0-9]+' "$FULL_PATH" || true)"
-fi
-[[ -n "$HOTEND_TEMP" ]] && echo "Hotend temp : ${HOTEND_TEMP}°C"
-[[ -n "$BED_TEMP"    ]] && echo "Bed temp    : ${BED_TEMP}°C"
+[[ -n "$HOTEND_TEMP" ]] && echo "Hotend temp : ${HOTEND_TEMP}°C (last executed)"
+[[ -n "$BED_TEMP"    ]] && echo "Bed temp    : ${BED_TEMP}°C (last executed)"
 
 # ── Determine slice byte offset ─────────────────────────────────────────────
 SLICE_BYTE=""
@@ -399,7 +424,7 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
     printf 'G1 F%s          ; restore last known speed\n' "$SPEED"
   fi
   printf 'G92 E0          ; reset extruder again before resuming\n'
-  printf 'M82             ; extruder back to absolute mode\n'
+
   printf '; ── resume from original file ──────────────────────────\n\n'
 
   # 4. Tail of original file from slice byte onwards
