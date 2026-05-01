@@ -100,6 +100,27 @@ if [ -f "${SRC_WAIT_HTML}" ]; then
   chown pi:pi "${DST_WAIT_HTML}" 2>/dev/null || true
 fi
 
+# ---------- 1b) Recovery monitor daemon ----------
+SRC_RECOVERY_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/recovery_monitor.py"
+SRC_RECOVERY_SVC="${REPO_DIR}/src/modules/fullpageos/filesystem/root_init/etc/systemd/system/re3d-recovery-monitor.service"
+
+if [ -f "${SRC_RECOVERY_PY}" ]; then
+  log "${LOG_TAG} Deploying recovery_monitor.py..."
+  install -m 0755 -o root -g root "${SRC_RECOVERY_PY}" /opt/mconfig/recovery_monitor.py
+else
+  log "${LOG_TAG} WARNING: ${SRC_RECOVERY_PY} not found, skipping recovery monitor deploy."
+fi
+
+if [ -f "${SRC_RECOVERY_SVC}" ]; then
+  log "${LOG_TAG} Deploying re3d-recovery-monitor.service..."
+  install -m 0644 -o root -g root "${SRC_RECOVERY_SVC}" /etc/systemd/system/re3d-recovery-monitor.service
+  systemctl daemon-reload || true
+  systemctl enable re3d-recovery-monitor.service || true
+  systemctl restart re3d-recovery-monitor.service || true
+else
+  log "${LOG_TAG} WARNING: ${SRC_RECOVERY_SVC} not found, skipping recovery monitor service."
+fi
+
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
 

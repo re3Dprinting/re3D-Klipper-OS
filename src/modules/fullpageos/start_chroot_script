@@ -678,9 +678,11 @@ install -d -m 0755 /opt/mconfig/www/cgi-bin
 chmod 0755 /opt/mconfig/www/cgi-bin/*.sh || true
 chmod 0777 /opt/mconfig/www/gcode/gen || true
 chown -R root:root /opt/mconfig
+chmod +x /opt/mconfig/recovery_monitor.py
 
 systemctl daemon-reload || true
 systemctl enable mconfig.service || true
+systemctl enable re3d-recovery-monitor.service || true
 
 echo "[mconfig] files:"
 ls -l /opt/mconfig/www/cgi-bin || true
