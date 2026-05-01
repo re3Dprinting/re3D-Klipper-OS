@@ -37,6 +37,8 @@ POSITION=""
 Z_TARGET=""
 SPEED=""
 OUTNAME=""
+HOTEND_TEMP=""
+BED_TEMP=""
 
 parse_kv() {
   local kv="$1" k v
@@ -44,11 +46,13 @@ parse_kv() {
   v="${kv#*=}"
   v="$(printf '%s' "$v" | sed 's/+/ /g; s/%/\\x/g' | xargs -0 printf '%b' 2>/dev/null || printf '%s' "$v")"
   case "$k" in
-    file)     FILE_PARAM="$v" ;;
-    position) POSITION="$v"   ;;
-    z)        Z_TARGET="$v"   ;;
-    speed)    SPEED="$v"      ;;
-    outname)  OUTNAME="$v"    ;;
+    file)     FILE_PARAM="$v"  ;;
+    position) POSITION="$v"    ;;
+    z)        Z_TARGET="$v"    ;;
+    speed)    SPEED="$v"       ;;
+    outname)  OUTNAME="$v"     ;;
+    hotend)   HOTEND_TEMP="$v" ;;
+    bed)      BED_TEMP="$v"    ;;
   esac
 }
 
@@ -83,6 +87,16 @@ fi
 FILE_SIZE="$(stat -c%s "$FULL_PATH")"
 echo "Source file : $CLEAN"
 echo "File size   : $FILE_SIZE bytes"
+
+# ── Auto-detect temperatures from file if not supplied ──────────────────────
+if [[ -z "$HOTEND_TEMP" ]]; then
+  HOTEND_TEMP="$(grep -m1 -oP '^M10[49]\s+S\K[0-9]+' "$FULL_PATH" || true)"
+fi
+if [[ -z "$BED_TEMP" ]]; then
+  BED_TEMP="$(grep -m1 -oP '^M1[49]0\s+S\K[0-9]+' "$FULL_PATH" || true)"
+fi
+[[ -n "$HOTEND_TEMP" ]] && echo "Hotend temp : ${HOTEND_TEMP}°C"
+[[ -n "$BED_TEMP"    ]] && echo "Bed temp    : ${BED_TEMP}°C"
 
 # ── Determine slice byte offset ─────────────────────────────────────────────
 SLICE_BYTE=""
@@ -235,10 +249,18 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
   fi
   printf '; ────────────────────────────────────────────────────────\n'
 
-  # 3. Recovery move sequence — NO homing.
+  # 3. Recovery move sequence.
   #    SET_KINEMATIC_POSITION tells Klipper where the toolhead physically is
   #    without any movement, properly initialising the motion system.
   #    G92 Z only applies a coordinate offset and is not sufficient in Klipper.
+
+  # Start heating early so temps rise during homing (saves time)
+  if [[ -n "$BED_TEMP" ]]; then
+    printf 'M140 S%s        ; start heating bed (no wait)\n' "$BED_TEMP"
+  fi
+  if [[ -n "$HOTEND_TEMP" ]]; then
+    printf 'M104 S%s        ; start heating hotend (no wait)\n' "$HOTEND_TEMP"
+  fi
   printf 'G90             ; absolute positioning\n'
   if [[ -n "$Z_TARGET" ]]; then
     # Set kinematic position so Klipper knows where Z is (no movement)
@@ -248,11 +270,25 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
     printf 'G1 Z2 F300      ; lift 2 mm clear of print\n'
     printf 'G90             ; back to absolute mode\n'
   fi
+  # Home X and Y (safe now that Z is lifted)
+  printf 'G28 X Y         ; home X and Y axes\n'
+  # Wait for temperatures before purging
+  if [[ -n "$BED_TEMP" ]]; then
+    printf 'M190 S%s        ; wait for bed temperature\n' "$BED_TEMP"
+  fi
+  if [[ -n "$HOTEND_TEMP" ]]; then
+    printf 'M109 S%s        ; wait for hotend temperature\n' "$HOTEND_TEMP"
+  fi
+  # Prime/purge nozzle before resuming
   printf 'G92 E0          ; reset extruder position\n'
+  printf 'M83             ; extruder relative mode\n'
+  printf 'G1 E50 F300     ; purge 50 mm of filament\n'
+  printf 'M106 S255       ; cooling fan full on\n'
   if [[ -n "$SPEED" ]] && echo "$SPEED" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
     printf 'G1 F%s          ; restore last known speed\n' "$SPEED"
   fi
   printf 'G92 E0          ; reset extruder again before resuming\n'
+  printf 'M82             ; extruder back to absolute mode\n'
   printf '; ── resume from original file ──────────────────────────\n\n'
 
   # 4. Tail of original file from slice byte onwards
