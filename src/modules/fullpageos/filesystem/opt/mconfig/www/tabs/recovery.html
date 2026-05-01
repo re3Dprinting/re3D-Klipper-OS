@@ -18,75 +18,6 @@
     line-height: 1.5;
   }
 
-  /* Status bar across the top of the monitor card */
-  .rec-status-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    background: var(--surface-0);
-    border: 1px solid var(--border);
-    font-size: 12px;
-  }
-
-  .rec-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    font-size: 11.5px;
-    white-space: nowrap;
-  }
-  .rec-pill.ok    { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
-  .rec-pill.warn  { background: var(--warn-bg);    border-color: var(--warn-border);    color: var(--warn); }
-  .rec-pill.error { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
-  .rec-pill.brand { background: var(--brand-dim);  border-color: var(--brand-700);      color: var(--brand); }
-
-  .rec-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: currentColor;
-    flex-shrink: 0;
-    animation: rec-pulse 1.4s ease-in-out infinite;
-  }
-  .rec-dot.static { animation: none }
-  @keyframes rec-pulse {
-    0%, 100% { opacity: 1 }
-    50%       { opacity: 0.3 }
-  }
-
-  /* Progress bar */
-  .rec-progress-wrap {
-    margin-top: 4px;
-  }
-  .rec-progress-label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 4px;
-  }
-  .rec-progress-track {
-    height: 6px;
-    background: var(--surface-0);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-  .rec-progress-fill {
-    height: 100%;
-    background: var(--brand);
-    border-radius: 999px;
-    transition: width 1s linear;
-    width: 0%;
-  }
-
-  /* File info grid */
   .rec-kv {
     display: grid;
     grid-template-columns: max-content 1fr;
@@ -95,8 +26,6 @@
   }
   .rec-kv .k { color: var(--muted) }
   .rec-kv .v { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all }
-
-
 
   .rec-out {
     margin-top: 6px;
@@ -112,38 +41,14 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
 
-  /* Layer jump controls */
   .rec-layer-row {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
-  .rec-layer-row input[type="number"] {
-    width: 90px;
-  }
-  .rec-layer-row input[type="text"] {
-    flex: 1;
-    min-width: 120px;
-  }
-
-  .btn-danger {
-    background: rgba(239,68,68,.15);
-    border: 1px solid var(--error-border);
-    color: var(--error);
-  }
-  .btn-danger:hover { background: var(--error); color: #fff }
-
-  .rec-warn-box {
-    background: var(--warn-bg);
-    border: 1px solid var(--warn-border);
-    border-radius: var(--radius-xs);
-    padding: 8px 12px;
-    font-size: 12px;
-    color: #fed7aa;
-    line-height: 1.4;
-  }
-  .rec-warn-box strong { color: var(--warn) }
+  .rec-layer-row input[type="number"] { width: 90px; }
+  .rec-layer-row input[type="text"]   { flex: 1; min-width: 120px; }
 
   .rec-section-label {
     font-size: 10.5px;
@@ -154,7 +59,19 @@
     margin: 4px 0 2px 2px;
   }
 
-  /* Power-loss persisted snapshot banner */
+  .rec-idle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface-0);
+    color: var(--gray-300);
+    font-size: 13px;
+  }
+  .rec-idle-icon { font-size: 20px; flex-shrink: 0; }
+
   .rec-pls-banner {
     border: 1px solid var(--warn-border);
     background: var(--warn-bg);
@@ -182,148 +99,70 @@
 
 <div class="content rec-wrap">
 
-  <!-- ── Power-loss persisted snapshot (shown on load if state file exists) ── -->
+  <!-- ── Idle state (shown when no snapshot exists) ── -->
+  <div id="rec-idle" class="rec-idle">
+    <span class="rec-idle-icon">✓</span>
+    <span>No interrupted print found. If a print is cancelled or power is lost, a recovery option will appear here automatically.</span>
+  </div>
+
+  <!-- ── Interrupted print recovery (shown when state file exists) ── -->
   <div id="pls-section" hidden>
-    <div class="rec-section-label">&#9889; Power-loss recovery</div>
     <div class="rec-pls-banner">
       <div>
-        <div class="rec-pls-title">&#9889; Power-loss snapshot found</div>
+        <div class="rec-pls-title">&#9889; Interrupted print found</div>
         <div class="rec-pls-sub">
-          A print state was saved to disk before power was lost or the browser closed.
-          This snapshot survives reboots. Recover from it below, or clear it if it is stale.
+          Position data was saved by the background monitor. Generate a recovery file to resume from where it left off.
         </div>
       </div>
-      <div class="rec-kv" id="pls-kv">
-        <span class="k">File</span>          <span class="v" id="pls-file">—</span>
-        <span class="k">Byte position</span> <span class="v" id="pls-pos">—</span>
-        <span class="k">Last Z</span>        <span class="v" id="pls-z">—</span>
-        <span class="k">Last speed</span>    <span class="v" id="pls-speed">—</span>
-        <span class="k">Saved at</span>      <span class="v" id="pls-time">—</span>
+      <div class="rec-kv">
+        <span class="k">File</span>      <span class="v" id="pls-file">—</span>
+        <span class="k">Last Z</span>    <span class="v" id="pls-z">—</span>
+        <span class="k">Saved at</span>  <span class="v" id="pls-time">—</span>
       </div>
       <div class="btn-row" style="justify-content:flex-start">
-        <button type="button" id="btn-pls-recover">Recover from this snapshot</button>
-        <button type="button" id="btn-pls-clear" class="btn-ghost">Clear snapshot</button>
+        <button type="button" id="btn-pls-recover">Generate Recovery File</button>
+        <button type="button" id="btn-pls-clear" class="btn-ghost">Dismiss</button>
       </div>
       <div class="rec-out" id="out-pls" style="display:none"></div>
     </div>
   </div>
 
-  <!-- ── Section: Live Monitor ───────────────────────────────────── -->
-  <div class="rec-section-label">Live print monitor</div>
+  <!-- ── Slice at Z height ─────────────────────────────────────── -->
+  <div class="rec-section-label">Slice at Z height</div>
 
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div>
-      <div class="rec-title">Print Progress</div>
-      <div class="rec-sub">Monitors the active print via Moonraker WebSocket. Recovery data is captured automatically while a print is running.</div>
+      <div class="rec-title">Resume from a specific layer</div>
+      <div class="rec-sub">Use this when you know roughly how far the print got. Pick a file, enter the Z height to resume from, and a <span style="font-family:monospace">reCover_*.gcode</span> will be generated. The original file is kept as a <span style="font-family:monospace">.backup</span>.</div>
     </div>
 
-    <div class="rec-status-bar">
-      <span class="rec-pill" id="rec-ws-pill"><span class="rec-dot static" id="rec-ws-dot"></span>WS: —</span>
-      <span class="rec-pill" id="rec-state-pill">State: —</span>
-      <span class="rec-pill" id="rec-pos-pill">Position: —</span>
-      <span class="rec-pill" id="rec-z-pill">Z: —</span>
-      <span class="rec-pill" id="rec-speed-pill">Speed: —</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="layer-file-select" style="flex:1">
+        <option value="">— select a file —</option>
+      </select>
+      <button type="button" id="btn-refresh-files" class="btn-ghost" style="padding:8px 12px">↻</button>
     </div>
 
-    <div class="rec-progress-wrap">
-      <div class="rec-progress-label">
-        <span id="rec-file-label">No active print</span>
-        <span id="rec-pct-label">—</span>
-      </div>
-      <div class="rec-progress-track">
-        <div class="rec-progress-fill" id="rec-progress-fill"></div>
-      </div>
-    </div>
-
-    <div class="rec-kv" id="rec-file-kv" style="display:none">
-      <span class="k">File</span>       <span class="v" id="rec-kv-file">—</span>
-      <span class="k">File size</span>  <span class="v" id="rec-kv-size">—</span>
-      <span class="k">Captured Z</span> <span class="v" id="rec-kv-z">—</span>
-      <span class="k">Byte offset</span><span class="v" id="rec-kv-pos">—</span>
-    </div>
-
-    <div id="rec-snapshot-status" class="rec-warn-box" style="display:none"></div>
-  </div>
-
-  <!-- ── Section: Recovery Actions ─────────────────────────────── -->
-  <div class="rec-section-label">Recovery actions</div>
-
-  <!-- Power-loss / interrupt recovery -->
-  <div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div>
-      <div class="rec-title">Recover Interrupted Print</div>
-      <div class="rec-sub">
-        Uses the last captured byte position to slice the original G-code file.
-        A new <span style="font-family:monospace">reCover_*.gcode</span> file is written to the gcodes folder and queued for printing.
-        The original file is kept as a <span style="font-family:monospace">.backup</span>.
-      </div>
-    </div>
-
-    <div id="rec-no-snapshot" class="rec-warn-box">
-      <strong>No recovery snapshot available.</strong>
-      Start a print while this tab is open (or re-open the tab during a print) to capture position data.
-    </div>
-
-    <div class="rec-kv" id="rec-snapshot-kv" style="display:none">
-      <span class="k">Snapshot file</span>  <span class="v" id="snap-file">—</span>
-      <span class="k">Byte position</span>   <span class="v" id="snap-pos">—</span>
-      <span class="k">Last Z</span>          <span class="v" id="snap-z">—</span>
-      <span class="k">Last speed</span>      <span class="v" id="snap-speed">—</span>
-    </div>
-
-    <div style="margin-top:4px">
-      <button type="button" id="btn-auto-recover" disabled>Generate Recovery File</button>
-    </div>
-
-    <div class="rec-out" id="out-recover" style="display:none"></div>
-  </div>
-
-  <!-- ── Section: Resume from Layer ───────────────────────────── -->
-  <div class="rec-section-label">Resume from layer (no snapshot needed)</div>
-
-  <div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div>
-      <div class="rec-title">Slice at Layer / Z Height</div>
-      <div class="rec-sub">
-        Choose a G-code file and provide a target Z height. The tool will search the file for
-        the nearest layer change at or above that height and produce a
-        <span style="font-family:monospace">reCover_*.gcode</span> starting from that point.
-        Useful when you know roughly how far a print got before failing.
-      </div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="rec-layer-row">
       <div>
-        <label>G-code file</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select id="layer-file-select" style="flex:1">
-            <option value="">— select a file —</option>
-          </select>
-          <button type="button" id="btn-refresh-files" class="btn-ghost" style="white-space:nowrap;padding:8px 12px">↻ Refresh</button>
-        </div>
+        <label>Resume Z height (mm)</label>
+        <input type="number" id="layer-z" min="0" step="0.01" placeholder="e.g. 12.4">
       </div>
+      <div style="flex:1">
+        <label>Output filename (optional)</label>
+        <input type="text" id="layer-outname" placeholder="auto: reCover_filename.gcode">
+      </div>
+    </div>
 
-      <div class="rec-layer-row">
-        <div>
-          <label>Resume Z height (mm)</label>
-          <input type="number" id="layer-z" min="0" step="0.01" placeholder="e.g. 12.4">
-        </div>
-        <div style="flex:1">
-          <label>Custom output name (optional)</label>
-          <input type="text" id="layer-outname" placeholder="auto: reCover_<filename>">
-        </div>
-      </div>
+    <div id="layer-file-info" class="rec-kv" style="display:none">
+      <span class="k">Layers</span>    <span class="v" id="lfi-layers">—</span>
+      <span class="k">Max Z</span>     <span class="v" id="lfi-maxz">—</span>
+      <span class="k">File size</span> <span class="v" id="lfi-size">—</span>
+    </div>
 
-      <div id="layer-file-info" class="rec-kv" style="display:none">
-        <span class="k">Detected layers</span><span class="v" id="lfi-layers">—</span>
-        <span class="k">Max Z</span>           <span class="v" id="lfi-maxz">—</span>
-        <span class="k">File size</span>       <span class="v" id="lfi-size">—</span>
-      </div>
-
-      <div class="btn-row" style="justify-content:flex-start">
-        <button type="button" id="btn-analyze">Analyze File</button>
-        <button type="button" id="btn-layer-recover" disabled>Generate Recovery File</button>
-      </div>
+    <div class="btn-row" style="justify-content:flex-start">
+      <button type="button" id="btn-analyze">Analyze File</button>
+      <button type="button" id="btn-layer-recover" disabled>Generate Recovery File</button>
     </div>
 
     <div class="rec-out" id="out-layer" style="display:none"></div>
@@ -333,97 +172,18 @@
 
 <script>
 (() => {
-  /* ── Moonraker connection ── */
   const host = location.hostname || 'localhost';
   const MR   = (localStorage.getItem('moonrakerUrl') || `http://${host}:7125`).replace(/\/+$/, '');
-  const WS_URL = `ws://${new URL(MR).host}/websocket`;
-
-  /* ── Snapshot state (session memory) ── */
-  let snapshot = null; // { file, filePath, fileSize, filePosition, lastZ, lastSpeed }
-
-  /* ── Persisted state (power-loss) ── */
-  const FLUSH_INTERVAL_MS = 30_000; // write to disk every 30 s while printing
-  let flushTimer    = null;
-  let persistedSnap = null; // loaded from disk on init
-
-  async function loadPersistedState(){
-    try{
-      const r = await fetch('/cgi-bin/recovery_state.sh', { cache: 'no-store' });
-      if (!r.ok) return;
-      const data = await r.json();
-      if (data.exists === false || !data.file) return;
-      persistedSnap = data;
-      plsFile.textContent  = data.file          || '—';
-      plsPos.textContent   = data.file_position != null ? data.file_position + ' B' : '—';
-      plsZ.textContent     = data.last_z        != null ? data.last_z + ' mm' : '—';
-      plsSpeed.textContent = data.last_speed    != null ? data.last_speed + ' mm/min' : '—';
-      plsTime.textContent  = data.timestamp     || '—';
-      plsSection.hidden = false;
-    }catch{ /* CGI may not exist yet */ }
-  }
-
-  async function flushStateToDisk(){
-    if (!snapshot || !snapshot.file || snapshot.filePosition == null) return;
-    try{
-      await fetch('/cgi-bin/recovery_state.sh', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file:          snapshot.file,
-          file_path:     snapshot.filePath || '',
-          file_position: snapshot.filePosition,
-          last_x:        snapshot.lastX,
-          last_y:        snapshot.lastY,
-          last_z:        snapshot.lastZ,
-          last_speed:    snapshot.lastSpeed,
-          timestamp:     new Date().toLocaleString(),
-        }),
-      });
-    }catch{ /* best-effort */ }
-  }
-
-  async function clearPersistedState(){
-    try{
-      await fetch('/cgi-bin/recovery_state.sh?action=clear', { cache: 'no-store' });
-    }catch{ /* best-effort */ }
-    persistedSnap = null;
-    plsSection.hidden = true;
-    outPls.style.display = 'none';
-  }
-
-  function startFlushTimer(){
-    if (flushTimer) return;
-    flushTimer = setInterval(flushStateToDisk, FLUSH_INTERVAL_MS);
-  }
-
-  function stopFlushTimer(){
-    if (flushTimer){ clearInterval(flushTimer); flushTimer = null; }
-  }
 
   /* ── UI refs ── */
-  const wsPill      = document.getElementById('rec-ws-pill');
-  const wsDot       = document.getElementById('rec-ws-dot');
-  const statePill   = document.getElementById('rec-state-pill');
-  const posPill     = document.getElementById('rec-pos-pill');
-  const zPill       = document.getElementById('rec-z-pill');
-  const speedPill   = document.getElementById('rec-speed-pill');
-  const progFill    = document.getElementById('rec-progress-fill');
-  const progFile    = document.getElementById('rec-file-label');
-  const progPct     = document.getElementById('rec-pct-label');
-  const fileKv      = document.getElementById('rec-file-kv');
-  const kvFile      = document.getElementById('rec-kv-file');
-  const kvSize      = document.getElementById('rec-kv-size');
-  const kvZ         = document.getElementById('rec-kv-z');
-  const kvPos       = document.getElementById('rec-kv-pos');
-  const snapStatus  = document.getElementById('rec-snapshot-status');
-  const noSnap      = document.getElementById('rec-no-snapshot');
-  const snapKv      = document.getElementById('rec-snapshot-kv');
-  const snapFile    = document.getElementById('snap-file');
-  const snapPos     = document.getElementById('snap-pos');
-  const snapZ       = document.getElementById('snap-z');
-  const snapSpeed   = document.getElementById('snap-speed');
-  const btnAutoRec  = document.getElementById('btn-auto-recover');
-  const outRecover  = document.getElementById('out-recover');
+  const recIdle     = document.getElementById('rec-idle');
+  const plsSection  = document.getElementById('pls-section');
+  const plsFile     = document.getElementById('pls-file');
+  const plsZ        = document.getElementById('pls-z');
+  const plsTime     = document.getElementById('pls-time');
+  const btnPlsRec   = document.getElementById('btn-pls-recover');
+  const btnPlsClear = document.getElementById('btn-pls-clear');
+  const outPls      = document.getElementById('out-pls');
   const fileSelect  = document.getElementById('layer-file-select');
   const btnRefresh  = document.getElementById('btn-refresh-files');
   const layerZ      = document.getElementById('layer-z');
@@ -436,28 +196,11 @@
   const btnLayerRec = document.getElementById('btn-layer-recover');
   const outLayer    = document.getElementById('out-layer');
 
-  // Power-loss banner refs
-  const plsSection  = document.getElementById('pls-section');
-  const plsFile     = document.getElementById('pls-file');
-  const plsPos      = document.getElementById('pls-pos');
-  const plsZ        = document.getElementById('pls-z');
-  const plsSpeed    = document.getElementById('pls-speed');
-  const plsTime     = document.getElementById('pls-time');
-  const btnPlsRec   = document.getElementById('btn-pls-recover');
-  const btnPlsClear = document.getElementById('btn-pls-clear');
-  const outPls      = document.getElementById('out-pls');
-
   /* ── Helpers ── */
   function fmtBytes(n){
     if (n == null) return '—';
-    if (n < 1024) return n + ' B';
     if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
     return (n/1048576).toFixed(2) + ' MB';
-  }
-
-  function setPillTone(el, tone){
-    el.classList.remove('ok','warn','error','brand');
-    if (tone) el.classList.add(tone);
   }
 
   function logTo(el, msg, clear=false){
@@ -467,321 +210,39 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  /* ── Snapshot UI update ── */
-  function updateSnapshotUI(){
-    if (!snapshot){
-      noSnap.style.display = 'block';
-      snapKv.style.display = 'none';
-      btnAutoRec.disabled = true;
-      return;
-    }
-    noSnap.style.display = 'none';
-    snapKv.style.display = 'grid';
-    snapFile.textContent  = snapshot.file || '—';
-    snapPos.textContent   = snapshot.filePosition != null ? snapshot.filePosition + ' B' : '—';
-    snapZ.textContent     = snapshot.lastZ   != null ? snapshot.lastZ + ' mm' : '—';
-    snapSpeed.textContent = snapshot.lastSpeed != null ? snapshot.lastSpeed + ' mm/min' : '—';
-    btnAutoRec.disabled   = !snapshot.file || snapshot.filePosition == null;
-  }
+  /* ── Persisted state ── */
+  let persistedSnap = null;
 
-  /* ── Live monitor state ── */
-  let liveState = 'unknown';
-  let liveFile  = null;
-  let liveFileSize = null;
-  let liveLastX = null;
-  let liveLastY = null;
-  let liveLastZ = null;
-  let liveLastSpeed = null;
-  let livePos   = null;
-
-  function applyStatusUpdate(vsd, gcodeMove){
-    if (gcodeMove){
-      if (typeof gcodeMove.speed === 'number') liveLastSpeed = Math.round(gcodeMove.speed);
-      // Extract X/Y/Z from position array [x,y,z,e]
-      if (Array.isArray(gcodeMove.position) && gcodeMove.position.length >= 3){
-        const [px, py, pz] = gcodeMove.position;
-        if (typeof px === 'number') liveLastX = px;
-        if (typeof py === 'number') liveLastY = py;
-        if (typeof pz === 'number' && pz > 0) liveLastZ = pz;
-      }
-    }
-    if (vsd){
-      if (typeof vsd.progress === 'number'){
-        const pct = Math.round(vsd.progress * 100);
-        progFill.style.width = pct + '%';
-        progPct.textContent  = pct + '%';
-      }
-      if (typeof vsd.file_position === 'number') livePos = vsd.file_position;
-      if (typeof vsd.file_size     === 'number') liveFileSize = vsd.file_size;
-      if (typeof vsd.file_path     === 'string' && vsd.file_path){
-        liveFile = vsd.file_path;
-      }
-      if (typeof vsd.is_active === 'boolean'){
-        liveState = vsd.is_active ? 'printing' : 'idle';
-        if (!vsd.is_active && liveFile && livePos != null && livePos > 0){
-          // print just stopped — seal the snapshot
-          commitSnapshot('Print stopped — snapshot sealed.');
-        }
-      }
-    }
-    renderLiveUI();
-  }
-
-  function commitSnapshot(msg){
-    if (!liveFile || livePos == null || livePos <= 0) return;
-    snapshot = {
-      file:         liveFile.replace(/^.*\//, ''),  // basename
-      filePath:     liveFile,
-      fileSize:     liveFileSize,
-      filePosition: livePos,
-      lastX:        liveLastX,
-      lastY:        liveLastY,
-      lastZ:        liveLastZ,
-      lastSpeed:    liveLastSpeed,
-    };
-    snapStatus.textContent = '✓ ' + msg;
-    snapStatus.style.display = 'block';
-    snapStatus.style.background = 'var(--success-bg)';
-    snapStatus.style.borderColor = 'var(--success-border)';
-    snapStatus.style.color = 'var(--success)';
-    updateSnapshotUI();
-    flushStateToDisk(); // persist to disk immediately when print stops
-  }
-
-  function renderLiveUI(){
-    const printing = liveState === 'printing';
-    setPillTone(statePill, printing ? 'ok' : '');
-    statePill.textContent = 'State: ' + liveState;
-
-    posPill.textContent = 'Position: ' + (livePos != null ? fmtBytes(livePos) : '—');
-    zPill.textContent   = 'Z: ' + (liveLastZ != null ? liveLastZ.toFixed(3) + ' mm' : '—');
-    speedPill.textContent = 'Speed: ' + (liveLastSpeed != null ? liveLastSpeed + ' mm/min' : '—');
-
-    if (liveFile){
-      const basename = liveFile.replace(/^.*\//, '');
-      progFile.textContent = basename;
-      fileKv.style.display = 'grid';
-      kvFile.textContent = basename;
-      kvSize.textContent = fmtBytes(liveFileSize);
-      kvZ.textContent    = liveLastZ != null ? liveLastZ.toFixed(3) + ' mm' : '—';
-      kvPos.textContent  = livePos != null ? livePos + ' B' : '—';
-    } else {
-      progFile.textContent = 'No active print';
-      fileKv.style.display = 'none';
-    }
-
-    // Save snapshot while printing at each position update
-    if (printing && liveFile && livePos != null && livePos > 0){
-      snapshot = {
-        file:         liveFile.replace(/^.*\//, ''),
-        filePath:     liveFile,
-        fileSize:     liveFileSize,
-        filePosition: livePos,
-        lastX:        liveLastX,
-        lastY:        liveLastY,
-        lastZ:        liveLastZ,
-        lastSpeed:    liveLastSpeed,
-      };
-      updateSnapshotUI();
-      startFlushTimer();
-    } else if (!printing){
-      stopFlushTimer();
-    }
-  }
-
-  /* ── WebSocket ── */
-  let ws, wsConnected = false;
-
-  function wsSend(obj){ try{ ws?.send(JSON.stringify(obj)); }catch{} }
-
-  function setWsState(ok){
-    wsConnected = !!ok;
-    wsPill.textContent = 'WS: ' + (ok ? 'connected' : 'offline');
-    setPillTone(wsPill, ok ? 'ok' : 'error');
-    wsDot.className = 'rec-dot' + (ok ? '' : ' static');
-  }
-
-  function openWs(){
-    try { ws = new WebSocket(WS_URL); } catch(e){ setWsState(false); return; }
-
-    ws.onopen = () => {
-      setWsState(true);
-      wsSend({
-        jsonrpc: '2.0',
-        method:  'printer.objects.subscribe',
-        params:  { objects: {
-          virtual_sdcard: null,
-          gcode_move:     ['speed', 'position'],
-        }},
-        id: 10,
-      });
-    };
-
-    ws.onclose = () => { setWsState(false); setTimeout(openWs, 2500); };
-    ws.onerror = () => {};
-
-    ws.onmessage = (ev) => {
-      let data; try { data = JSON.parse(ev.data); } catch { return; }
-
-      // Initial subscription response contains current state
-      if (data?.id === 10 && data?.result?.status){
-        const s = data.result.status;
-        applyStatusUpdate(s.virtual_sdcard, s.gcode_move);
-        return;
-      }
-
-      if (data?.method === 'notify_status_update' && Array.isArray(data.params) && data.params[0]){
-        const p = data.params[0];
-        applyStatusUpdate(p.virtual_sdcard, p.gcode_move);
-      }
-    };
-  }
-
-  openWs();
-
-  /* ── Moonraker file list ── */
-  async function loadFileList(){
-    fileSelect.innerHTML = '<option value="">— loading… —</option>';
-    try {
-      const r = await fetch(`${MR}/server/files/list?root=gcodes`, { cache: 'no-store' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+  async function loadPersistedState(){
+    try{
+      const r = await fetch('/cgi-bin/recovery_state.sh', { cache: 'no-store' });
+      if (!r.ok) return;
       const data = await r.json();
-      const files = (data?.result || []).filter(f => /\.gcode$/i.test(f.path || f.filename || ''));
-      files.sort((a, b) => (b.modified || 0) - (a.modified || 0));
-      fileSelect.innerHTML = '<option value="">— select a file —</option>';
-      files.forEach(f => {
-        const name = f.path || f.filename;
-        if (!name) return;
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        fileSelect.appendChild(opt);
-      });
-      if (!files.length) fileSelect.innerHTML = '<option value="">No .gcode files found</option>';
-    } catch(e) {
-      fileSelect.innerHTML = '<option value="">Error loading files: ' + e.message + '</option>';
-    }
-    lfiWrap.style.display = 'none';
-    btnLayerRec.disabled = true;
+      if (data.exists === false || !data.file) return;
+      persistedSnap = data;
+      plsFile.textContent = data.file       || '—';
+      plsZ.textContent    = data.last_z != null ? data.last_z + ' mm' : '—';
+      plsTime.textContent = data.timestamp  || '—';
+      plsSection.hidden = false;
+      recIdle.hidden    = true;
+    }catch{}
   }
 
-  loadFileList();
-  btnRefresh.addEventListener('click', loadFileList);
-  fileSelect.addEventListener('change', () => {
-    lfiWrap.style.display = 'none';
-    btnLayerRec.disabled = true;
-  });
+  async function clearPersistedState(){
+    try{ await fetch('/cgi-bin/recovery_state.sh?action=clear', { cache: 'no-store' }); }catch{}
+    persistedSnap = null;
+    plsSection.hidden = true;
+    recIdle.hidden    = false;
+    outPls.style.display = 'none';
+  }
 
-  /* ── Analyze file (get layer count / max Z) ── */
-  btnAnalyze.addEventListener('click', async () => {
-    const fname = fileSelect.value;
-    if (!fname){ alert('Select a G-code file first.'); return; }
-    btnAnalyze.disabled = true;
-    btnAnalyze.textContent = 'Analyzing…';
-    outLayer.style.display = 'none';
-    outLayer.textContent   = '';
-    lfiWrap.style.display  = 'none';
-
-    try {
-      const params = new URLSearchParams({ file: fname });
-      const r = await fetch('/cgi-bin/analyze_gcode.sh?' + params, { cache: 'no-store' });
-      const text = await r.text();
-      if (!r.ok) throw new Error(text.trim() || 'HTTP ' + r.status);
-
-      // Expected: JSON {"layers":N,"max_z":Z,"file_size":S}
-      let info;
-      try { info = JSON.parse(text); } catch { throw new Error('Bad response: ' + text.trim()); }
-
-      lfiLayers.textContent = info.layers  != null ? info.layers  : '—';
-      lfiMaxZ.textContent   = info.max_z   != null ? info.max_z + ' mm' : '—';
-      lfiSize.textContent   = fmtBytes(info.file_size);
-      lfiWrap.style.display = 'grid';
-      btnLayerRec.disabled  = false;
-    } catch(e) {
-      logTo(outLayer, 'Error: ' + e.message, true);
-    } finally {
-      btnAnalyze.disabled    = false;
-      btnAnalyze.textContent = 'Analyze File';
-    }
-  });
-
-  /* ── Layer-based recovery ── */
-  btnLayerRec.addEventListener('click', async () => {
-    const fname = fileSelect.value;
-    if (!fname){ alert('Select a G-code file first.'); return; }
-    const z = parseFloat(layerZ.value);
-    if (!Number.isFinite(z) || z < 0){ alert('Enter a valid Z height (mm).'); return; }
-    const outname = layerOut.value.trim();
-
-    btnLayerRec.disabled    = true;
-    outLayer.style.display  = 'none';
-    outLayer.textContent    = '';
-
-    logTo(outLayer, `Slicing "${fname}" from Z=${z} mm…`, true);
-
-    try {
-      const params = new URLSearchParams({ file: fname, z: z.toFixed(3) });
-      if (outname) params.append('outname', outname);
-      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
-      const text = (await r.text()).trim();
-      logTo(outLayer, text);
-      if (!r.ok) throw new Error('Script returned error status');
-    } catch(e) {
-      logTo(outLayer, 'Error: ' + e.message);
-    } finally {
-      btnLayerRec.disabled = false;
-    }
-  });
-
-  /* ── Auto-recover from snapshot ── */
-  btnAutoRec.addEventListener('click', async () => {
-    if (!snapshot) return;
-    if (!confirm(
-      `Generate recovery file for:\n  ${snapshot.file}\n  at byte ${snapshot.filePosition}` +
-      (snapshot.lastZ != null ? `, Z=${snapshot.lastZ} mm` : '') +
-      '\n\nContinue?'
-    )) return;
-
-    btnAutoRec.disabled = true;
-    logTo(outRecover, `Recovering "${snapshot.file}" at byte ${snapshot.filePosition}…`, true);
-
-    try {
-      const params = new URLSearchParams({
-        file:     snapshot.file,
-        position: snapshot.filePosition,
-      });
-      if (snapshot.lastX     != null) params.append('x',     snapshot.lastX.toFixed(3));
-      if (snapshot.lastY     != null) params.append('y',     snapshot.lastY.toFixed(3));
-      if (snapshot.lastZ     != null) params.append('z',     snapshot.lastZ.toFixed(3));
-      if (snapshot.lastSpeed != null) params.append('speed', snapshot.lastSpeed);
-      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
-      const text = (await r.text()).trim();
-      logTo(outRecover, text);
-      if (r.ok && !text.startsWith('ERROR')) clearPersistedState();
-    } catch(e) {
-      logTo(outRecover, 'Error: ' + e.message);
-    } finally {
-      btnAutoRec.disabled = false;
-    }
-  });
-
-  /* ── Power-loss snapshot recover ── */
+  /* ── Interrupted print recover ── */
   btnPlsRec.addEventListener('click', async () => {
     if (!persistedSnap) return;
-    if (!confirm(
-      `Recover from power-loss snapshot?\n  File: ${persistedSnap.file}\n  Byte: ${persistedSnap.file_position}` +
-      (persistedSnap.last_z != null ? `\n  Z: ${persistedSnap.last_z} mm` : '') +
-      '\n\nContinue?'
-    )) return;
-
     btnPlsRec.disabled = true;
     logTo(outPls, `Recovering "${persistedSnap.file}" at byte ${persistedSnap.file_position}…`, true);
-
     try {
-      const params = new URLSearchParams({
-        file:     persistedSnap.file,
-        position: persistedSnap.file_position,
-      });
+      const params = new URLSearchParams({ file: persistedSnap.file, position: persistedSnap.file_position });
       if (persistedSnap.last_x    != null) params.append('x',     persistedSnap.last_x);
       if (persistedSnap.last_y    != null) params.append('y',     persistedSnap.last_y);
       if (persistedSnap.last_z    != null) params.append('z',     persistedSnap.last_z);
@@ -798,12 +259,86 @@
   });
 
   btnPlsClear.addEventListener('click', async () => {
-    if (!confirm('Clear the saved power-loss snapshot?')) return;
+    if (!confirm('Dismiss this snapshot?')) return;
     await clearPersistedState();
   });
 
+  /* ── File list ── */
+  async function loadFileList(){
+    fileSelect.innerHTML = '<option value="">— loading… —</option>';
+    try {
+      const r = await fetch(`${MR}/server/files/list?root=gcodes`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const files = (data?.result || []).filter(f => /\.gcode$/i.test(f.path || f.filename || ''));
+      files.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+      fileSelect.innerHTML = '<option value="">— select a file —</option>';
+      files.forEach(f => {
+        const name = f.path || f.filename;
+        if (!name) return;
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        fileSelect.appendChild(opt);
+      });
+      if (!files.length) fileSelect.innerHTML = '<option value="">No .gcode files found</option>';
+    } catch(e) {
+      fileSelect.innerHTML = `<option value="">Error: ${e.message}</option>`;
+    }
+    lfiWrap.style.display = 'none';
+    btnLayerRec.disabled = true;
+  }
+
+  loadFileList();
+  btnRefresh.addEventListener('click', loadFileList);
+  fileSelect.addEventListener('change', () => { lfiWrap.style.display = 'none'; btnLayerRec.disabled = true; });
+
+  /* ── Analyze ── */
+  btnAnalyze.addEventListener('click', async () => {
+    const fname = fileSelect.value;
+    if (!fname){ alert('Select a file first.'); return; }
+    btnAnalyze.disabled = true;
+    btnAnalyze.textContent = 'Analyzing…';
+    lfiWrap.style.display = 'none';
+    outLayer.style.display = 'none';
+    try {
+      const r = await fetch('/cgi-bin/analyze_gcode.sh?' + new URLSearchParams({ file: fname }), { cache: 'no-store' });
+      const text = await r.text();
+      const info = JSON.parse(text);
+      lfiLayers.textContent = info.layers  ?? '—';
+      lfiMaxZ.textContent   = info.max_z   != null ? info.max_z + ' mm' : '—';
+      lfiSize.textContent   = fmtBytes(info.file_size);
+      lfiWrap.style.display = 'grid';
+      btnLayerRec.disabled  = false;
+    } catch(e) {
+      logTo(outLayer, 'Error: ' + e.message, true);
+    } finally {
+      btnAnalyze.disabled = false;
+      btnAnalyze.textContent = 'Analyze File';
+    }
+  });
+
+  /* ── Z-based recovery ── */
+  btnLayerRec.addEventListener('click', async () => {
+    const fname = fileSelect.value;
+    if (!fname){ alert('Select a file first.'); return; }
+    const z = parseFloat(layerZ.value);
+    if (!Number.isFinite(z) || z < 0){ alert('Enter a valid Z height (mm).'); return; }
+    const outname = layerOut.value.trim();
+    btnLayerRec.disabled = true;
+    logTo(outLayer, `Slicing "${fname}" from Z=${z} mm…`, true);
+    try {
+      const params = new URLSearchParams({ file: fname, z: z.toFixed(3) });
+      if (outname) params.append('outname', outname);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      logTo(outLayer, (await r.text()).trim());
+    } catch(e) {
+      logTo(outLayer, 'Error: ' + e.message);
+    } finally {
+      btnLayerRec.disabled = false;
+    }
+  });
+
   /* ── Init ── */
-  updateSnapshotUI();
   loadPersistedState();
 })();
 </script>
