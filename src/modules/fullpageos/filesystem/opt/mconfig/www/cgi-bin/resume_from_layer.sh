@@ -93,16 +93,22 @@ echo "Source file : $CLEAN"
 echo "File size   : $FILE_SIZE bytes"
 
 # ── Auto-detect temperatures from file if not supplied ──────────────────────
-# Scan backward from POSITION (or file end) to find the LAST M104/M109/M140/M190
-# actually commanded before the interruption — not the first preheat in the header.
+# Primary scan: forward from byte 0 to POSITION (or file end), keeping the LAST
+# non-zero M104/M109/M140/M190 seen before the interruption point.
+# Fallback: if bed temp is still not found (e.g. slice is before M140 in the
+# start sequence), scan the entire file for the FIRST non-zero M140/M190.
+# Regex handles optional tool index and other params before S (e.g. M104 T0 S215).
 if [[ -z "$HOTEND_TEMP" || -z "$BED_TEMP" ]]; then
-  read -r _DETECTED_HOTEND _DETECTED_BED < <(python3 - "$FULL_PATH" "${POSITION:-$FILE_SIZE}" <<'PYEOF'
+  read -r _DETECTED_HOTEND _DETECTED_BED < <(python3 - "$FULL_PATH" "${POSITION:-$FILE_SIZE}" "$FILE_SIZE" <<'PYEOF'
 import sys, re
 
-path  = sys.argv[1]
-limit = int(sys.argv[2])
-hotend_re = re.compile(r'^M10[49]\s+S([0-9]+)', re.IGNORECASE)
-bed_re    = re.compile(r'^M1[49]0\s+S([0-9]+)', re.IGNORECASE)
+path       = sys.argv[1]
+limit      = int(sys.argv[2])
+file_size  = int(sys.argv[3])
+
+# Match M104/M109/M140/M190 with S anywhere on the line (handles T0, spaces, etc.)
+hotend_re = re.compile(r'^M10[49]\b[^\n]*\bS([1-9][0-9]*)', re.IGNORECASE)
+bed_re    = re.compile(r'^M1[49]0\b[^\n]*\bS([1-9][0-9]*)', re.IGNORECASE)
 
 last_hotend = ''
 last_bed    = ''
@@ -117,6 +123,16 @@ with open(path, 'rb') as fh:
         if mh: last_hotend = mh.group(1)
         if mb: last_bed    = mb.group(1)
         offset += len(raw_line)
+
+# Fallback: bed temp not found before slice point — scan full file for first hit
+if not last_bed and limit < file_size:
+    with open(path, 'rb') as fh:
+        for raw_line in fh:
+            line = raw_line.decode('utf-8', errors='replace')
+            mb = bed_re.match(line)
+            if mb:
+                last_bed = mb.group(1)
+                break
 
 print(last_hotend, last_bed)
 PYEOF
