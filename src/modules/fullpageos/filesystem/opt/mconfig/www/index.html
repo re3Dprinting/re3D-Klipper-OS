@@ -193,6 +193,20 @@
     align-content: start;
     overflow-y: auto;
   }
+  .beta-tag {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn);
+    vertical-align: middle;
+    line-height: 1.6;
+  }
+
   .page-title {
     font-size: 15px;
     font-weight: 700;
@@ -348,16 +362,20 @@ function setActiveTab(name){
   document.querySelectorAll('.tab[data-page]').forEach(b=>{
     b.classList.toggle('active', b.dataset.page === name);
   });
-  titleEl.textContent = prettyName(name);
+  const label = prettyName(name);
+  titleEl.innerHTML = label.html ?? label.text;
 }
 
 function prettyName(pg){
   const m = {
     machine:'Machine', network:'Network', tuning:'Tuning',
     shaper:'Input Shaper', calibration:'Calibration',
-    troubleshoot:'Troubleshooting', recovery:'Print Recovery', system:'System'
+    troubleshoot:'Troubleshooting',
+    recovery:{ text:'Print Recovery', html:'Print Recovery <span class="beta-tag">BETA</span>' },
+    system:'System'
   };
-  return m[pg] || (pg[0].toUpperCase()+pg.slice(1));
+  const v = m[pg] || (pg[0].toUpperCase()+pg.slice(1));
+  return typeof v === 'string' ? { text: v, html: v } : v;
 }
 
 function cleanupTabArtifacts(){
