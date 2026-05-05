@@ -93,35 +93,44 @@ echo "Source file : $CLEAN"
 echo "File size   : $FILE_SIZE bytes"
 
 # ── Auto-detect temperatures from file if not supplied ──────────────────────
-# Primary scan: forward from byte 0 to POSITION (or file end), keeping the LAST
-# non-zero M104/M109/M140/M190 seen before the interruption point.
-# Fallback: if bed temp is still not found (e.g. slice is before M140 in the
-# start sequence), scan the entire file for the FIRST non-zero M140/M190.
-# Regex handles optional tool index and other params before S (e.g. M104 T0 S215).
-if [[ -z "$HOTEND_TEMP" || -z "$BED_TEMP" ]]; then
-  read -r _DETECTED_HOTEND _DETECTED_BED < <(python3 - "$FULL_PATH" "${POSITION:-$FILE_SIZE}" "$FILE_SIZE" <<'PYEOF'
+# Tracks per-tool hotend temps (T0, T1, T2… for pellet extruders) and bed temp.
+# Output: CSV like "T0:220,T1:210,T2:200" then bed temp (space-separated fields).
+# Handles: M104 S220, M104 T0 S220, M109 S220 T0, M140 S60, M190 S60.
+# S0 is ignored (heater-off command). Bed temp falls back to first occurrence in
+# the file if not found before the slice point.
+declare -A HOTEND_TOOLS   # tool-key ("T0","T1"…) → temp string
+if [[ -z "$BED_TEMP" ]] || { [[ -z "$HOTEND_TEMP" ]] && [[ ${#HOTEND_TOOLS[@]} -eq 0 ]]; }; then
+  read -r _DETECTED_TOOLS _DETECTED_BED < <(python3 - "$FULL_PATH" "${POSITION:-$FILE_SIZE}" "$FILE_SIZE" <<'PYEOF'
 import sys, re
 
 path       = sys.argv[1]
 limit      = int(sys.argv[2])
 file_size  = int(sys.argv[3])
 
-# Match M104/M109/M140/M190 with S anywhere on the line (handles T0, spaces, etc.)
-hotend_re = re.compile(r'^M10[49]\b[^\n]*\bS([1-9][0-9]*)', re.IGNORECASE)
-bed_re    = re.compile(r'^M1[49]0\b[^\n]*\bS([1-9][0-9]*)', re.IGNORECASE)
+hotend_re = re.compile(r'^M10[49]\b', re.IGNORECASE)
+bed_re    = re.compile(r'^M1[49]0\b', re.IGNORECASE)
+t_re      = re.compile(r'\bT(\d+)\b', re.IGNORECASE)
+s_re      = re.compile(r'\bS([1-9][0-9]*)\b', re.IGNORECASE)
 
-last_hotend = ''
-last_bed    = ''
-offset = 0
+hotend_tools = {}   # tool_index(int) -> temp(str), last non-zero seen
+last_bed     = ''
+offset       = 0
+
 with open(path, 'rb') as fh:
     for raw_line in fh:
         if offset >= limit:
             break
         line = raw_line.decode('utf-8', errors='replace')
-        mh = hotend_re.match(line)
-        mb = bed_re.match(line)
-        if mh: last_hotend = mh.group(1)
-        if mb: last_bed    = mb.group(1)
+        if hotend_re.match(line):
+            ms = s_re.search(line)
+            if ms:
+                mt = t_re.search(line)
+                tidx = int(mt.group(1)) if mt else 0
+                hotend_tools[tidx] = ms.group(1)
+        elif bed_re.match(line):
+            ms = s_re.search(line)
+            if ms:
+                last_bed = ms.group(1)
         offset += len(raw_line)
 
 # Fallback: bed temp not found before slice point — scan full file for first hit
@@ -129,19 +138,39 @@ if not last_bed and limit < file_size:
     with open(path, 'rb') as fh:
         for raw_line in fh:
             line = raw_line.decode('utf-8', errors='replace')
-            mb = bed_re.match(line)
-            if mb:
-                last_bed = mb.group(1)
-                break
+            if bed_re.match(line):
+                ms = s_re.search(line)
+                if ms:
+                    last_bed = ms.group(1)
+                    break
 
-print(last_hotend, last_bed)
+tools_csv = ','.join(f'T{k}:{v}' for k, v in sorted(hotend_tools.items()))
+print(tools_csv if tools_csv else '-', last_bed if last_bed else '-')
 PYEOF
   )
-  [[ -z "$HOTEND_TEMP" && -n "$_DETECTED_HOTEND" ]] && HOTEND_TEMP="$_DETECTED_HOTEND"
-  [[ -z "$BED_TEMP"    && -n "$_DETECTED_BED"    ]] && BED_TEMP="$_DETECTED_BED"
+
+  # Parse per-tool CSV into associative array (e.g. "T0:220,T1:210,T2:200")
+  if [[ -n "$_DETECTED_TOOLS" && "$_DETECTED_TOOLS" != "-" ]]; then
+    IFS=',' read -ra _TENTRIES <<< "$_DETECTED_TOOLS"
+    for _TE in "${_TENTRIES[@]}"; do
+      _TK="${_TE%%:*}"   # e.g. T0
+      _TV="${_TE##*:}"   # e.g. 220
+      HOTEND_TOOLS[$_TK]="$_TV"
+    done
+  fi
+  [[ -z "$BED_TEMP" && -n "$_DETECTED_BED" && "$_DETECTED_BED" != "-" ]] && BED_TEMP="$_DETECTED_BED"
 fi
-[[ -n "$HOTEND_TEMP" ]] && echo "Hotend temp : ${HOTEND_TEMP}°C (last executed)"
-[[ -n "$BED_TEMP"    ]] && echo "Bed temp    : ${BED_TEMP}°C (last executed)"
+
+# If legacy hotend= query param was given, treat it as T0 (overrides auto-detect)
+if [[ -n "$HOTEND_TEMP" ]]; then
+  HOTEND_TOOLS[T0]="$HOTEND_TEMP"
+fi
+
+# Log detected temps
+for _TK in $(printf '%s\n' "${!HOTEND_TOOLS[@]}" | sort); do
+  echo "Hotend ${_TK}    : ${HOTEND_TOOLS[$_TK]}°C"
+done
+[[ -n "$BED_TEMP" ]] && echo "Bed temp    : ${BED_TEMP}°C"
 
 # ── Determine slice byte offset ─────────────────────────────────────────────
 SLICE_BYTE=""
@@ -410,9 +439,11 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
   if [[ -n "$BED_TEMP" ]]; then
     printf 'M140 S%s        ; start heating bed (no wait)\n' "$BED_TEMP"
   fi
-  if [[ -n "$HOTEND_TEMP" ]]; then
-    printf 'M104 S%s        ; start heating hotend (no wait)\n' "$HOTEND_TEMP"
-  fi
+  # Emit M104 for each tool — supports single hotend (T0) and multi-zone pellet extruders
+  for _TK in $(printf '%s\n' "${!HOTEND_TOOLS[@]}" | sort); do
+    _TN="${_TK#T}"   # strip "T" prefix → numeric index
+    printf 'M104 T%s S%s   ; start heating %s (no wait)\n' "$_TN" "${HOTEND_TOOLS[$_TK]}" "$_TK"
+  done
   printf 'G90             ; absolute positioning\n'
   if [[ -n "$Z_TARGET" ]]; then
     # Set kinematic position so Klipper knows where Z is (no movement)
@@ -428,9 +459,11 @@ TMP_OUT="${OUT_FILE}.tmp.$$"
   if [[ -n "$BED_TEMP" ]]; then
     printf 'M190 S%s        ; wait for bed temperature\n' "$BED_TEMP"
   fi
-  if [[ -n "$HOTEND_TEMP" ]]; then
-    printf 'M109 S%s        ; wait for hotend temperature\n' "$HOTEND_TEMP"
-  fi
+  # Wait for each tool to reach temp before purging
+  for _TK in $(printf '%s\n' "${!HOTEND_TOOLS[@]}" | sort); do
+    _TN="${_TK#T}"
+    printf 'M109 T%s S%s   ; wait for %s temperature\n' "$_TN" "${HOTEND_TOOLS[$_TK]}" "$_TK"
+  done
   # Prime/purge nozzle before resuming
   printf 'G92 E0          ; reset extruder position\n'
   printf 'M83             ; extruder relative mode\n'
