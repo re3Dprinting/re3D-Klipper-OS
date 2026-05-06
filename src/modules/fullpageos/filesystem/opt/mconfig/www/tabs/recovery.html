@@ -1,0 +1,344 @@
+<!-- tabs/recovery.html — Print Recovery -->
+<style>
+  .rec-wrap {
+    display: grid;
+    gap: 12px;
+    max-width: 860px;
+  }
+
+  .rec-title {
+    font-weight: 800;
+    color: var(--gray-050);
+    margin-bottom: 2px;
+  }
+
+  .rec-sub {
+    font-size: 12px;
+    color: var(--gray-300);
+    line-height: 1.5;
+  }
+
+  .rec-kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+  }
+  .rec-kv .k { color: var(--muted) }
+  .rec-kv .v { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all }
+
+  .rec-out {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    max-height: 200px;
+    overflow: auto;
+    font-size: 12px;
+    color: var(--gray-200);
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .rec-layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .rec-layer-row input[type="number"] { width: 90px; }
+  .rec-layer-row input[type="text"]   { flex: 1; min-width: 120px; }
+
+  .rec-section-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 4px 0 2px 2px;
+  }
+
+  .rec-idle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface-0);
+    color: var(--gray-300);
+    font-size: 13px;
+  }
+  .rec-idle-icon { font-size: 20px; flex-shrink: 0; }
+
+  .rec-pls-banner {
+    border: 1px solid var(--warn-border);
+    background: var(--warn-bg);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .rec-pls-title {
+    font-weight: 800;
+    color: var(--warn);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rec-pls-sub {
+    font-size: 12px;
+    color: #fed7aa;
+    line-height: 1.5;
+    margin-top: 2px;
+  }
+</style>
+
+<div class="content rec-wrap">
+
+  <!-- ── Idle state (shown when no snapshot exists) ── -->
+  <div id="rec-idle" class="rec-idle">
+    <span class="rec-idle-icon">✓</span>
+    <span>No interrupted print found. If a print is cancelled or power is lost, a recovery option will appear here automatically.</span>
+  </div>
+
+  <!-- ── Interrupted print recovery (shown when state file exists) ── -->
+  <div id="pls-section" hidden>
+    <div class="rec-pls-banner">
+      <div>
+        <div class="rec-pls-title">&#9889; Interrupted print found</div>
+        <div class="rec-pls-sub">
+          Position data was saved by the background monitor. Generate a recovery file to resume from where it left off.
+        </div>
+      </div>
+      <div class="rec-kv">
+        <span class="k">File</span>      <span class="v" id="pls-file">—</span>
+        <span class="k">Last Z</span>    <span class="v" id="pls-z">—</span>
+        <span class="k">Saved at</span>  <span class="v" id="pls-time">—</span>
+      </div>
+      <div class="btn-row" style="justify-content:flex-start">
+        <button type="button" id="btn-pls-recover">Generate Recovery File</button>
+        <button type="button" id="btn-pls-clear" class="btn-ghost">Dismiss</button>
+      </div>
+      <div class="rec-out" id="out-pls" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ── Slice at Z height ─────────────────────────────────────── -->
+  <div class="rec-section-label">Slice at Z height</div>
+
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div>
+      <div class="rec-title">Resume from a specific layer</div>
+      <div class="rec-sub">Use this when you know roughly how far the print got. Pick a file, enter the Z height to resume from, and a <span style="font-family:monospace">reCover_*.gcode</span> will be generated. The original file is kept as a <span style="font-family:monospace">.backup</span>.</div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="layer-file-select" style="flex:1">
+        <option value="">— select a file —</option>
+      </select>
+      <button type="button" id="btn-refresh-files" class="btn-ghost" style="padding:8px 12px">↻</button>
+    </div>
+
+    <div class="rec-layer-row">
+      <div>
+        <label>Resume Z height (mm)</label>
+        <input type="number" id="layer-z" min="0" step="0.01" placeholder="e.g. 12.4">
+      </div>
+      <div style="flex:1">
+        <label>Output filename (optional)</label>
+        <input type="text" id="layer-outname" placeholder="auto: reCover_filename.gcode">
+      </div>
+    </div>
+
+    <div id="layer-file-info" class="rec-kv" style="display:none">
+      <span class="k">Layers</span>    <span class="v" id="lfi-layers">—</span>
+      <span class="k">Max Z</span>     <span class="v" id="lfi-maxz">—</span>
+      <span class="k">File size</span> <span class="v" id="lfi-size">—</span>
+    </div>
+
+    <div class="btn-row" style="justify-content:flex-start">
+      <button type="button" id="btn-analyze">Analyze File</button>
+      <button type="button" id="btn-layer-recover" disabled>Generate Recovery File</button>
+    </div>
+
+    <div class="rec-out" id="out-layer" style="display:none"></div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  const host = location.hostname || 'localhost';
+  const MR   = (localStorage.getItem('moonrakerUrl') || `http://${host}:7125`).replace(/\/+$/, '');
+
+  /* ── UI refs ── */
+  const recIdle     = document.getElementById('rec-idle');
+  const plsSection  = document.getElementById('pls-section');
+  const plsFile     = document.getElementById('pls-file');
+  const plsZ        = document.getElementById('pls-z');
+  const plsTime     = document.getElementById('pls-time');
+  const btnPlsRec   = document.getElementById('btn-pls-recover');
+  const btnPlsClear = document.getElementById('btn-pls-clear');
+  const outPls      = document.getElementById('out-pls');
+  const fileSelect  = document.getElementById('layer-file-select');
+  const btnRefresh  = document.getElementById('btn-refresh-files');
+  const layerZ      = document.getElementById('layer-z');
+  const layerOut    = document.getElementById('layer-outname');
+  const lfiWrap     = document.getElementById('layer-file-info');
+  const lfiLayers   = document.getElementById('lfi-layers');
+  const lfiMaxZ     = document.getElementById('lfi-maxz');
+  const lfiSize     = document.getElementById('lfi-size');
+  const btnAnalyze  = document.getElementById('btn-analyze');
+  const btnLayerRec = document.getElementById('btn-layer-recover');
+  const outLayer    = document.getElementById('out-layer');
+
+  /* ── Helpers ── */
+  function fmtBytes(n){
+    if (n == null) return '—';
+    if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+    return (n/1048576).toFixed(2) + ' MB';
+  }
+
+  function logTo(el, msg, clear=false){
+    if (clear) el.textContent = '';
+    el.textContent += (el.textContent ? '\n' : '') + msg;
+    el.style.display = 'block';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /* ── Persisted state ── */
+  let persistedSnap = null;
+
+  async function loadPersistedState(){
+    try{
+      const r = await fetch('/cgi-bin/recovery_state.sh', { cache: 'no-store' });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.exists === false || !data.file) return;
+      persistedSnap = data;
+      plsFile.textContent = data.file       || '—';
+      plsZ.textContent    = data.last_z != null ? data.last_z + ' mm' : '—';
+      plsTime.textContent = data.timestamp  || '—';
+      plsSection.hidden = false;
+      recIdle.hidden    = true;
+    }catch{}
+  }
+
+  async function clearPersistedState(){
+    try{ await fetch('/cgi-bin/recovery_state.sh?action=clear', { cache: 'no-store' }); }catch{}
+    persistedSnap = null;
+    plsSection.hidden = true;
+    recIdle.hidden    = false;
+    outPls.style.display = 'none';
+  }
+
+  /* ── Interrupted print recover ── */
+  btnPlsRec.addEventListener('click', async () => {
+    if (!persistedSnap) return;
+    btnPlsRec.disabled = true;
+    logTo(outPls, `Recovering "${persistedSnap.file}" at byte ${persistedSnap.file_position}…`, true);
+    try {
+      const params = new URLSearchParams({ file: persistedSnap.file, position: persistedSnap.file_position });
+      if (persistedSnap.last_x    != null) params.append('x',     persistedSnap.last_x);
+      if (persistedSnap.last_y    != null) params.append('y',     persistedSnap.last_y);
+      if (persistedSnap.last_z    != null) params.append('z',     persistedSnap.last_z);
+      if (persistedSnap.last_speed != null) params.append('speed', persistedSnap.last_speed);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      const text = (await r.text()).trim();
+      logTo(outPls, text);
+      if (r.ok && !text.startsWith('ERROR')) clearPersistedState();
+    } catch(e) {
+      logTo(outPls, 'Error: ' + e.message);
+    } finally {
+      btnPlsRec.disabled = false;
+    }
+  });
+
+  btnPlsClear.addEventListener('click', async () => {
+    if (!confirm('Dismiss this snapshot?')) return;
+    await clearPersistedState();
+  });
+
+  /* ── File list ── */
+  async function loadFileList(){
+    fileSelect.innerHTML = '<option value="">— loading… —</option>';
+    try {
+      const r = await fetch(`${MR}/server/files/list?root=gcodes`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const files = (data?.result || []).filter(f => /\.gcode$/i.test(f.path || f.filename || ''));
+      files.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+      fileSelect.innerHTML = '<option value="">— select a file —</option>';
+      files.forEach(f => {
+        const name = f.path || f.filename;
+        if (!name) return;
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        fileSelect.appendChild(opt);
+      });
+      if (!files.length) fileSelect.innerHTML = '<option value="">No .gcode files found</option>';
+    } catch(e) {
+      fileSelect.innerHTML = `<option value="">Error: ${e.message}</option>`;
+    }
+    lfiWrap.style.display = 'none';
+    btnLayerRec.disabled = true;
+  }
+
+  loadFileList();
+  btnRefresh.addEventListener('click', loadFileList);
+  fileSelect.addEventListener('change', () => { lfiWrap.style.display = 'none'; btnLayerRec.disabled = true; });
+
+  /* ── Analyze ── */
+  btnAnalyze.addEventListener('click', async () => {
+    const fname = fileSelect.value;
+    if (!fname){ alert('Select a file first.'); return; }
+    btnAnalyze.disabled = true;
+    btnAnalyze.textContent = 'Analyzing…';
+    lfiWrap.style.display = 'none';
+    outLayer.style.display = 'none';
+    try {
+      const r = await fetch('/cgi-bin/analyze_gcode.sh?' + new URLSearchParams({ file: fname }), { cache: 'no-store' });
+      const text = await r.text();
+      const info = JSON.parse(text);
+      lfiLayers.textContent = info.layers  ?? '—';
+      lfiMaxZ.textContent   = info.max_z   != null ? info.max_z + ' mm' : '—';
+      lfiSize.textContent   = fmtBytes(info.file_size);
+      lfiWrap.style.display = 'grid';
+      btnLayerRec.disabled  = false;
+    } catch(e) {
+      logTo(outLayer, 'Error: ' + e.message, true);
+    } finally {
+      btnAnalyze.disabled = false;
+      btnAnalyze.textContent = 'Analyze File';
+    }
+  });
+
+  /* ── Z-based recovery ── */
+  btnLayerRec.addEventListener('click', async () => {
+    const fname = fileSelect.value;
+    if (!fname){ alert('Select a file first.'); return; }
+    const z = parseFloat(layerZ.value);
+    if (!Number.isFinite(z) || z < 0){ alert('Enter a valid Z height (mm).'); return; }
+    const outname = layerOut.value.trim();
+    btnLayerRec.disabled = true;
+    logTo(outLayer, `Slicing "${fname}" from Z=${z} mm…`, true);
+    try {
+      const params = new URLSearchParams({ file: fname, z: z.toFixed(3) });
+      if (outname) params.append('outname', outname);
+      const r = await fetch('/cgi-bin/resume_from_layer.sh?' + params, { cache: 'no-store' });
+      logTo(outLayer, (await r.text()).trim());
+    } catch(e) {
+      logTo(outLayer, 'Error: ' + e.message);
+    } finally {
+      btnLayerRec.disabled = false;
+    }
+  });
+
+  /* ── Init ── */
+  loadPersistedState();
+})();
+</script>

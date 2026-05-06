@@ -1,0 +1,18 @@
+[Unit]
+Description=re3D Print Recovery State Monitor
+Documentation=https://github.com/re3D/re3D-Klipper-OS
+After=network-online.target moonraker.service
+Wants=network-online.target
+BindsTo=moonraker.service
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/bin/python3 /opt/mconfig/recovery_monitor.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
