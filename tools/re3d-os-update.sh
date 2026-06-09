@@ -462,11 +462,15 @@ else
   log "${LOG_TAG} WARNING: ${KS_REQS} not found — skipping KlipperScreen dep install."
 fi
 
-# Always write correct KlipperScreen config (removes any stale/unrecognized options)
-sudo -u pi bash -c '
-  mkdir -p ~/.config/KlipperScreen
-  printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
-' || true
+# Deploy KlipperScreen config from repo source (always overwrite — removes stale options)
+SRC_KS_CONF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/KlipperScreen.conf"
+if [ -f "${SRC_KS_CONF}" ]; then
+  mkdir -p /home/pi/.config/KlipperScreen
+  install -m 0644 -o pi -g pi "${SRC_KS_CONF}" /home/pi/.config/KlipperScreen/KlipperScreen.conf
+  log "${LOG_TAG} KlipperScreen.conf deployed."
+else
+  log "${LOG_TAG} WARNING: ${SRC_KS_CONF} not found — skipping KlipperScreen.conf deploy."
+fi
 
 # Ensure display mode flag exists (default: mainsail)
 if [ ! -f /etc/re3d-display-mode ]; then

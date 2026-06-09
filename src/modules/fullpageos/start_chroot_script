@@ -1011,12 +1011,14 @@ sudo -u "${BASE_USER}" bash -lc '
     || echo "WARNING: KlipperScreen pip install had errors — will retry on first update."
 '
 
-# Default KlipperScreen config (fullscreen)
+# Deploy KlipperScreen config from the managed source (always overwrite —
+# ensures no stale options from previous builds remain)
 sudo -u "${BASE_USER}" bash -lc '
-  # Always write config — ensures no stale options from previous builds remain
   mkdir -p ~/.config/KlipperScreen
-  printf "[main]\nshow_cursor = False\n" > ~/.config/KlipperScreen/KlipperScreen.conf
+  install -m 0644 ~/printer_data/config/KlipperScreen.conf \
+    ~/.config/KlipperScreen/KlipperScreen.conf
 '
+chown "${BASE_USER}:${BASE_USER}" /home/"${BASE_USER}"/.config/KlipperScreen/KlipperScreen.conf
 
 # Mark kiosk scripts as executable
 chmod +x /opt/custompios/scripts/start_klipperscreen || true

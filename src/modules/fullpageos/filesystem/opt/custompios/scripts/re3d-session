@@ -24,34 +24,84 @@ if [ "$MODE" = "klipperscreen" ]; then
 
   # --- Sanity checks -------------------------------------------------------
   _ok=1
+
   if [ ! -d "${KS_DIR}" ]; then
-    echo "[$(date)] KlipperScreen directory missing at ${KS_DIR}"; _ok=0
+    echo "[$(date)] KlipperScreen directory missing at ${KS_DIR}"
+    _ok=0
   fi
+
   if [ ! -x "${KS_ENV}/bin/python" ]; then
-    echo "[$(date)] KlipperScreen venv missing at ${KS_ENV}"; _ok=0
+    echo "[$(date)] KlipperScreen venv missing at ${KS_ENV}"
+    _ok=0
   fi
+
+  if [ ! -f "${KS_DIR}/screen.py" ]; then
+    echo "[$(date)] KlipperScreen screen.py missing at ${KS_DIR}/screen.py"
+    _ok=0
+  fi
+
   if ! command -v cage >/dev/null 2>&1; then
-    echo "[$(date)] cage not installed"; _ok=0
+    echo "[$(date)] cage not installed"
+    _ok=0
   fi
 
   if [ "${_ok}" -eq 0 ]; then
     echo "[$(date)] Prerequisites missing — reverting to Mainsail."
     echo "mainsail" > "${MODE_FILE}"
   else
-    echo "[$(date)] Launching KlipperScreen (Moonraker connection handled by KlipperScreen itself)."
+    echo "[$(date)] Launching KlipperScreen under cage."
+    echo "[$(date)] Important: using clean env so KlipperScreen does not detect re3d-kiosk as a desktop session."
 
     # --- Launch loop --------------------------------------------------------
     FAIL_COUNT=0
+
     while true; do
       FAIL_COUNT=$((FAIL_COUNT + 1))
-      echo "[$(date)] Starting KlipperScreen via cage (attempt ${FAIL_COUNT})..."
-      GTK_A11Y=none \
-      GDK_BACKEND=wayland \
-        cage -d -- "${KS_ENV}/bin/python" "${KS_DIR}/screen.py"
+      echo "[$(date)] Starting KlipperScreen via clean-env cage (attempt ${FAIL_COUNT})..."
+
+      echo "[$(date)] Parent/session env before clean launch:"
+      echo "[$(date)] USER=$(whoami)"
+      echo "[$(date)] HOME=${HOME:-unset}"
+      echo "[$(date)] DISPLAY=${DISPLAY:-unset}"
+      echo "[$(date)] WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset}"
+      echo "[$(date)] XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset}"
+      echo "[$(date)] XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-unset}"
+      echo "[$(date)] DESKTOP_SESSION=${DESKTOP_SESSION:-unset}"
+      echo "[$(date)] XDG_SESSION_DESKTOP=${XDG_SESSION_DESKTOP:-unset}"
+      echo "[$(date)] GDMSESSION=${GDMSESSION:-unset}"
+
+      cd "${KS_DIR}" || {
+        echo "[$(date)] Could not cd into ${KS_DIR} — reverting to Mainsail."
+        echo "mainsail" > "${MODE_FILE}"
+        break
+      }
+
+      # Critical:
+      # KlipperScreen enters windowed mode if XDG_CURRENT_DESKTOP exists.
+      # LightDM/re3d-kiosk sets:
+      #   DESKTOP_SESSION=re3d-kiosk
+      #   XDG_SESSION_DESKTOP=re3d-kiosk
+      #   XDG_CURRENT_DESKTOP=re3d-kiosk
+      #   GDMSESSION=re3d-kiosk
+      #
+      # env -i starts cage and KlipperScreen with a clean environment so those
+      # variables cannot leak into screen.py.
+      env -i \
+        HOME=/home/pi \
+        USER=pi \
+        LOGNAME=pi \
+        SHELL=/bin/bash \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        XDG_RUNTIME_DIR=/run/user/1000 \
+        XDG_SESSION_TYPE=wayland \
+        GTK_A11Y=none \
+        PYTHONUNBUFFERED=1 \
+        cage -d -- "${KS_ENV}/bin/python" screen.py
+
       _exit=$?
       echo "[$(date)] cage/KlipperScreen exited (code ${_exit})"
 
-      # Exit code 0 = intentional clean shutdown (e.g. system going to reboot)
+      # Exit code 0 = intentional clean shutdown, e.g. system going to reboot.
       [ "${_exit}" -eq 0 ] && break
 
       if [ "${FAIL_COUNT}" -ge "${MAX_FAILS}" ]; then
@@ -59,11 +109,13 @@ if [ "$MODE" = "klipperscreen" ]; then
         echo "mainsail" > "${MODE_FILE}"
         break
       fi
+
+      echo "[$(date)] Restarting KlipperScreen in 3s..."
       sleep 3
     done
   fi
 fi
 
-# Mainsail mode (or fallback after KlipperScreen failures)
+# Mainsail mode, or fallback after KlipperScreen failures.
 echo "[$(date)] Starting labwc (Mainsail/Chromium mode)..."
 exec labwc
