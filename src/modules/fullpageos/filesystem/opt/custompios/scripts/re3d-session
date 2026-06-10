@@ -94,6 +94,8 @@ if [ "$MODE" = "klipperscreen" ]; then
         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
         XDG_RUNTIME_DIR=/run/user/1000 \
         XDG_SESSION_TYPE=wayland \
+        LANG="${LANG:-en_US.UTF-8}" \
+        LC_ALL="${LC_ALL:-en_US.UTF-8}" \
         GTK_A11Y=none \
         PYTHONUNBUFFERED=1 \
         cage -d -- "${KS_ENV}/bin/python" screen.py
