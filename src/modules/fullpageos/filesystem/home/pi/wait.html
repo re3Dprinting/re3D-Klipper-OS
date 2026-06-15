@@ -145,11 +145,17 @@
       document.getElementById('pnum').textContent   = progress + '%';
 
       const hintEl = document.getElementById('hint');
-      hintEl.textContent = hintFor(state, hasAnyDevices);
-      hintEl.classList.remove('attn','warn','success');
-      if(state==='power_cycle' || state==='waiting_device') hintEl.classList.add('attn');
-      if(state==='error') hintEl.classList.add('warn');
-      if(state==='done')  hintEl.classList.add('success');
+      const newHintText = hintFor(state, hasAnyDevices);
+      const newHintClass = (state==='power_cycle'||state==='waiting_device') ? 'attn'
+                         : state==='error' ? 'warn'
+                         : state==='done'  ? 'success'
+                         : '';
+      // Only mutate DOM if something actually changed — avoids restarting CSS animations every tick
+      if(hintEl.textContent !== newHintText) hintEl.textContent = newHintText;
+      if(!hintEl.classList.contains(newHintClass) || ['attn','warn','success'].some(c=>c!==newHintClass && hintEl.classList.contains(c))){
+        hintEl.classList.remove('attn','warn','success');
+        if(newHintClass) hintEl.classList.add(newHintClass);
+      }
 
       const logEl = document.getElementById('log');
       const log = await fetchText(LOG);
