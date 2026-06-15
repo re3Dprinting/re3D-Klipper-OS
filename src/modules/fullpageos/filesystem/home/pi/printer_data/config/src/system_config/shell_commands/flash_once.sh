@@ -132,8 +132,11 @@ echo "$(ts) stopping klipper"
 jstatus "running" 50 "Stopping Klipper"
 systemctl stop klipper || true
 
-# --- Ensure bossac is available before we enter the retry loop ---
-DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
+# Ensure bossac is available — pre-installed in new images, but install as a fallback
+# for older images that were built before bossa-cli was added to the chroot.
+if ! command -v bossac >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
+fi
 
 # Pre-build klipper.bin once so both make-flash and bossac can use it
 if [[ ! -f /home/pi/klipper/out/klipper.bin ]]; then
