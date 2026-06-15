@@ -121,6 +121,31 @@ else
   log "${LOG_TAG} WARNING: ${SRC_RECOVERY_SVC} not found, skipping recovery monitor service."
 fi
 
+# ---------- 1c) Systemd service files (keep older images in sync) ----------
+SRC_SYSTEMD="${REPO_DIR}/src/modules/fullpageos/filesystem/root_init/etc/systemd/system"
+
+if [ -d "${SRC_SYSTEMD}" ]; then
+  log "${LOG_TAG} Deploying systemd service files from repo..."
+  _RELOAD_NEEDED=0
+  while IFS= read -r -d '' svc_file; do
+    svc_name="$(basename "$svc_file")"
+    dst="/etc/systemd/system/${svc_name}"
+    if ! cmp -s "$svc_file" "$dst" 2>/dev/null; then
+      install -m 0644 -o root -g root "$svc_file" "$dst"
+      log "${LOG_TAG}   updated ${svc_name}"
+      _RELOAD_NEEDED=1
+    fi
+  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 -name '*.service' -print0)
+  if [ "${_RELOAD_NEEDED}" -eq 1 ]; then
+    systemctl daemon-reload || true
+    log "${LOG_TAG} systemd daemon-reload done"
+    # Re-enable flash_once specifically so its new WantedBy symlink is created
+    systemctl enable flash_once.service 2>/dev/null || true
+  fi
+else
+  log "${LOG_TAG} WARNING: ${SRC_SYSTEMD} not found, skipping service file deploy."
+fi
+
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
 
