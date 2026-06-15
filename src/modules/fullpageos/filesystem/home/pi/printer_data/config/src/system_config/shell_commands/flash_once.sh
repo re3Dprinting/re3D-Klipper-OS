@@ -218,7 +218,6 @@ done
 # --- Ensure build deps + venv exist (safe to re-run) ---
 echo "$(ts) ensuring build deps + klippy-env"
 jstatus "running" 96 "Preparing build environment"
-apt-get update -y || true
 DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
 
 sudo -u pi -H bash -lc '
