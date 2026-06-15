@@ -72,9 +72,31 @@ if [[ -f "$FIRSTBOOT_FLAG" ]]; then
     # and launching a second Chromium against the same profile (causing a lock error).
     # On success flash_once clears firstboot-splash and the system is power-cycled by
     # the user; on reboot Chromium is killed and this wait returns naturally.
+    CHROME_START=$SECONDS
     wait "$CHROME_PID" 2>/dev/null || true
+    CHROME_RUNTIME=$(( SECONDS - CHROME_START ))
 
-    echo "[$(date)] firstboot: chromium exited, leaving cleanup/reboot to systemd"
+    echo "[$(date)] firstboot: chromium exited after ${CHROME_RUNTIME}s"
+
+    # --- Last-resort fallback: if Chromium keeps dying almost immediately it never
+    #     showed the splash page.  After 3 consecutive quick-exits give up on the
+    #     firstboot flow entirely and fall through to the normal kiosk UI so the
+    #     machine is usable rather than stuck on a blank desktop forever.
+    FAIL_FILE="/tmp/firstboot-chrome-fails"
+    if (( CHROME_RUNTIME < 15 )); then
+      FAILS=$(( $(cat "$FAIL_FILE" 2>/dev/null || echo 0) + 1 ))
+      echo "$FAILS" > "$FAIL_FILE"
+      echo "[$(date)] firstboot: quick-exit #${FAILS} — splash may not have appeared"
+      if (( FAILS >= 3 )); then
+        echo "[$(date)] firstboot: 3 consecutive quick-exits; giving up — clearing firstboot flag and falling back to normal UI"
+        systemctl stop "$FLASH_UNIT" 2>/dev/null || true
+        rm -f /etc/firstboot-splash /tmp/firstboot-ui-started "$FAIL_FILE"
+      fi
+    else
+      # Chromium ran long enough — reset the failure counter
+      rm -f "$FAIL_FILE"
+      echo "[$(date)] firstboot: leaving cleanup/reboot to systemd"
+    fi
   } >>"$LOG" 2>&1
   exit 0
 fi
