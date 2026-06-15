@@ -12,6 +12,15 @@ echo "Starting OS update..."
 echo
 
 # --- real update logic ---
+# Read 'reflash' from POST body (1 = reflash after update, 0 = skip; default 1)
+POST_BODY=""
+if [ "${REQUEST_METHOD:-}" = "POST" ] && [ -n "${CONTENT_LENGTH:-}" ] && [ "${CONTENT_LENGTH:-0}" -gt 0 ] 2>/dev/null; then
+  read -r -n "${CONTENT_LENGTH}" POST_BODY 2>/dev/null || true
+fi
+_REFLASH=$(echo "$POST_BODY" | sed -n 's/.*reflash=\([01]\).*/\1/p' | head -1)
+export RE3D_SKIP_REFLASH
+[ "${_REFLASH:-1}" = "0" ] && RE3D_SKIP_REFLASH=1 || RE3D_SKIP_REFLASH=0
+
 # Run as root (configure sudoers if invoked as www-data)
 LOG=$(/usr/local/bin/re3d-os-update 2>&1)
 rc=$?

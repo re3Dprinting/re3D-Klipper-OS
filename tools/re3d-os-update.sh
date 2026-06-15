@@ -230,10 +230,14 @@ if [ -d "${KLIPPER_DIR}/.git" ]; then
     /home/pi/klippy-env/bin/pip install -r "${KLIPPER_DIR}/scripts/klippy-requirements.txt" 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start klipper || true
 
-    # Trigger the mainboard flash flow on next reboot
-    log "${LOG_TAG} Setting firstboot-splash flag for Archimajor board re-flash..."
-    touch /etc/firstboot-splash
-    systemctl enable flash_once.service 2>/dev/null || true
+    # Trigger the mainboard flash flow on next reboot (unless operator opted out via UI)
+    if [ "${RE3D_SKIP_REFLASH:-0}" != "1" ]; then
+      log "${LOG_TAG} Setting firstboot-splash flag for Archimajor board re-flash..."
+      touch /etc/firstboot-splash
+      systemctl enable flash_once.service 2>/dev/null || true
+    else
+      log "${LOG_TAG} Skipping reflash flag (operator opted out via UI)."
+    fi
 
     log "${LOG_TAG} Klipper updated successfully."
   fi
