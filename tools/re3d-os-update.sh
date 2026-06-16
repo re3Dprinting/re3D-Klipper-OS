@@ -131,7 +131,7 @@ if [ -d "${SRC_SYSTEMD}" ]; then
     svc_name="$(basename "$svc_file")"
     dst="/etc/systemd/system/${svc_name}"
     if ! cmp -s "$svc_file" "$dst" 2>/dev/null; then
-      install -m 0644 -o root -g root "$svc_file" "$dst"
+      install -m 0644 -o root -g root "$svc_file" "$dst" || { log "${LOG_TAG} WARNING: failed to install ${svc_name}, skipping"; continue; }
       log "${LOG_TAG}   updated ${svc_name}"
       _RELOAD_NEEDED=1
     fi
@@ -190,9 +190,12 @@ set_progress 45
 
 if [ -d "${SRC_SHELL_CMDS}" ]; then
   log "${LOG_TAG} Syncing shell scripts to ${DST_SHELL_CMDS}..."
-  # Install executable scripts (non-.cfg) to /usr/local/bin
-  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
-    | xargs -0 -I{} install -m 0755 -o root -g root "{}" "${DST_SHELL_CMDS}/"
+  # Install executable scripts (non-.cfg) to /usr/local/bin.
+  # Use a while loop so one bad file can't abort the whole step.
+  while IFS= read -r -d '' src_file; do
+    install -m 0755 -o root -g root "$src_file" "${DST_SHELL_CMDS}/" \
+      || log "${LOG_TAG} WARNING: failed to install $(basename "$src_file"), skipping"
+  done < <(find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0)
 
   # Deploy shell_command.cfg from the template (setup_printer.py is the renderer,
   # but we can also re-run it here so the live file stays in sync with the template)
@@ -210,20 +213,15 @@ set_progress 50
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
 
 log "${LOG_TAG} Installing python3-matplotlib if missing..."
-apt-get install -y python3-matplotlib || {
-  log "${LOG_TAG} ERROR: Failed to install python3-matplotlib"
-  set_status "error"
-  exit 1
-}
-
-log "${LOG_TAG} Verifying matplotlib import..."
-if ! python3 -c "import matplotlib" 2>/dev/null; then
-  log "${LOG_TAG} ERROR: matplotlib still not importable after install."
-  set_status "error"
-  exit 1
+if apt-get install -y python3-matplotlib 2>/dev/null; then
+  if python3 -c "import matplotlib" 2>/dev/null; then
+    log "${LOG_TAG} Matplotlib installed successfully."
+  else
+    log "${LOG_TAG} WARNING: matplotlib installed but import failed — graphstats may not work."
+  fi
+else
+  log "${LOG_TAG} WARNING: Failed to install python3-matplotlib (offline or apt error) — graphstats may not work."
 fi
-
-log "${LOG_TAG} Matplotlib installed successfully."
 
 # Allow git to operate on pi-owned repos when running as root
 KLIPPER_DIR="/home/pi/klipper"
