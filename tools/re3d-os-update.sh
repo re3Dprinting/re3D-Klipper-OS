@@ -248,7 +248,7 @@ if [ -d "${KLIPPER_DIR}/.git" ]; then
     log "${LOG_TAG} Klipper update available (${LOCAL_REV:0:8} → ${REMOTE_REV:0:8}). Updating..."
     log "${LOG_TAG} *** NOTE: Klipper was updated. The Archimajor board firmware must be re-flashed. ***"
     sudo systemctl stop klipper || true
-    git pull 2>&1 | tee -a "${LOG_FILE}"
+    git reset --hard "${REMOTE_REV}" 2>&1 | tee -a "${LOG_FILE}"
     log "${LOG_TAG} Updating Klipper Python dependencies..."
     /home/pi/klippy-env/bin/pip install -r "${KLIPPER_DIR}/scripts/klippy-requirements.txt" 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start klipper || true
@@ -283,7 +283,7 @@ if [ -d "${MOONRAKER_DIR}/.git" ]; then
   else
     log "${LOG_TAG} Moonraker update available (${LOCAL_REV:0:8} → ${REMOTE_REV:0:8}). Updating..."
     sudo systemctl stop moonraker || true
-    git pull 2>&1 | tee -a "${LOG_FILE}"
+    git reset --hard "${REMOTE_REV}" 2>&1 | tee -a "${LOG_FILE}"
     log "${LOG_TAG} Running Moonraker dependency installer..."
     sudo -u pi "${MOONRAKER_DIR}/scripts/install-moonraker.sh" -r 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start moonraker || true
