@@ -96,9 +96,11 @@ ensure_klipper_config
 
 # ---------------------------------------------------------------------------
 # Software-erase attempt: 1200-baud touch on any visible ACM port.
-# The SAM3X bootloader erases the flash and re-enumerates as the Atmel
-# programming device (03eb:6124) within ~3 s.  We try this before ever
-# asking the user to manually erase.
+# Returns:
+#   0 — erase worked and erased device is visible, ready to flash now
+#   1 — no port found, or port never disappeared (touch may not have fired)
+#   2 — erase fired (port disappeared) but USB won't re-enumerate this session;
+#       the board is erased and a power-cycle will expose it on the next boot
 # ---------------------------------------------------------------------------
 software_erase_attempt(){
   echo "$(ts) software-erase: looking for a live ACM port to trigger 1200-baud touch"
@@ -121,54 +123,76 @@ software_erase_attempt(){
 
   # Phase 1: wait for the existing port to disappear (confirms reset fired), up to 8 s
   echo "$(ts) software-erase: waiting for $found_port to disappear…"
-  local i=0
+  local port_gone=0 i=0
   while (( i < 16 )); do
     sleep 0.5; (( i++ ))
-    [[ ! -e "$found_port" ]] && { echo "$(ts) software-erase: port gone after $((i/2)) s"; break; }
+    if [[ ! -e "$found_port" ]]; then
+      echo "$(ts) software-erase: port gone after $((i/2)) s — erase confirmed"
+      port_gone=1; break
+    fi
   done
 
-  # Phase 2: wait for the erased Atmel device to appear, up to 40 s
-  echo "$(ts) software-erase: waiting up to 40 s for erased device to appear…"
+  if (( ! port_gone )); then
+    echo "$(ts) software-erase: port never disappeared — touch may not have taken effect"
+    return 1
+  fi
+
+  # Phase 2: wait for the erased Atmel device to appear, up to 20 s
+  echo "$(ts) software-erase: waiting up to 20 s for erased device to re-enumerate…"
   i=0
-  while (( i < 80 )); do
+  while (( i < 40 )); do
     sleep 0.5; (( i++ ))
     list_devices_json
     if [[ -e "$ERASED_PATH" ]]; then
-      echo "$(ts) software-erase: success — erased device appeared after ~$((i/2)) s"
+      echo "$(ts) software-erase: erased device appeared after ~$((i/2)) s"
       return 0
     fi
   done
 
-  echo "$(ts) software-erase: erased device did not appear within 40 s — falling back to manual prompt"
-  return 1
+  # Erase fired (port disappeared) but USB won't re-enumerate in this session.
+  # The board is erased — a power cycle will expose it cleanly on the next boot.
+  echo "$(ts) software-erase: board erased but won't re-enumerate this session — power cycle needed"
+  return 2
 }
 
 # --- Try software erase first; only wait for manual erase if it fails ---
 if [[ -e "$ERASED_PATH" ]]; then
   echo "$(ts) erased device already present, skipping software-erase attempt"
   jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
-elif software_erase_attempt; then
-  jstatus "running" 30 "Software erase succeeded — board ready to flash" "$ERASED_PATH"
 else
-  # --- Wait for manual erase ---
-  echo "$(ts) waiting for manually-erased device: $ERASED_PATH"
-  jstatus "waiting_device" 5 "Please erase the Archimajor board manually, then the firmware will be flashed automatically."
-  end=$((SECONDS + PRE_FLASH_MAX_WAIT))
-  while :; do
-    list_devices_json
-    if [[ -e "$ERASED_PATH" ]]; then
-      echo "$(ts) found erased device"
-      jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
-      break
-    fi
-    if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
-      jstatus "waiting_device" 5 "No connection detected. Check printer power and the USB cable."
-    else
-      jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
-    fi
-    (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
-    sleep "$POLL"
-  done
+  software_erase_attempt
+  _erase_rc=$?
+  if (( _erase_rc == 0 )); then
+    jstatus "running" 30 "Software erase succeeded — board ready to flash" "$ERASED_PATH"
+  elif (( _erase_rc == 2 )); then
+    # Board is erased but USB won't re-enumerate this session.
+    # Tell the user to power-cycle; flash_once will run again on the next boot
+    # and the board will already be in the erased state.
+    echo "$(ts) software-erase confirmed but power-cycle required for USB re-enumeration"
+    jstatus "power_cycle" 15 "Board erased successfully. Please power-cycle the machine to complete flashing."
+    # Park until the system is rebooted
+    while :; do sleep 3600; done
+  else
+    # --- Fallback: wait for manual erase ---
+    echo "$(ts) software-erase failed — waiting for manually-erased device"
+    jstatus "waiting_device" 5 "Please erase the Archimajor board manually, then the firmware will be flashed automatically."
+    end=$((SECONDS + PRE_FLASH_MAX_WAIT))
+    while :; do
+      list_devices_json
+      if [[ -e "$ERASED_PATH" ]]; then
+        echo "$(ts) found erased device"
+        jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
+        break
+      fi
+      if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
+        jstatus "waiting_device" 5 "No connection detected. Check printer power and the USB cable."
+      else
+        jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
+      fi
+      (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
+      sleep "$POLL"
+    done
+  fi
 fi
 
 udevadm settle || true
