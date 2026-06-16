@@ -115,24 +115,31 @@ software_erase_attempt(){
   fi
 
   echo "$(ts) software-erase: sending 1200-baud touch to $found_port"
-  # stty sets the port to 1200 baud and then closes it — the SAM3X ROM
-  # detects the 1200-baud close and triggers a watchdog-reset into bootloader.
   stty -F "$found_port" 1200 2>/dev/null || true
   sleep 0.5
   stty -F "$found_port" 1200 hupcl 2>/dev/null || true
 
-  echo "$(ts) software-erase: waiting up to 10 s for erased device to appear…"
+  # Phase 1: wait for the existing port to disappear (confirms reset fired), up to 8 s
+  echo "$(ts) software-erase: waiting for $found_port to disappear…"
   local i=0
-  while (( i < 20 )); do
+  while (( i < 16 )); do
+    sleep 0.5; (( i++ ))
+    [[ ! -e "$found_port" ]] && { echo "$(ts) software-erase: port gone after $((i/2)) s"; break; }
+  done
+
+  # Phase 2: wait for the erased Atmel device to appear, up to 40 s
+  echo "$(ts) software-erase: waiting up to 40 s for erased device to appear…"
+  i=0
+  while (( i < 80 )); do
     sleep 0.5; (( i++ ))
     list_devices_json
     if [[ -e "$ERASED_PATH" ]]; then
-      echo "$(ts) software-erase: success — erased device appeared after $((i/2)) s"
+      echo "$(ts) software-erase: success — erased device appeared after ~$((i/2)) s"
       return 0
     fi
   done
 
-  echo "$(ts) software-erase: erased device did not appear — falling back to manual prompt"
+  echo "$(ts) software-erase: erased device did not appear within 40 s — falling back to manual prompt"
   return 1
 }
 
