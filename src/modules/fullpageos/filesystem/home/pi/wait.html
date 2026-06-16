@@ -104,7 +104,8 @@
         default:               return 'Working…';
       }
     }
-    function hintFor(state, hasAnyDevices){
+    function hintFor(state, hasAnyDevices, message){
+      if(message) return message;
       if(state==='power_cycle')
         return 'Please switch the machine OFF, then ON. This power-cycles both the Pi and mainboard.';
       if(state==='waiting_device'){
@@ -145,7 +146,7 @@
       document.getElementById('pnum').textContent   = progress + '%';
 
       const hintEl = document.getElementById('hint');
-      const newHintText = hintFor(state, hasAnyDevices);
+      const newHintText = hintFor(state, hasAnyDevices, s?.message || '');
       const newHintClass = (state==='power_cycle'||state==='waiting_device') ? 'attn'
                          : state==='error' ? 'warn'
                          : state==='done'  ? 'success'
