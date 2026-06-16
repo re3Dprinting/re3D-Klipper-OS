@@ -121,6 +121,31 @@ else
   log "${LOG_TAG} WARNING: ${SRC_RECOVERY_SVC} not found, skipping recovery monitor service."
 fi
 
+# ---------- 1c) Systemd service files (keep older images in sync) ----------
+SRC_SYSTEMD="${REPO_DIR}/src/modules/fullpageos/filesystem/root_init/etc/systemd/system"
+
+if [ -d "${SRC_SYSTEMD}" ]; then
+  log "${LOG_TAG} Deploying systemd service files from repo..."
+  _RELOAD_NEEDED=0
+  while IFS= read -r -d '' svc_file; do
+    svc_name="$(basename "$svc_file")"
+    dst="/etc/systemd/system/${svc_name}"
+    if ! cmp -s "$svc_file" "$dst" 2>/dev/null; then
+      install -m 0644 -o root -g root "$svc_file" "$dst" || { log "${LOG_TAG} WARNING: failed to install ${svc_name}, skipping"; continue; }
+      log "${LOG_TAG}   updated ${svc_name}"
+      _RELOAD_NEEDED=1
+    fi
+  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 -name '*.service' -print0)
+  if [ "${_RELOAD_NEEDED}" -eq 1 ]; then
+    systemctl daemon-reload || true
+    log "${LOG_TAG} systemd daemon-reload done"
+    # Re-enable flash_once specifically so its new WantedBy symlink is created
+    systemctl enable flash_once.service 2>/dev/null || true
+  fi
+else
+  log "${LOG_TAG} WARNING: ${SRC_SYSTEMD} not found, skipping service file deploy."
+fi
+
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
 
@@ -165,9 +190,12 @@ set_progress 45
 
 if [ -d "${SRC_SHELL_CMDS}" ]; then
   log "${LOG_TAG} Syncing shell scripts to ${DST_SHELL_CMDS}..."
-  # Install executable scripts (non-.cfg) to /usr/local/bin
-  find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0 \
-    | xargs -0 -I{} install -m 0755 -o root -g root "{}" "${DST_SHELL_CMDS}/"
+  # Install executable scripts (non-.cfg) to /usr/local/bin.
+  # Use a while loop so one bad file can't abort the whole step.
+  while IFS= read -r -d '' src_file; do
+    install -m 0755 -o root -g root "$src_file" "${DST_SHELL_CMDS}/" \
+      || log "${LOG_TAG} WARNING: failed to install $(basename "$src_file"), skipping"
+  done < <(find "${SRC_SHELL_CMDS}" -maxdepth 1 -type f ! -name '*.cfg' -print0)
 
   # Deploy shell_command.cfg from the template (setup_printer.py is the renderer,
   # but we can also re-run it here so the live file stays in sync with the template)
@@ -185,20 +213,15 @@ set_progress 50
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
 
 log "${LOG_TAG} Installing python3-matplotlib if missing..."
-apt-get install -y python3-matplotlib || {
-  log "${LOG_TAG} ERROR: Failed to install python3-matplotlib"
-  set_status "error"
-  exit 1
-}
-
-log "${LOG_TAG} Verifying matplotlib import..."
-if ! python3 -c "import matplotlib" 2>/dev/null; then
-  log "${LOG_TAG} ERROR: matplotlib still not importable after install."
-  set_status "error"
-  exit 1
+if apt-get install -y python3-matplotlib 2>/dev/null; then
+  if python3 -c "import matplotlib" 2>/dev/null; then
+    log "${LOG_TAG} Matplotlib installed successfully."
+  else
+    log "${LOG_TAG} WARNING: matplotlib installed but import failed — graphstats may not work."
+  fi
+else
+  log "${LOG_TAG} WARNING: Failed to install python3-matplotlib (offline or apt error) — graphstats may not work."
 fi
-
-log "${LOG_TAG} Matplotlib installed successfully."
 
 # Allow git to operate on pi-owned repos when running as root
 KLIPPER_DIR="/home/pi/klipper"
@@ -225,15 +248,19 @@ if [ -d "${KLIPPER_DIR}/.git" ]; then
     log "${LOG_TAG} Klipper update available (${LOCAL_REV:0:8} → ${REMOTE_REV:0:8}). Updating..."
     log "${LOG_TAG} *** NOTE: Klipper was updated. The Archimajor board firmware must be re-flashed. ***"
     sudo systemctl stop klipper || true
-    git pull 2>&1 | tee -a "${LOG_FILE}"
+    git reset --hard "${REMOTE_REV}" 2>&1 | tee -a "${LOG_FILE}"
     log "${LOG_TAG} Updating Klipper Python dependencies..."
     /home/pi/klippy-env/bin/pip install -r "${KLIPPER_DIR}/scripts/klippy-requirements.txt" 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start klipper || true
 
-    # Trigger the mainboard flash flow on next reboot
-    log "${LOG_TAG} Setting firstboot-splash flag for Archimajor board re-flash..."
-    touch /etc/firstboot-splash
-    systemctl enable flash_once.service 2>/dev/null || true
+    # Trigger the mainboard flash flow on next reboot (unless operator opted out via UI)
+    if [ "${RE3D_SKIP_REFLASH:-0}" != "1" ]; then
+      log "${LOG_TAG} Setting firstboot-splash flag for Archimajor board re-flash..."
+      touch /etc/firstboot-splash
+      systemctl enable flash_once.service 2>/dev/null || true
+    else
+      log "${LOG_TAG} Skipping reflash flag (operator opted out via UI)."
+    fi
 
     log "${LOG_TAG} Klipper updated successfully."
   fi
@@ -256,7 +283,7 @@ if [ -d "${MOONRAKER_DIR}/.git" ]; then
   else
     log "${LOG_TAG} Moonraker update available (${LOCAL_REV:0:8} → ${REMOTE_REV:0:8}). Updating..."
     sudo systemctl stop moonraker || true
-    git pull 2>&1 | tee -a "${LOG_FILE}"
+    git reset --hard "${REMOTE_REV}" 2>&1 | tee -a "${LOG_FILE}"
     log "${LOG_TAG} Running Moonraker dependency installer..."
     sudo -u pi "${MOONRAKER_DIR}/scripts/install-moonraker.sh" -r 2>&1 | tee -a "${LOG_FILE}"
     sudo systemctl start moonraker || true

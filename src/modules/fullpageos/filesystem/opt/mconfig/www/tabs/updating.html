@@ -376,7 +376,11 @@ The printer will reboot automatically when updates are complete. This page will 
 
       appendLog("Sending update command to the system…");
       try {
-        await fetch('/cgi-bin/os_update.sh', { method:'POST', cache:'no-store' });
+        await fetch('/cgi-bin/os_update.sh', {
+          method:'POST', cache:'no-store',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:'reflash=' + (params.get('reflash') ?? '1')
+        });
       } catch(e) {
         appendLog("Update command sent (connection may close while services restart).");
       }

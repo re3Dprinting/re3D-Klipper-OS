@@ -94,25 +94,75 @@ list_devices_json
 normalize_klipper_tree
 ensure_klipper_config
 
-# --- Wait for ERASED device before flashing ---
-echo "$(ts) waiting for erased device: $ERASED_PATH"
-jstatus "waiting_device" 5 "No connection detected. Check printer power and USB cable."
-end=$((SECONDS + PRE_FLASH_MAX_WAIT))
-while :; do
-  list_devices_json
-  if [[ -e "$ERASED_PATH" ]]; then
-    echo "$(ts) found erased device"
-    jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
-    break
+# ---------------------------------------------------------------------------
+# Software-erase attempt: 1200-baud touch on any visible ACM port.
+# The SAM3X bootloader erases the flash and re-enumerates as the Atmel
+# programming device (03eb:6124) within ~3 s.  We try this before ever
+# asking the user to manually erase.
+# ---------------------------------------------------------------------------
+software_erase_attempt(){
+  echo "$(ts) software-erase: looking for a live ACM port to trigger 1200-baud touch"
+  jstatus "running" 8 "Attempting software erase of board…"
+
+  local found_port=""
+  for p in /dev/ttyACM0 /dev/ttyACM1 /dev/ttyACM2 /dev/ttyACM3; do
+    if [[ -e "$p" ]]; then found_port="$p"; break; fi
+  done
+
+  if [[ -z "$found_port" ]]; then
+    echo "$(ts) software-erase: no ACM port visible, skipping"
+    return 1
   fi
-  if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
-    jstatus "waiting_device" 5 "No connection detected. Check printer power and USB cable."
-  else
-    jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
-  fi
-  (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
-  sleep "$POLL"
-done
+
+  echo "$(ts) software-erase: sending 1200-baud touch to $found_port"
+  # stty sets the port to 1200 baud and then closes it — the SAM3X ROM
+  # detects the 1200-baud close and triggers a watchdog-reset into bootloader.
+  stty -F "$found_port" 1200 2>/dev/null || true
+  sleep 0.5
+  stty -F "$found_port" 1200 hupcl 2>/dev/null || true
+
+  echo "$(ts) software-erase: waiting up to 10 s for erased device to appear…"
+  local i=0
+  while (( i < 20 )); do
+    sleep 0.5; (( i++ ))
+    list_devices_json
+    if [[ -e "$ERASED_PATH" ]]; then
+      echo "$(ts) software-erase: success — erased device appeared after $((i/2)) s"
+      return 0
+    fi
+  done
+
+  echo "$(ts) software-erase: erased device did not appear — falling back to manual prompt"
+  return 1
+}
+
+# --- Try software erase first; only wait for manual erase if it fails ---
+if [[ -e "$ERASED_PATH" ]]; then
+  echo "$(ts) erased device already present, skipping software-erase attempt"
+  jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
+elif software_erase_attempt; then
+  jstatus "running" 30 "Software erase succeeded — board ready to flash" "$ERASED_PATH"
+else
+  # --- Wait for manual erase ---
+  echo "$(ts) waiting for manually-erased device: $ERASED_PATH"
+  jstatus "waiting_device" 5 "Please erase the Archimajor board manually, then the firmware will be flashed automatically."
+  end=$((SECONDS + PRE_FLASH_MAX_WAIT))
+  while :; do
+    list_devices_json
+    if [[ -e "$ERASED_PATH" ]]; then
+      echo "$(ts) found erased device"
+      jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
+      break
+    fi
+    if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
+      jstatus "waiting_device" 5 "No connection detected. Check printer power and the USB cable."
+    else
+      jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
+    fi
+    (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
+    sleep "$POLL"
+  done
+fi
 
 udevadm settle || true
 sleep 0.5
@@ -132,8 +182,11 @@ echo "$(ts) stopping klipper"
 jstatus "running" 50 "Stopping Klipper"
 systemctl stop klipper || true
 
-# --- Ensure bossac is available before we enter the retry loop ---
-DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
+# Ensure bossac is available — pre-installed in new images, but install as a fallback
+# for older images that were built before bossa-cli was added to the chroot.
+if ! command -v bossac >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
+fi
 
 # Pre-build klipper.bin once so both make-flash and bossac can use it
 if [[ ! -f /home/pi/klipper/out/klipper.bin ]]; then
@@ -215,7 +268,6 @@ done
 # --- Ensure build deps + venv exist (safe to re-run) ---
 echo "$(ts) ensuring build deps + klippy-env"
 jstatus "running" 96 "Preparing build environment"
-apt-get update -y || true
 DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
 
 sudo -u pi -H bash -lc '

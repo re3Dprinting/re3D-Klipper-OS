@@ -29,9 +29,10 @@
     #pnum{font-size:14px;color:var(--g-400)}
     .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:start;margin-top:12px}
     @media (max-width:880px){.grid{grid-template-columns:1fr}}
-    .panel{border:1px solid var(--card-border);border-radius:14px;padding:16px;background:var(--d-800)}
+    .panel{border:1px solid var(--card-border);border-radius:14px;padding:16px;background:var(--d-800);min-width:0;overflow:hidden}
     .panel h3{margin:0 0 6px;font-size:18px}
-    pre{white-space:pre-wrap;background:var(--d-900);padding:12px;border-radius:12px;max-height:36vh;
+    pre{white-space:pre-wrap;word-break:break-all;overflow-wrap:break-word;
+      background:var(--d-900);padding:12px;border-radius:12px;max-height:36vh;
       overflow:auto;border:1px solid var(--card-border);margin:10px 0 0;font-size:13px}
     .hint-banner{font-size:20px;font-weight:800;line-height:1.35;padding:16px 18px;margin:10px 0 0;
       border-radius:12px;border:2px solid var(--accent);background:#17170F;color:var(--white);
@@ -103,7 +104,8 @@
         default:               return 'Working…';
       }
     }
-    function hintFor(state, hasAnyDevices){
+    function hintFor(state, hasAnyDevices, message){
+      if(message) return message;
       if(state==='power_cycle')
         return 'Please switch the machine OFF, then ON. This power-cycles both the Pi and mainboard.';
       if(state==='waiting_device'){
@@ -144,11 +146,17 @@
       document.getElementById('pnum').textContent   = progress + '%';
 
       const hintEl = document.getElementById('hint');
-      hintEl.textContent = hintFor(state, hasAnyDevices);
-      hintEl.classList.remove('attn','warn','success');
-      if(state==='power_cycle' || state==='waiting_device') hintEl.classList.add('attn');
-      if(state==='error') hintEl.classList.add('warn');
-      if(state==='done')  hintEl.classList.add('success');
+      const newHintText = hintFor(state, hasAnyDevices, s?.message || '');
+      const newHintClass = (state==='power_cycle'||state==='waiting_device') ? 'attn'
+                         : state==='error' ? 'warn'
+                         : state==='done'  ? 'success'
+                         : '';
+      // Only mutate DOM if something actually changed — avoids restarting CSS animations every tick
+      if(hintEl.textContent !== newHintText) hintEl.textContent = newHintText;
+      if(!hintEl.classList.contains(newHintClass) || ['attn','warn','success'].some(c=>c!==newHintClass && hintEl.classList.contains(c))){
+        hintEl.classList.remove('attn','warn','success');
+        if(newHintClass) hintEl.classList.add(newHintClass);
+      }
 
       const logEl = document.getElementById('log');
       const log = await fetchText(LOG);

@@ -213,6 +213,18 @@
       </div>
       <div class="hint" id="display-mode-hint" style="display:none;margin-top:4px;"></div>
     </div>
+
+    <!-- Mainboard Firmware -->
+    <div class="card sys-card">
+      <div class="sys-title">Mainboard Firmware</div>
+      <div class="sys-subtitle">
+        Manually trigger a firmware re-flash on the Archimajor board. The printer will reboot
+        and show the flash screen — keep the USB cable connected throughout.
+      </div>
+      <div class="btn-row">
+        <button type="button" id="btn-reflash-board">Reflash Board</button>
+      </div>
+    </div>
   </div>
 
   <!-- Right column: reports / history -->
@@ -284,11 +296,33 @@
       A Klipper firmware update is available. After this update completes and the system reboots,
       <strong style="color:#fbbf24;">the Archimajor board must be re-flashed</strong> with the new firmware.
     </div>
+    <div id="reflash-checkbox-wrap" style="display:none;margin:6px 0 0;padding:4px 2px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;color:var(--fg)">
+        <input type="checkbox" id="reflash-checkbox" checked style="width:15px;height:15px;accent-color:var(--warn)">
+        <span>Reflash Archimajor board firmware after reboot <span style="color:var(--gray-400);font-size:12px">(recommended)</span></span>
+      </label>
+    </div>
     <div class="actions">
       <button class="btn-ghost" id="update-cancel" type="button">Cancel</button>
       <button id="update-run" type="button">Run update</button>
     </div>
     <div class="hint mono" id="update-status"></div>
+  </div>
+</div>
+
+<!-- Reflash Board Modal -->
+<div class="modal-wrap" id="reflash-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reflash-title">
+    <h3 id="reflash-title">Reflash Archimajor board?</h3>
+    <p>
+      This will schedule a firmware flash on the next boot and immediately reboot the printer.
+      The flash screen will appear &mdash; keep the USB cable connected throughout.
+    </p>
+    <div class="actions">
+      <button class="btn-ghost" id="reflash-cancel" type="button">Cancel</button>
+      <button id="reflash-confirm" type="button">Reflash &amp; Reboot</button>
+    </div>
+    <div class="hint mono" id="reflash-status"></div>
   </div>
 </div>
 
@@ -420,18 +454,22 @@
       const klipperCardWarn = document.getElementById('klipper-card-warn');
       const klipperModalWarn = document.getElementById('klipper-warn');
 
+      const reflashWrap = document.getElementById('reflash-checkbox-wrap');
       if (firstToken === 'UP_TO_DATE'){
         setUpdatePill('Up to date', 'ok');
         if (klipperCardWarn) klipperCardWarn.style.display = 'none';
         if (klipperModalWarn) klipperModalWarn.style.display = 'none';
+        if (reflashWrap) reflashWrap.style.display = 'none';
       }else if (firstToken === 'UPDATE_AVAILABLE'){
         setUpdatePill('Update available', 'warn');
         if (hasKlipperUpdate){
           if (klipperCardWarn) klipperCardWarn.style.display = 'block';
           if (klipperModalWarn) klipperModalWarn.style.display = 'block';
+          if (reflashWrap) reflashWrap.style.display = 'block';
         }else{
           if (klipperCardWarn) klipperCardWarn.style.display = 'none';
           if (klipperModalWarn) klipperModalWarn.style.display = 'none';
+          if (reflashWrap) reflashWrap.style.display = 'none';
         }
       }else{
         setUpdatePill('Check complete', 'muted');
@@ -508,7 +546,11 @@
       if (updateStatus) updateStatus.textContent = 'Starting update…';
       updateRunBtn.disabled = true;
       if (updateCancelBtn) updateCancelBtn.disabled = true;
-      window.location.href = '/tabs/updating.html?start=1';
+      const reflashCb   = document.getElementById('reflash-checkbox');
+      const reflashWrap = document.getElementById('reflash-checkbox-wrap');
+      const doReflash   = (reflashWrap && reflashWrap.style.display !== 'none' && reflashCb)
+                          ? (reflashCb.checked ? '1' : '0') : '1';
+      window.location.href = '/tabs/updating.html?start=1&reflash=' + doReflash;
     });
   }
 
@@ -665,5 +707,44 @@
   }
 
   loadDisplayMode();
+
+  // ---- Reflash Board ----
+  const btnReflashBoard = document.getElementById('btn-reflash-board');
+  const reflashModal    = document.getElementById('reflash-modal');
+  const reflashConfirm  = document.getElementById('reflash-confirm');
+  const reflashCancel   = document.getElementById('reflash-cancel');
+  const reflashStatus   = document.getElementById('reflash-status');
+
+  function openReflashModal(){
+    if (!reflashModal) return;
+    reflashModal.hidden = false;
+    if (reflashStatus)  reflashStatus.textContent = '';
+    if (reflashConfirm) reflashConfirm.disabled = false;
+    if (reflashCancel)  reflashCancel.disabled  = false;
+    if (reflashConfirm) reflashConfirm.focus();
+    document.addEventListener('keydown', escReflashCloser);
+  }
+  function closeReflashModal(){
+    if (!reflashModal) return;
+    reflashModal.hidden = true;
+    document.removeEventListener('keydown', escReflashCloser);
+  }
+  function escReflashCloser(e){ if (e.key === 'Escape') closeReflashModal(); }
+
+  if (reflashCancel) reflashCancel.addEventListener('click', closeReflashModal);
+  if (reflashModal)  reflashModal.addEventListener('click', e => { if (e.target === reflashModal) closeReflashModal(); });
+
+  if (reflashConfirm){
+    reflashConfirm.addEventListener('click', async () => {
+      reflashConfirm.disabled = true;
+      if (reflashCancel) reflashCancel.disabled = true;
+      if (reflashStatus) reflashStatus.textContent = 'Scheduling reflash and rebooting…';
+      try {
+        await fetch('/cgi-bin/reflash_board.sh', { method:'POST', cache:'no-store' });
+      } catch(_) { /* expected — printer reboots mid-request */ }
+    });
+  }
+
+  if (btnReflashBoard) btnReflashBoard.addEventListener('click', openReflashModal);
 })();
 </script>

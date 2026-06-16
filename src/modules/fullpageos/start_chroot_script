@@ -190,7 +190,7 @@ echo "[re3D-OS] wayvnc will be launched from labwc autostart."
 # Toolchains (from docs - Klipper deps)
 apt-get install -y --no-install-recommends \
   python3-virtualenv python3-venv python3-dev libffi-dev build-essential libncurses-dev \
-  avrdude gcc-avr binutils-avr avr-libc stm32flash dfu-util \
+  avrdude gcc-avr binutils-avr avr-libc stm32flash dfu-util bossa-cli \
   libnewlib-arm-none-eabi gcc-arm-none-eabi binutils-arm-none-eabi \
   libusb-1.0-0-dev libusb-1.0-0 ca-certificates unzip curl vlc
 
