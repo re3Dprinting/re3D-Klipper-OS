@@ -336,10 +336,15 @@ systemctl start klipper || true
 # --- FINAL: branch on flash result ---
 if (( FLASH_CMD_OK )); then
   echo "$(ts) Flash command succeeded"
-  jstatus "power_cycle" 100 "Flash complete! Please power-cycle the machine to complete setup."
+  jstatus "running" 100 "Flash complete! Rebooting automatically…"
 
   # Clear first-boot flags and reboot counter so next boot is normal
   rm -f /etc/firstboot-splash /tmp/firstboot-ui-started /etc/flash-reboot-count
+
+  echo "$(ts) rebooting into normal operation"
+  sleep 5
+  systemctl reboot || reboot
+  sleep 60
 else
   echo "$(ts) ERROR: Flash FAILED after ${FLASH_MAX_ATTEMPTS} attempts"
   jstatus "error" 85 "Firmware flash failed after ${FLASH_MAX_ATTEMPTS} attempts. Please power-cycle and try again."
@@ -348,7 +353,7 @@ else
   rm -f /tmp/firstboot-ui-started
 fi
 
-# Park here forever so the splash stays visible
+# Park here forever (only reached on error)
 while :; do sleep 3600; done
 
 # (never reached)
