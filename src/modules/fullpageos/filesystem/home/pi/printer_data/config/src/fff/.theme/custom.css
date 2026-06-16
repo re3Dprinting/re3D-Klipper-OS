@@ -147,7 +147,7 @@
 
 /* Add version number to top toolbar */
 #app > div.v-application--wrap > div:nth-child(2) > header > div > div.v-toolbar__title.text-no-wrap.ml-0.pl-2.mr-2::after {
-	content: " v1.4.0";
+	content: " v1.4.1";
 	font-size: 0.7em;
 	opacity: 0.6;
 }
