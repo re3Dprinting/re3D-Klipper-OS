@@ -96,9 +96,14 @@ ensure_klipper_config
 
 # ---------------------------------------------------------------------------
 # Software-erase attempt: 1200-baud touch on any visible ACM port.
-# The SAM3X bootloader erases the flash and re-enumerates as the Atmel
-# programming device (03eb:6124) within ~3 s.  We try this before ever
-# asking the user to manually erase.
+# The SAM3X erases its flash internally but does NOT re-enumerate over USB
+# in the same session — a Pi reboot is required to reset the USB host so
+# the board comes up as the Atmel programming device (03eb:6124).
+# firstboot-splash is kept set so flash_once runs again after the reboot.
+# Returns:
+#   0 — touch sent and erased device already visible (rare; ready to flash)
+#   2 — touch sent; Pi reboot scheduled to force USB re-enumeration
+#   1 — no ACM port found; fall back to manual erase prompt
 # ---------------------------------------------------------------------------
 software_erase_attempt(){
   echo "$(ts) software-erase: looking for a live ACM port to trigger 1200-baud touch"
@@ -115,53 +120,97 @@ software_erase_attempt(){
   fi
 
   echo "$(ts) software-erase: sending 1200-baud touch to $found_port"
-  # stty sets the port to 1200 baud and then closes it — the SAM3X ROM
-  # detects the 1200-baud close and triggers a watchdog-reset into bootloader.
   stty -F "$found_port" 1200 2>/dev/null || true
   sleep 0.5
   stty -F "$found_port" 1200 hupcl 2>/dev/null || true
 
-  echo "$(ts) software-erase: waiting up to 10 s for erased device to appear…"
-  local i=0
-  while (( i < 20 )); do
-    sleep 0.5; (( i++ ))
-    list_devices_json
-    if [[ -e "$ERASED_PATH" ]]; then
-      echo "$(ts) software-erase: success — erased device appeared after $((i/2)) s"
-      return 0
-    fi
-  done
+  # Give the SAM3X ~5 s to complete its internal flash erase cycle.
+  echo "$(ts) software-erase: waiting 5 s for flash erase to complete…"
+  jstatus "running" 12 "Erasing board flash… please wait"
+  sleep 5
 
-  echo "$(ts) software-erase: erased device did not appear — falling back to manual prompt"
-  return 1
+  # Quick check — some board revisions self-reset and enumerate immediately
+  list_devices_json
+  if [[ -e "$ERASED_PATH" ]]; then
+    echo "$(ts) software-erase: erased device already visible — flashing now"
+    return 0
+  fi
+
+  # Flash is erased but won't re-enumerate until the USB host resets.
+  # Rebooting the Pi resets the USB host, forcing a clean re-enumeration.
+  echo "$(ts) software-erase: erase complete — rebooting Pi to force USB re-enumeration"
+  return 2
 }
 
-# --- Try software erase first; only wait for manual erase if it fails ---
+# --- Try software erase first; only fall back to manual if no port found ---
 if [[ -e "$ERASED_PATH" ]]; then
   echo "$(ts) erased device already present, skipping software-erase attempt"
   jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
-elif software_erase_attempt; then
-  jstatus "running" 30 "Software erase succeeded — board ready to flash" "$ERASED_PATH"
 else
-  # --- Wait for manual erase ---
-  echo "$(ts) waiting for manually-erased device: $ERASED_PATH"
-  jstatus "waiting_device" 5 "Please erase the Archimajor board manually, then the firmware will be flashed automatically."
-  end=$((SECONDS + PRE_FLASH_MAX_WAIT))
-  while :; do
-    list_devices_json
-    if [[ -e "$ERASED_PATH" ]]; then
-      echo "$(ts) found erased device"
-      jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
-      break
-    fi
-    if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
-      jstatus "waiting_device" 5 "No connection detected. Check printer power and the USB cable."
+  software_erase_attempt
+  _erase_rc=$?
+  if (( _erase_rc == 0 )); then
+    jstatus "running" 30 "Software erase succeeded — board ready to flash" "$ERASED_PATH"
+  elif (( _erase_rc == 2 )); then
+    # Board is erased. Reboot the Pi so the USB host resets and the board
+    # re-enumerates as the Atmel programming device on the next boot.
+    # firstboot-splash is still set, so flash_once runs again automatically.
+    #
+    # Guard against an infinite reboot loop: allow at most 2 auto-reboots for
+    # this purpose.  If the board still hasn't enumerated after that, fall back
+    # to the manual erase prompt so the machine doesn't cycle forever.
+    REBOOT_COUNT_FILE="/etc/flash-reboot-count"
+    _rcount=$(cat "$REBOOT_COUNT_FILE" 2>/dev/null || echo 0)
+    if (( _rcount >= 2 )); then
+      echo "$(ts) auto-reboot limit reached ($_rcount) — falling back to manual erase prompt"
+      rm -f "$REBOOT_COUNT_FILE"
+      jstatus "waiting_device" 5 "Automatic erase could not complete. Please erase the Archimajor board manually."
+      end=$((SECONDS + PRE_FLASH_MAX_WAIT))
+      while :; do
+        list_devices_json
+        if [[ -e "$ERASED_PATH" ]]; then
+          echo "$(ts) found erased device (manual)"
+          jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
+          break
+        fi
+        if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
+          jstatus "waiting_device" 5 "No connection detected. Check printer power and the USB cable."
+        else
+          jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
+        fi
+        (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
+        sleep "$POLL"
+      done
     else
-      jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
+      echo $(( _rcount + 1 )) > "$REBOOT_COUNT_FILE"
+      echo "$(ts) auto-reboot attempt $(( _rcount + 1 ))/2 — rebooting Pi to force USB re-enumeration"
+      jstatus "running" 15 "Board erased. Rebooting to complete — firmware will be flashed on next boot automatically."
+      sleep 3
+      systemctl reboot || reboot
+      sleep 60
+      exit 0
     fi
-    (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
-    sleep "$POLL"
-  done
+  else
+    # --- Fallback: wait for manual erase ---
+    echo "$(ts) software-erase failed — waiting for manually-erased device"
+    jstatus "waiting_device" 5 "Please erase the Archimajor board manually, then the firmware will be flashed automatically."
+    end=$((SECONDS + PRE_FLASH_MAX_WAIT))
+    while :; do
+      list_devices_json
+      if [[ -e "$ERASED_PATH" ]]; then
+        echo "$(ts) found erased device"
+        jstatus "running" 30 "Detected erased board" "$ERASED_PATH"
+        break
+      fi
+      if [[ ! -d /dev/serial/by-id ]] || [[ -z $(/bin/ls -1 /dev/serial/by-id 2>/dev/null) ]]; then
+        jstatus "waiting_device" 5 "No connection detected. Check printer power and the USB cable."
+      else
+        jstatus "waiting_device" 5 "Board detected but not ready. Erase it so it appears as the Atmel device."
+      fi
+      (( SECONDS >= end )) && { echo "$(ts) timeout pre-flash"; jstatus "error" 5 "Timed out waiting for erased board."; exit 0; }
+      sleep "$POLL"
+    done
+  fi
 fi
 
 udevadm settle || true
@@ -287,10 +336,15 @@ systemctl start klipper || true
 # --- FINAL: branch on flash result ---
 if (( FLASH_CMD_OK )); then
   echo "$(ts) Flash command succeeded"
-  jstatus "power_cycle" 100 "Flash complete! Please power-cycle the machine to complete setup."
+  jstatus "running" 100 "Flash complete! Rebooting automatically…"
 
-  # Clear first-boot flags so next boot is normal
-  rm -f /etc/firstboot-splash /tmp/firstboot-ui-started
+  # Clear first-boot flags and reboot counter so next boot is normal
+  rm -f /etc/firstboot-splash /tmp/firstboot-ui-started /etc/flash-reboot-count
+
+  echo "$(ts) rebooting into normal operation"
+  sleep 5
+  systemctl reboot || reboot
+  sleep 60
 else
   echo "$(ts) ERROR: Flash FAILED after ${FLASH_MAX_ATTEMPTS} attempts"
   jstatus "error" 85 "Firmware flash failed after ${FLASH_MAX_ATTEMPTS} attempts. Please power-cycle and try again."
@@ -299,7 +353,7 @@ else
   rm -f /tmp/firstboot-ui-started
 fi
 
-# Park here forever so the splash stays visible
+# Park here forever (only reached on error)
 while :; do sleep 3600; done
 
 # (never reached)
