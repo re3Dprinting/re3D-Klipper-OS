@@ -314,10 +314,27 @@ for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
   fi
 done
 
-# Note: klipper's make flash uses its own bundled bossac with -e -b -w -v which
-# already sets the GPNVM boot flag ("Set boot flash true") and the board resets
-# naturally after the SAM-BA session closes.  A separate post-flash bossac -b -R
-# is redundant and causes a hang because the port path changes after the flash reset.
+# --- Post-flash: reset the board so it boots from the new firmware ---
+# make flash uses klipper's bossac with -b (sets GPNVM boot-from-flash) but
+# NOT -R, so the SAM3X stays in SAM-BA mode after programming.  Without an
+# explicit reset it will re-enumerate as 03eb:6124 (bootloader) on every Pi
+# reboot, causing flash_once to re-run indefinitely.
+# Only issue the reset if the board is still in SAM-BA mode (03eb:6124).
+# Use timeout to guarantee we can never hang here.
+if (( FLASH_CMD_OK )); then
+  udevadm settle --timeout=3 || true
+  if [[ -e "$ERASED_PATH" ]] && command -v bossac >/dev/null 2>&1; then
+    _RESET_PORT="$(resolve_acm_port)"
+    if [[ -n "$_RESET_PORT" ]]; then
+      echo "$(ts) post-flash: board still in SAM-BA mode — issuing reset on $_RESET_PORT"
+      jstatus "running" 92 "Resetting board into new firmware…"
+      timeout 10 bossac -p "$_RESET_PORT" -R 2>&1 | tee -a "$LOG" || true
+      sleep 2
+    fi
+  else
+    echo "$(ts) post-flash: board already left SAM-BA mode — no reset needed"
+  fi
+fi
 
 echo "$(ts) ensuring build deps + klippy-env"
 jstatus "running" 96 "Preparing build environment"
