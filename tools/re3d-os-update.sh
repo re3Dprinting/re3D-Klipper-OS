@@ -139,8 +139,19 @@ if [ -d "${SRC_SYSTEMD}" ]; then
   if [ "${_RELOAD_NEEDED}" -eq 1 ]; then
     systemctl daemon-reload || true
     log "${LOG_TAG} systemd daemon-reload done"
-    # Re-enable flash_once specifically so its new WantedBy symlink is created
+  fi
+  # Always clean up stale WantedBy symlinks regardless of whether files changed —
+  # old images may have a graphical.target.wants symlink that prevents the service
+  # from ever starting (graphical.target completes after the session is already running).
+  if [ -L /etc/systemd/system/graphical.target.wants/flash_once.service ]; then
+    rm -f /etc/systemd/system/graphical.target.wants/flash_once.service || true
+    log "${LOG_TAG} removed stale graphical.target.wants/flash_once.service symlink"
+    systemctl daemon-reload || true
+  fi
+  # Ensure the correct multi-user.target.wants symlink exists
+  if [ ! -L /etc/systemd/system/multi-user.target.wants/flash_once.service ]; then
     systemctl enable flash_once.service 2>/dev/null || true
+    log "${LOG_TAG} flash_once.service enabled (multi-user.target)"
   fi
 else
   log "${LOG_TAG} WARNING: ${SRC_SYSTEMD} not found, skipping service file deploy."
@@ -257,7 +268,19 @@ if [ -d "${KLIPPER_DIR}/.git" ]; then
     if [ "${RE3D_SKIP_REFLASH:-0}" != "1" ]; then
       log "${LOG_TAG} Setting firstboot-splash flag for Archimajor board re-flash..."
       touch /etc/firstboot-splash
-      systemctl enable flash_once.service 2>/dev/null || true
+      # Ensure the service file and symlink are current before the reboot.
+      # Remove stale WantedBy symlinks from old images then re-enable cleanly.
+      SRC_FLASH_SVC="${REPO_DIR}/src/modules/fullpageos/filesystem/root_init/etc/systemd/system/flash_once.service"
+      if [ -f "${SRC_FLASH_SVC}" ]; then
+        install -m 0644 -o root -g root "${SRC_FLASH_SVC}" /etc/systemd/system/flash_once.service
+        rm -f /etc/systemd/system/graphical.target.wants/flash_once.service 2>/dev/null || true
+        rm -f /etc/systemd/system/multi-user.target.wants/flash_once.service 2>/dev/null || true
+        systemctl daemon-reload || true
+        systemctl enable flash_once.service 2>/dev/null || true
+        log "${LOG_TAG} flash_once.service updated and re-enabled"
+      else
+        systemctl enable flash_once.service 2>/dev/null || true
+      fi
     else
       log "${LOG_TAG} Skipping reflash flag (operator opted out via UI)."
     fi

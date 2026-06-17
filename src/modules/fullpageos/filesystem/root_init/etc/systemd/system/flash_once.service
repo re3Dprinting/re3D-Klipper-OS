@@ -1,16 +1,14 @@
 [Unit]
 Description=One-time flash task shown behind splash
 ConditionPathExists=/etc/firstboot-splash
-After=graphical.target
+After=network.target
 
 [Service]
 Type=simple
-# Wait up to 120 s for the splash UI to appear before starting the flash logic.
-# The - prefix means a non-zero exit from this pre-start command is ignored.
-ExecStartPre=-/bin/bash -c 'n=0; while [ $n -lt 120 ] && ! [ -f /tmp/firstboot-ui-started ]; do sleep 1; n=$((n+1)); done'
+# Wait up to 300 s for the splash UI to appear before starting the flash logic.
+ExecStartPre=-/bin/bash -c 'n=0; while [ $n -lt 300 ] && ! [ -f /tmp/firstboot-ui-started ]; do sleep 1; n=$((n+1)); done'
 ExecStart=-/usr/local/bin/flash_once.sh
-# Plenty of time so it can wait for user to erase/connect
 RuntimeMaxSec=7200
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
