@@ -314,7 +314,22 @@ for attempt in $(seq 1 "$FLASH_MAX_ATTEMPTS"); do
   fi
 done
 
-# --- Ensure build deps + venv exist (safe to re-run) ---
+# --- Post-flash: set boot-from-flash flag and reset the board ---
+# Without this the SAM3X can remain in bootloader mode after flashing.
+# bossac -b sets the GPNVM boot bit to flash; -R issues a chip reset.
+if (( FLASH_CMD_OK )); then
+  echo "$(ts) post-flash: setting boot flag and resetting board"
+  jstatus "running" 92 "Setting boot flag and resetting board…"
+  _ACM="$(resolve_acm_port)"
+  if [[ -n "$_ACM" ]] && command -v bossac >/dev/null 2>&1; then
+    echo "$(ts) bossac -p $_ACM -b -R"
+    bossac -p "$_ACM" -b -R 2>&1 | tee -a "$LOG" || true
+    # Give the board a moment to reset and re-enumerate as Klipper USB device
+    sleep 3
+  else
+    echo "$(ts) post-flash: no ACM port or bossac not found, skipping boot-flag step"
+  fi
+fi
 echo "$(ts) ensuring build deps + klippy-env"
 jstatus "running" 96 "Preparing build environment"
 DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
