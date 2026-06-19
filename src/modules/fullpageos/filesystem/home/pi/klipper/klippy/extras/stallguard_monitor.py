@@ -1,0 +1,296 @@
+# stallguard_monitor.py
+#
+# Klipper extra: monitor TMC StallGuard values during motion to detect
+# collisions and abnormal load before damage occurs.
+#
+# Reads DRVSTATUS.SG_RESULT directly from each configured TMC driver on a
+# fast reactor timer.  When a motor is moving (DRVSTATUS.STST == 0) and
+# SG_RESULT stays below `collision_threshold` for `consecutive_triggers`
+# consecutive polls the configured action is executed.
+#
+# GCode commands exposed:
+#   SG_STATUS                     - print current SG_RESULT for all motors
+#   SG_START                      - enable monitoring
+#   SG_STOP                       - disable monitoring
+#   SG_SET_THRESHOLD THRESHOLD=N  - change threshold at runtime
+#   SG_RESET                      - clear collision latch so printing can resume
+#
+# Place this file at ~/klipper/klippy/extras/stallguard_monitor.py
+# Add [stallguard_monitor] to printer.cfg (see stallguard_monitor.cfg)
+
+import logging
+
+# TMC driver types searched in priority order
+_TMC_TYPES = ['tmc5160', 'tmc2240', 'tmc2130', 'tmc2209', 'tmc2208', 'tmc2660']
+
+# DRVSTATUS register bit masks (shared across TMC213x / TMC516x families)
+_SG_RESULT_MASK = 0x000003FF  # bits  9:0  - StallGuard result (0=max load)
+_STST_BIT       = 1 << 31     # bit  31    - Standstill indicator
+
+
+class StallGuardMonitor:
+
+    def __init__(self, config):
+        self.printer  = config.get_printer()
+        self.reactor  = self.printer.get_reactor()
+        self.gcode    = self.printer.lookup_object('gcode')
+        self.logger   = logging.getLogger('stallguard_monitor')
+
+        # ── Configuration ────────────────────────────────────────────────────
+        self.poll_interval = config.getfloat(
+            'poll_interval', 0.1, minval=0.05, maxval=5.0)
+        self.motor_names = config.getlist('motors')
+        self.collision_threshold = config.getint(
+            'collision_threshold', 100, minval=0, maxval=1023)
+        self.consecutive_triggers = config.getint(
+            'consecutive_triggers', 3, minval=1, maxval=50)
+        self.action = config.getchoice(
+            'collision_action',
+            {'none': 'none', 'pause': 'pause', 'emergency_stop': 'emergency_stop'},
+            'pause')
+        self.enabled = config.getboolean('enabled', True)
+
+        # ── Runtime state ────────────────────────────────────────────────────
+        self.tmc_drivers      = {}   # motor_name -> tmc object
+        self.sg_values        = {}   # motor_name -> last SG_RESULT int or None
+        self.trigger_counts   = {}   # motor_name -> consecutive below-threshold count
+        self.monitoring       = False
+        self._timer_handle    = None
+        self._collision_latch = False   # set on first collision; cleared by SG_RESET
+
+        # ── Klipper hooks ────────────────────────────────────────────────────
+        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+
+        # ── GCode commands ───────────────────────────────────────────────────
+        self.gcode.register_command(
+            'SG_STATUS', self.cmd_SG_STATUS,
+            desc="Report current StallGuard values for all monitored motors")
+        self.gcode.register_command(
+            'SG_START', self.cmd_SG_START,
+            desc="Enable StallGuard collision monitoring")
+        self.gcode.register_command(
+            'SG_STOP', self.cmd_SG_STOP,
+            desc="Disable StallGuard collision monitoring")
+        self.gcode.register_command(
+            'SG_SET_THRESHOLD', self.cmd_SG_SET_THRESHOLD,
+            desc="Set StallGuard collision threshold (SG_SET_THRESHOLD THRESHOLD=100)")
+        self.gcode.register_command(
+            'SG_RESET', self.cmd_SG_RESET,
+            desc="Clear StallGuard collision latch so monitoring resumes")
+
+    # ── Initialisation ────────────────────────────────────────────────────────
+
+    def _handle_ready(self):
+        """Discover TMC driver objects once the printer is fully ready."""
+        for motor in self.motor_names:
+            tmc = self._find_tmc_driver(motor)
+            if tmc is not None:
+                self.tmc_drivers[motor]    = tmc
+                self.sg_values[motor]      = None
+                self.trigger_counts[motor] = 0
+                self.logger.info(
+                    "stallguard_monitor: registered driver for '%s'", motor)
+            else:
+                self.logger.warning(
+                    "stallguard_monitor: no TMC driver found for '%s' - skipping", motor)
+
+        if not self.tmc_drivers:
+            self.logger.error(
+                "stallguard_monitor: no drivers found; monitoring disabled")
+            return
+
+        if self.enabled:
+            self._start_monitoring()
+
+    def _find_tmc_driver(self, motor_name):
+        """Return the first TMC driver object found for motor_name, or None."""
+        for tmc_type in _TMC_TYPES:
+            obj_name = "{} {}".format(tmc_type, motor_name)
+            try:
+                return self.printer.lookup_object(obj_name)
+            except Exception:
+                pass
+        return None
+
+    # ── Monitoring control ────────────────────────────────────────────────────
+
+    def _start_monitoring(self):
+        if self.monitoring:
+            return
+        self.monitoring    = True
+        self._timer_handle = self.reactor.register_timer(
+            self._poll_callback, self.reactor.NOW)
+        self.logger.info("stallguard_monitor: monitoring started "
+                         "(threshold=%d, action=%s, poll=%.2fs)",
+                         self.collision_threshold, self.action, self.poll_interval)
+
+    def _stop_monitoring(self):
+        self.monitoring = False
+        if self._timer_handle is not None:
+            self.reactor.unregister_timer(self._timer_handle)
+            self._timer_handle = None
+        self.logger.info("stallguard_monitor: monitoring stopped")
+
+    # ── Polling ───────────────────────────────────────────────────────────────
+
+    def _poll_callback(self, eventtime):
+        if not self.monitoring:
+            return self.reactor.NEVER
+
+        try:
+            for motor, tmc in self.tmc_drivers.items():
+                raw = self._read_drv_status(tmc, eventtime)
+                if raw is None:
+                    continue
+
+                sg_val      = raw & _SG_RESULT_MASK
+                standstill  = bool(raw & _STST_BIT)
+
+                self.sg_values[motor] = sg_val
+
+                if standstill:
+                    # Motor is stopped – reset counter, no collision possible
+                    self.trigger_counts[motor] = 0
+                    continue
+
+                if self._collision_latch:
+                    # Already triggered; wait for SG_RESET before re-arming
+                    continue
+
+                if sg_val < self.collision_threshold:
+                    self.trigger_counts[motor] += 1
+                    if self.trigger_counts[motor] >= self.consecutive_triggers:
+                        self._handle_collision(motor, sg_val)
+                else:
+                    self.trigger_counts[motor] = 0
+
+        except Exception:
+            self.logger.exception("stallguard_monitor: error in poll callback")
+
+        return eventtime + self.poll_interval
+
+    # ── Register read ─────────────────────────────────────────────────────────
+
+    def _read_drv_status(self, tmc, eventtime):
+        """
+        Return the raw DRVSTATUS register value, or None on error.
+
+        Tries a direct register read via mcu_tmc first (fresh SPI/UART data),
+        then falls back to the value cached by Klipper's own status poller.
+        """
+        # Direct read – fastest, gives fresh data each poll
+        try:
+            if hasattr(tmc, 'mcu_tmc'):
+                return tmc.mcu_tmc.get_register("DRVSTATUS")
+        except Exception:
+            pass
+
+        # Fallback – may be up to ~1 s stale but better than nothing
+        try:
+            status = tmc.get_status(eventtime)
+            return status.get('drv_status')
+        except Exception:
+            pass
+
+        return None
+
+    # ── Collision handling ────────────────────────────────────────────────────
+
+    def _handle_collision(self, motor, sg_val):
+        """React to a detected collision event."""
+        self._collision_latch = True
+        # Reset all counters so we don't spam the action
+        for m in self.trigger_counts:
+            self.trigger_counts[m] = 0
+
+        msg = ("!! stallguard_monitor: COLLISION on {} "
+               "(SG_RESULT={}, threshold={})".format(
+                   motor, sg_val, self.collision_threshold))
+        self.logger.warning(msg)
+
+        if self.action == 'emergency_stop':
+            self.printer.invoke_async_shutdown(msg)
+        elif self.action == 'pause':
+            # Run PAUSE in the background to avoid reactor re-entrancy
+            self.printer.get_reactor().register_async_callback(
+                lambda e: self.gcode.run_script("PAUSE\nM118 " + msg))
+        else:
+            # action == 'none': log only
+            self.printer.get_reactor().register_async_callback(
+                lambda e: self.gcode.run_script("M118 " + msg))
+
+    # ── GCode command handlers ────────────────────────────────────────────────
+
+    def cmd_SG_STATUS(self, gcmd):
+        if not self.tmc_drivers:
+            gcmd.respond_info("stallguard_monitor: no drivers configured")
+            return
+
+        eventtime = self.reactor.monotonic()
+        lines = [
+            "StallGuard Monitor  threshold={}  action={}  monitoring={}".format(
+                self.collision_threshold,
+                self.action,
+                "ON" if self.monitoring else "OFF"),
+            "  {:<14} {:>10}  {}".format("motor", "SG_RESULT", "state")
+        ]
+        for motor in self.motor_names:
+            tmc = self.tmc_drivers.get(motor)
+            if tmc is None:
+                lines.append("  {:<14} {:>10}".format(motor, "NO DRIVER"))
+                continue
+            raw = self._read_drv_status(tmc, eventtime)
+            if raw is None:
+                lines.append("  {:<14} {:>10}".format(motor, "READ ERR"))
+                continue
+            sg_val     = raw & _SG_RESULT_MASK
+            standstill = bool(raw & _STST_BIT)
+            self.sg_values[motor] = sg_val
+            flag  = " <<< LOW" if (sg_val < self.collision_threshold and not standstill) else ""
+            state = "standstill" if standstill else "moving"
+            lines.append("  {:<14} {:>10}  {}{}".format(motor, sg_val, state, flag))
+
+        gcmd.respond_info("\n".join(lines))
+
+    def cmd_SG_START(self, gcmd):
+        self._collision_latch = False
+        for m in self.trigger_counts:
+            self.trigger_counts[m] = 0
+        self._start_monitoring()
+        gcmd.respond_info(
+            "stallguard_monitor: started (threshold={}, action={})".format(
+                self.collision_threshold, self.action))
+
+    def cmd_SG_STOP(self, gcmd):
+        self._stop_monitoring()
+        gcmd.respond_info("stallguard_monitor: stopped")
+
+    def cmd_SG_SET_THRESHOLD(self, gcmd):
+        threshold = gcmd.get_int('THRESHOLD', minval=0, maxval=1023)
+        self.collision_threshold = threshold
+        # Clear latch so monitoring arms immediately at new threshold
+        self._collision_latch = False
+        for m in self.trigger_counts:
+            self.trigger_counts[m] = 0
+        gcmd.respond_info(
+            "stallguard_monitor: collision threshold -> {}".format(threshold))
+
+    def cmd_SG_RESET(self, gcmd):
+        """Clear the collision latch so monitoring re-arms without restart."""
+        self._collision_latch = False
+        for m in self.trigger_counts:
+            self.trigger_counts[m] = 0
+        gcmd.respond_info("stallguard_monitor: collision latch cleared")
+
+    def get_status(self, eventtime):
+        """Expose values to Moonraker / macros via printer['stallguard_monitor']."""
+        return {
+            'enabled':             self.monitoring,
+            'collision_threshold': self.collision_threshold,
+            'collision_detected':  self._collision_latch,
+            'sg_values':           dict(self.sg_values),
+        }
+
+
+def load_config(config):
+    return StallGuardMonitor(config)
