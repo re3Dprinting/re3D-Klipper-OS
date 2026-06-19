@@ -48,6 +48,35 @@
   .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
   .btn-ghost{background:var(--surface-3);color:var(--fg);border:1px solid var(--border-2);box-shadow:none}
   .btn-ghost:hover{filter:brightness(1.25)}
+
+  /* Machine option toggles */
+  .opt-section{
+    border-top:1px solid var(--border);margin-top:12px;padding-top:10px;
+    display:grid;gap:6px;
+  }
+  .opt-section-title{font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+  .opt-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:6px 10px;border-radius:var(--radius-sm);
+    background:var(--surface-2);border:1px solid var(--border);
+  }
+  .opt-label{font-size:13px;font-weight:600;color:var(--fg)}
+  .opt-desc{font-size:11px;color:var(--muted);margin-top:1px}
+  /* Toggle switch */
+  .tog{position:relative;display:inline-block;width:38px;height:22px;flex-shrink:0}
+  .tog input{opacity:0;width:0;height:0;position:absolute}
+  .tog-track{
+    position:absolute;inset:0;background:var(--surface-3);
+    border:1px solid var(--border);border-radius:11px;cursor:pointer;
+    transition:background .18s,border-color .18s;
+  }
+  .tog input:checked ~ .tog-track{background:var(--brand-700);border-color:var(--brand-700)}
+  .tog-track::after{
+    content:'';position:absolute;left:3px;top:3px;
+    width:14px;height:14px;background:#fff;border-radius:50%;
+    transition:transform .18s;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .tog input:checked ~ .tog-track::after{transform:translateX(16px)}
 </style>
 
 <div class="content single">
@@ -86,6 +115,49 @@
         <div class="title">TerabotX 2</div>
       </label>
     </div>
+    <!-- Additional options (shown only for machines that support them) -->
+    <div id="machine-options" hidden>
+      <div class="opt-section">
+        <div class="opt-section-title">Additional Options</div>
+
+        <!-- Mesh compensation: Gigabot 4 / Gigabot 4 XLT only -->
+        <div id="opt-mesh" class="opt-row" hidden>
+          <div>
+            <div class="opt-label">Mesh Compensation</div>
+            <div class="opt-desc">Enable automatic bed-mesh levelling</div>
+          </div>
+          <label class="tog" aria-label="Mesh Compensation">
+            <input type="checkbox" id="chk-mesh">
+            <span class="tog-track"></span>
+          </label>
+        </div>
+
+        <!-- Crammer: X-line printers only -->
+        <div id="opt-crammer" class="opt-row" hidden>
+          <div>
+            <div class="opt-label">Crammer</div>
+            <div class="opt-desc">Enable crammer extruder support</div>
+          </div>
+          <label class="tog" aria-label="Crammer">
+            <input type="checkbox" id="chk-crammer">
+            <span class="tog-track"></span>
+          </label>
+        </div>
+
+        <!-- Heater Pad: X-line printers only -->
+        <div id="opt-heater" class="opt-row" hidden>
+          <div>
+            <div class="opt-label">Heater Pad</div>
+            <div class="opt-desc">Enable heated bed pad</div>
+          </div>
+          <label class="tog" aria-label="Heater Pad">
+            <input type="checkbox" id="chk-heater">
+            <span class="tog-track"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
     <div class="btn-row" style="justify-content:flex-end;margin-top:10px">
       <button type="submit">Set Machine</button>
     </div>
@@ -112,6 +184,27 @@
   const radios = Array.from(document.querySelectorAll('input[name="type-radio"]'));
   const hidden = document.getElementById('machine-type-hidden');
 
+  // Which options each machine exposes
+  const MACHINE_OPTS = {
+    'Gigabot 4':      ['mesh'],
+    'Gigabot 4 XLT':  ['mesh'],
+    'Terabot 4':      [],
+    'GigabotX 2':     ['crammer', 'heater'],
+    'GigabotX XLT 2': ['crammer', 'heater'],
+    'TerabotX 2':     ['crammer', 'heater'],
+  };
+  const OPT_IDS = { mesh: 'opt-mesh', crammer: 'opt-crammer', heater: 'opt-heater' };
+  const optSection = document.getElementById('machine-options');
+
+  function updateOptionsVisibility(machineType) {
+    const allowed = MACHINE_OPTS[machineType] || [];
+    Object.entries(OPT_IDS).forEach(([key, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.hidden = !allowed.includes(key);
+    });
+    optSection.hidden = allowed.length === 0;
+  }
+
   // JS fallback selection so it works even without :has()
   function applySelectedClasses(){
     cards.forEach(card => card.classList.remove('selected'));
@@ -120,19 +213,32 @@
       const card = checked.closest('.machine-card');
       card && card.classList.add('selected');
       if (hidden) hidden.value = checked.value;
+      updateOptionsVisibility(checked.value);
     }
   }
 
-  // Fetch current machine type from server and pre-select
+  // Fetch current machine type and options from server, then pre-select
   (async () => {
     try {
-      const resp = await fetch('/cgi-bin/get_machine_type.sh');
-      if (resp.ok) {
-        const current = (await resp.text()).trim();
+      const [typeResp, optsResp] = await Promise.all([
+        fetch('/cgi-bin/get_machine_type.sh'),
+        fetch('/cgi-bin/get_machine_options.sh'),
+      ]);
+      if (typeResp.ok) {
+        const current = (await typeResp.text()).trim();
         const match = radios.find(r => r.value === current);
         if (match) match.checked = true;
       }
-    } catch (_) { /* fall through to default */ }
+      if (optsResp.ok) {
+        const opts = await optsResp.json();
+        const chkMesh    = document.getElementById('chk-mesh');
+        const chkCrammer = document.getElementById('chk-crammer');
+        const chkHeater  = document.getElementById('chk-heater');
+        if (chkMesh)    chkMesh.checked    = !!opts.mesh_compensation;
+        if (chkCrammer) chkCrammer.checked = !!opts.crammer;
+        if (chkHeater)  chkHeater.checked  = !!opts.heater_bed;
+      }
+    } catch (_) { /* fall through to defaults */ }
     // If nothing was selected (fetch failed or unknown), default to first
     if (!radios.some(r => r.checked) && radios.length) radios[0].checked = true;
     applySelectedClasses();
@@ -149,7 +255,7 @@
     });
   });
 
-  // Keep hidden input synced
+  // Keep hidden input and options visibility synced on change
   radios.forEach(r=>{
     r.addEventListener('change', () => {
       applySelectedClasses();
@@ -199,11 +305,16 @@
       e.preventDefault();
       out.textContent='Applying…';
       try{
-        const fd=new FormData(form);
+        // Build params manually so unchecked booleans are still sent as 'false'
+        const params = new URLSearchParams();
+        params.set('type', hidden.value);
+        params.set('mesh_compensation', document.getElementById('chk-mesh')?.checked    ? 'true' : 'false');
+        params.set('crammer',           document.getElementById('chk-crammer')?.checked ? 'true' : 'false');
+        params.set('heater_bed',        document.getElementById('chk-heater')?.checked  ? 'true' : 'false');
         const resp=await fetch('/cgi-bin/set_machine_type.sh',{
           method:'POST',
           headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(fd)
+          body:params
         });
         const text=await resp.text();
         out.textContent=text.trim()||'Updated.';
