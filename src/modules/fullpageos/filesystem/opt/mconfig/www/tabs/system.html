@@ -361,6 +361,23 @@
   </div>
 </div>
 
+<!-- Upload Restore Modal -->
+<div class="modal-wrap" id="upload-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+    <h3 id="upload-modal-title">Restore from uploaded bundle?</h3>
+    <p>
+      Upload <strong id="upload-modal-fname" style="color:var(--gray-100)"></strong> and restore
+      print history? The current Moonraker database will be backed up, then overwritten,
+      and Moonraker will restart.
+    </p>
+    <div class="actions">
+      <button class="btn-ghost" id="upload-modal-cancel" type="button">Cancel</button>
+      <button id="upload-modal-confirm" type="button">Upload &amp; Restore</button>
+    </div>
+    <div class="hint mono" id="upload-modal-status"></div>
+  </div>
+</div>
+
 <script>
 (() => {
   // ---- OS / Configurator Update: check + run ----
@@ -657,27 +674,64 @@
       if (uploadFname) uploadFname.textContent = f ? f.name : '';
       btnUpload.disabled = !f;
     });
-    btnUpload.addEventListener('click', async () => {
+    const uploadModal        = document.getElementById('upload-modal');
+    const uploadModalFname   = document.getElementById('upload-modal-fname');
+    const uploadModalConfirm = document.getElementById('upload-modal-confirm');
+    const uploadModalCancel  = document.getElementById('upload-modal-cancel');
+    const uploadModalStatus  = document.getElementById('upload-modal-status');
+
+    function openUploadModal(f){
+      if (!uploadModal) return;
+      if (uploadModalFname)  uploadModalFname.textContent  = f.name;
+      if (uploadModalStatus) uploadModalStatus.textContent = '';
+      if (uploadModalConfirm) uploadModalConfirm.disabled  = false;
+      if (uploadModalCancel)  uploadModalCancel.disabled   = false;
+      uploadModal.hidden = false;
+      if (uploadModalConfirm) uploadModalConfirm.focus();
+      document.addEventListener('keydown', escUploadCloser);
+    }
+    function closeUploadModal(){
+      if (!uploadModal) return;
+      uploadModal.hidden = true;
+      document.removeEventListener('keydown', escUploadCloser);
+    }
+    function escUploadCloser(e){ if (e.key === 'Escape') closeUploadModal(); }
+
+    if (uploadModalCancel) uploadModalCancel.addEventListener('click', closeUploadModal);
+    if (uploadModal) uploadModal.addEventListener('click', e => { if (e.target === uploadModal) closeUploadModal(); });
+
+    if (uploadModalConfirm){
+      uploadModalConfirm.addEventListener('click', async () => {
+        const f = inputUpload.files[0];
+        if (!f){ closeUploadModal(); return; }
+        uploadModalConfirm.disabled = true;
+        if (uploadModalCancel) uploadModalCancel.disabled = true;
+        const mb = (f.size / 1024 / 1024).toFixed(1);
+        if (uploadModalStatus) uploadModalStatus.textContent = 'Uploading ' + f.name + ' (' + mb + ' MiB)…';
+        try{
+          const r = await fetch('/cgi-bin/upload_restore_history.sh', {
+            method: 'POST',
+            body: f,
+            headers: {'Content-Type': 'application/octet-stream'},
+            cache: 'no-store'
+          });
+          const t = await r.text();
+          closeUploadModal();
+          if (outUpload){ outUpload.style.display = ''; outUpload.textContent = (t || 'Done.').trim(); }
+        }catch(err){
+          if (uploadModalStatus) uploadModalStatus.textContent = 'Error: ' + err;
+          uploadModalConfirm.disabled = false;
+          if (uploadModalCancel) uploadModalCancel.disabled = false;
+        }finally{
+          btnUpload.disabled = false;
+        }
+      });
+    }
+
+    btnUpload.addEventListener('click', () => {
       const f = inputUpload.files[0];
       if (!f) return;
-      if (!confirm('Upload "' + f.name + '" and restore history?\nThis will overwrite the current database.')) return;
-      btnUpload.disabled = true;
-      const mb = (f.size / 1024 / 1024).toFixed(1);
-      if (outUpload){ outUpload.style.display = ''; outUpload.textContent = 'Uploading ' + f.name + ' (' + mb + ' MiB)…'; }
-      try{
-        const r = await fetch('/cgi-bin/upload_restore_history.sh', {
-          method: 'POST',
-          body: f,
-          headers: {'Content-Type': 'application/octet-stream'},
-          cache: 'no-store'
-        });
-        const t = await r.text();
-        if (outUpload) outUpload.textContent = (t || 'Done.').trim();
-      }catch(err){
-        if (outUpload) outUpload.textContent = 'Error: ' + err;
-      }finally{
-        btnUpload.disabled = false;
-      }
+      openUploadModal(f);
     });
   }
 
