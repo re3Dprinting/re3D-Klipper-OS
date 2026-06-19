@@ -77,6 +77,9 @@ class StallGuardMonitor:
         self.gcode.register_command(
             'SG_RESET', self.cmd_SG_RESET,
             desc="Clear StallGuard collision latch so monitoring resumes")
+        self.gcode.register_command(
+            'SG_DIAG', self.cmd_SG_DIAG,
+            desc="Dump raw TMC driver attributes to diagnose READ ERR")
 
     # ── Initialisation ────────────────────────────────────────────────────────
 
@@ -174,41 +177,67 @@ class StallGuardMonitor:
     def _read_drv_status(self, tmc, eventtime):
         """
         Return the raw DRVSTATUS register value as an int, or None on error.
-
-        Reading order (most to least reliable for this Klipper build):
-          1. tmc.fields.get_reg()  – Klipper's own register cache; always an int.
-          2. tmc.get_status()      – also cache-backed; guarded with isinstance.
-          3. mcu_tmc.get_register()– direct SPI/UART; some Klipper versions return
-                                     the raw SPI params dict instead of an int, so
-                                     we validate the type before using it.
+        Tries four paths to handle API differences across Klipper versions.
+        Run SG_DIAG to see exactly which path succeeds or why each fails.
         """
-        # Primary: Klipper's field cache – updated by the driver's own poller
-        try:
-            if hasattr(tmc, 'fields'):
+        # 1) Klipper field cache via fields.get_reg() (method may not exist
+        #    on all builds – guard with hasattr before calling)
+        if hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_reg'):
+            try:
                 val = tmc.fields.get_reg("DRVSTATUS")
                 if isinstance(val, int):
                     return val
-        except Exception:
-            pass
+                self.logger.debug("stallguard: fields.get_reg returned %s", type(val).__name__)
+            except Exception as e:
+                self.logger.debug("stallguard: fields.get_reg raised: %s", e)
 
-        # Secondary: get_status() dict
-        try:
-            status = tmc.get_status(eventtime)
-            val = status.get('drv_status')
-            if isinstance(val, int):
-                return val
-        except Exception:
-            pass
+        # 2) get_status() dict – try with eventtime first, then without
+        #    (older Klipper builds may not accept the eventtime argument)
+        for call_args in [(eventtime,), ()]:
+            try:
+                status = tmc.get_status(*call_args)
+                val = status.get('drv_status')
+                if isinstance(val, int):
+                    return val
+                self.logger.debug(
+                    "stallguard: get_status%s drv_status=%s (%s)",
+                    call_args, val, type(val).__name__)
+                break   # got a response, no point retrying without arg
+            except TypeError:
+                continue  # wrong number of args – retry without eventtime
+            except Exception as e:
+                self.logger.debug("stallguard: get_status%s raised: %s", call_args, e)
+                break
 
-        # Last resort: direct SPI/UART – validate it is actually an int because
-        # some Klipper builds return the raw SPI params dict here instead.
-        try:
-            if hasattr(tmc, 'mcu_tmc') and hasattr(tmc.mcu_tmc, 'get_register'):
+        # 3) Direct SPI/UART via mcu_tmc.get_register().
+        #    Some Klipper builds return an int directly; others return the raw
+        #    SPI params dict {response: [status_byte, b3, b2, b1, b0]}.
+        if hasattr(tmc, 'mcu_tmc') and hasattr(tmc.mcu_tmc, 'get_register'):
+            try:
                 val = tmc.mcu_tmc.get_register("DRVSTATUS")
                 if isinstance(val, int):
                     return val
-        except Exception:
-            pass
+                if isinstance(val, dict):
+                    resp = val.get('response', [])
+                    if len(resp) >= 5:   # 1 status byte + 4 data bytes
+                        data = bytearray(resp[1:5])
+                        return sum(b << ((3 - i) * 8) for i, b in enumerate(data))
+                    self.logger.debug("stallguard: mcu_tmc response too short: %s", resp)
+                else:
+                    self.logger.debug("stallguard: get_register returned %s", type(val).__name__)
+            except Exception as e:
+                self.logger.debug("stallguard: mcu_tmc.get_register raised: %s", e)
+
+        # 4) Last resort: reconstruct a minimal register value from individual
+        #    cached fields (SG_RESULT + STST) so at least those two bits work.
+        if hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_field'):
+            try:
+                sg  = tmc.fields.get_field("SG_RESULT")
+                stst = tmc.fields.get_field("STST")
+                if isinstance(sg, int) and isinstance(stst, int):
+                    return (stst << 31) | (sg & _SG_RESULT_MASK)
+            except Exception as e:
+                self.logger.debug("stallguard: fields.get_field raised: %s", e)
 
         return None
 
@@ -259,7 +288,8 @@ class StallGuardMonitor:
                 continue
             raw = self._read_drv_status(tmc, eventtime)
             if raw is None:
-                lines.append("  {:<14} {:>10}".format(motor, "READ ERR"))
+                lines.append(
+                    "  {:<14} {:>10}  (run SG_DIAG for details)".format(motor, "READ ERR"))
                 continue
             sg_val     = raw & _SG_RESULT_MASK
             standstill = bool(raw & _STST_BIT)
@@ -299,6 +329,76 @@ class StallGuardMonitor:
         for m in self.trigger_counts:
             self.trigger_counts[m] = 0
         gcmd.respond_info("stallguard_monitor: collision latch cleared")
+
+    def cmd_SG_DIAG(self, gcmd):
+        """Probe the first configured TMC driver and report what is readable."""
+        if not self.tmc_drivers:
+            gcmd.respond_info("stallguard_monitor: no drivers configured")
+            return
+
+        motor = next(iter(self.tmc_drivers))
+        tmc   = self.tmc_drivers[motor]
+        et    = self.reactor.monotonic()
+        lines = ["SG_DIAG for '{}' ({})".format(motor, type(tmc).__name__)]
+
+        # fields.get_reg
+        if hasattr(tmc, 'fields'):
+            lines.append("  has fields: yes  (type={})".format(type(tmc.fields).__name__))
+            if hasattr(tmc.fields, 'get_reg'):
+                try:
+                    v = tmc.fields.get_reg("DRVSTATUS")
+                    lines.append("  fields.get_reg('DRVSTATUS') -> {} ({})".format(v, type(v).__name__))
+                except Exception as e:
+                    lines.append("  fields.get_reg raised: {}".format(e))
+            else:
+                lines.append("  fields.get_reg: NOT PRESENT")
+            if hasattr(tmc.fields, 'get_field'):
+                for fname in ("SG_RESULT", "STST"):
+                    try:
+                        v = tmc.fields.get_field(fname)
+                        lines.append("  fields.get_field('{}') -> {} ({})".format(fname, v, type(v).__name__))
+                    except Exception as e:
+                        lines.append("  fields.get_field('{}') raised: {}".format(fname, e))
+            else:
+                lines.append("  fields.get_field: NOT PRESENT")
+        else:
+            lines.append("  has fields: NO")
+
+        # get_status
+        for call_args in [(et,), ()]:
+            try:
+                st = tmc.get_status(*call_args)
+                lines.append("  get_status{} keys: {}".format(
+                    call_args, sorted(st.keys())))
+                if 'drv_status' in st:
+                    v = st['drv_status']
+                    lines.append("  drv_status -> {} ({})".format(v, type(v).__name__))
+                break
+            except TypeError:
+                continue
+            except Exception as e:
+                lines.append("  get_status{} raised: {}".format(call_args, e))
+                break
+
+        # mcu_tmc.get_register
+        if hasattr(tmc, 'mcu_tmc'):
+            lines.append("  has mcu_tmc: yes  (type={})".format(type(tmc.mcu_tmc).__name__))
+            if hasattr(tmc.mcu_tmc, 'get_register'):
+                try:
+                    v = tmc.mcu_tmc.get_register("DRVSTATUS")
+                    if isinstance(v, dict):
+                        resp = v.get('response', [])
+                        lines.append("  mcu_tmc.get_register -> dict, response={}".format(list(resp)))
+                    else:
+                        lines.append("  mcu_tmc.get_register -> {} ({})".format(v, type(v).__name__))
+                except Exception as e:
+                    lines.append("  mcu_tmc.get_register raised: {}".format(e))
+            else:
+                lines.append("  mcu_tmc.get_register: NOT PRESENT")
+        else:
+            lines.append("  has mcu_tmc: NO")
+
+        gcmd.respond_info("\n".join(lines))
 
     def get_status(self, eventtime):
         """Expose values to Moonraker / macros via printer['stallguard_monitor']."""
