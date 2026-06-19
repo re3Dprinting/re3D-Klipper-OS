@@ -173,22 +173,40 @@ class StallGuardMonitor:
 
     def _read_drv_status(self, tmc, eventtime):
         """
-        Return the raw DRVSTATUS register value, or None on error.
+        Return the raw DRVSTATUS register value as an int, or None on error.
 
-        Tries a direct register read via mcu_tmc first (fresh SPI/UART data),
-        then falls back to the value cached by Klipper's own status poller.
+        Reading order (most to least reliable for this Klipper build):
+          1. tmc.fields.get_reg()  – Klipper's own register cache; always an int.
+          2. tmc.get_status()      – also cache-backed; guarded with isinstance.
+          3. mcu_tmc.get_register()– direct SPI/UART; some Klipper versions return
+                                     the raw SPI params dict instead of an int, so
+                                     we validate the type before using it.
         """
-        # Direct read – fastest, gives fresh data each poll
+        # Primary: Klipper's field cache – updated by the driver's own poller
         try:
-            if hasattr(tmc, 'mcu_tmc'):
-                return tmc.mcu_tmc.get_register("DRVSTATUS")
+            if hasattr(tmc, 'fields'):
+                val = tmc.fields.get_reg("DRVSTATUS")
+                if isinstance(val, int):
+                    return val
         except Exception:
             pass
 
-        # Fallback – may be up to ~1 s stale but better than nothing
+        # Secondary: get_status() dict
         try:
             status = tmc.get_status(eventtime)
-            return status.get('drv_status')
+            val = status.get('drv_status')
+            if isinstance(val, int):
+                return val
+        except Exception:
+            pass
+
+        # Last resort: direct SPI/UART – validate it is actually an int because
+        # some Klipper builds return the raw SPI params dict here instead.
+        try:
+            if hasattr(tmc, 'mcu_tmc') and hasattr(tmc.mcu_tmc, 'get_register'):
+                val = tmc.mcu_tmc.get_register("DRVSTATUS")
+                if isinstance(val, int):
+                    return val
         except Exception:
             pass
 
