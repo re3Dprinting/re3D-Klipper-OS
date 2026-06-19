@@ -87,6 +87,8 @@ def common_setup_printer(deposition_type_path, board, platform):
     add_template_file(COMMON_PATH / "crowsnest.conf.tmpl", KLIPPER_CONFIG_PATH / "crowsnest.conf", True)
     add_template_file(COMMON_PATH / "timelapse.cfg.tmpl", KLIPPER_CONFIG_PATH / "timelapse.cfg", True)
     add_template_file(COMMON_PATH / "shell_command.cfg.tmpl", KLIPPER_CONFIG_PATH / "shell_command.cfg", True)
+    # StallGuard monitor — deploy once; operator tunes threshold in-place
+    add_template_file(COMMON_PATH / "stallguard_standalone.cfg", KLIPPER_CONFIG_PATH / "stallguard_standalone.cfg")
 
 def setup_fff_printer(printer_config, board, platform):
     custom_path = FFF_PATH / "custom"

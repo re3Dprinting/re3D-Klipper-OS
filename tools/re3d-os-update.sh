@@ -219,6 +219,34 @@ else
   log "${LOG_TAG} WARNING: Source ${SRC_SHELL_CMDS} not found, skipping shell commands."
 fi
 
+# ---------- 5.5) StallGuard monitor extra + config ----------
+set_progress 47
+
+SRC_SG_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/klipper/klippy/extras/stallguard_monitor.py"
+SRC_SG_CFG="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common/stallguard_standalone.cfg"
+DST_SG_PY="/home/pi/klipper/klippy/extras/stallguard_monitor.py"
+DST_SG_CFG="/home/pi/printer_data/config/stallguard_standalone.cfg"
+
+if [ -f "${SRC_SG_PY}" ]; then
+  install -m 0644 -o pi -g pi "${SRC_SG_PY}" "${DST_SG_PY}"
+  log "${LOG_TAG} stallguard_monitor.py deployed to Klipper extras."
+else
+  log "${LOG_TAG} WARNING: ${SRC_SG_PY} not found, skipping StallGuard extra."
+fi
+
+if [ -f "${SRC_SG_CFG}" ]; then
+  # Deploy the config only if it doesn't exist yet so the operator's tuned
+  # threshold values are never silently overwritten on subsequent updates.
+  if [ ! -f "${DST_SG_CFG}" ]; then
+    install -m 0644 -o pi -g pi "${SRC_SG_CFG}" "${DST_SG_CFG}"
+    log "${LOG_TAG} stallguard_standalone.cfg deployed (first time)."
+  else
+    log "${LOG_TAG} stallguard_standalone.cfg already present — skipping to preserve tuned values."
+  fi
+else
+  log "${LOG_TAG} WARNING: ${SRC_SG_CFG} not found, skipping StallGuard config."
+fi
+
 # ---------- 6) Ensure matplotlib is installed for graphstats ----------
 set_progress 50
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
