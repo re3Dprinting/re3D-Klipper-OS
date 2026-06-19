@@ -276,6 +276,41 @@
           </div>
           <div class="sys-out mono" id="out-restore"></div>
         </form>
+
+        <!-- Web divider -->
+        <div style="border-top:1px solid var(--border);margin:4px 0 0;padding-top:8px;">
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim);margin-bottom:4px;">Via browser</div>
+        </div>
+
+        <!-- Download bundle to browser -->
+        <div class="ph-panel">
+          <div>
+            <div class="ph-title">Download bundle</div>
+            <div class="hint">Download the current history bundle directly to your computer.</div>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-download-bundle">Download Bundle</button>
+          </div>
+          <div class="sys-out mono" id="out-download" style="display:none"></div>
+        </div>
+
+        <!-- Upload & restore from browser -->
+        <div class="ph-panel">
+          <div>
+            <div class="ph-title">Restore from uploaded bundle</div>
+            <div class="hint">Upload a <code>.tgz</code> bundle to restore history from your computer.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+            <label class="btn btn-ghost" style="cursor:pointer;margin:0;" for="input-upload-bundle">Choose file…</label>
+            <input type="file" id="input-upload-bundle" accept=".tgz,application/gzip"
+              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;">
+            <span id="upload-filename" class="dim" style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;"></span>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-upload-restore" disabled>Upload &amp; Restore</button>
+          </div>
+          <div class="sys-out mono" id="out-upload" style="display:none"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -323,6 +358,23 @@
       <button id="reflash-confirm" type="button">Reflash &amp; Reboot</button>
     </div>
     <div class="hint mono" id="reflash-status"></div>
+  </div>
+</div>
+
+<!-- Upload Restore Modal -->
+<div class="modal-wrap" id="upload-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+    <h3 id="upload-modal-title">Restore from uploaded bundle?</h3>
+    <p>
+      Upload <strong id="upload-modal-fname" style="color:var(--gray-100)"></strong> and restore
+      print history? The current Moonraker database will be backed up, then overwritten,
+      and Moonraker will restart.
+    </p>
+    <div class="actions">
+      <button class="btn-ghost" id="upload-modal-cancel" type="button">Cancel</button>
+      <button id="upload-modal-confirm" type="button">Upload &amp; Restore</button>
+    </div>
+    <div class="hint mono" id="upload-modal-status"></div>
   </div>
 </div>
 
@@ -588,6 +640,98 @@
         const t = await r.text();
         outRestore.textContent = (t||'Done.').trim();
       }catch(err){ outRestore.textContent = 'Error: '+err; }
+    });
+  }
+
+  // ---- Download history bundle to browser ----
+  const btnDownload = document.getElementById('btn-download-bundle');
+  const outDownload = document.getElementById('out-download');
+  if (btnDownload){
+    btnDownload.addEventListener('click', () => {
+      if (outDownload){ outDownload.style.display = ''; outDownload.textContent = 'Preparing bundle — download will start shortly…'; }
+      btnDownload.disabled = true;
+      const a = document.createElement('a');
+      a.href = '/cgi-bin/download_history.sh?ts=' + Date.now();
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => {
+        btnDownload.disabled = false;
+        if (outDownload) outDownload.textContent = 'Download triggered. Check your browser downloads.';
+      }, 3000);
+    });
+  }
+
+  // ---- Upload & restore from browser ----
+  const inputUpload  = document.getElementById('input-upload-bundle');
+  const btnUpload    = document.getElementById('btn-upload-restore');
+  const outUpload    = document.getElementById('out-upload');
+  const uploadFname  = document.getElementById('upload-filename');
+  if (inputUpload && btnUpload){
+    inputUpload.addEventListener('change', () => {
+      const f = inputUpload.files[0];
+      if (uploadFname) uploadFname.textContent = f ? f.name : '';
+      btnUpload.disabled = !f;
+    });
+    const uploadModal        = document.getElementById('upload-modal');
+    const uploadModalFname   = document.getElementById('upload-modal-fname');
+    const uploadModalConfirm = document.getElementById('upload-modal-confirm');
+    const uploadModalCancel  = document.getElementById('upload-modal-cancel');
+    const uploadModalStatus  = document.getElementById('upload-modal-status');
+
+    function openUploadModal(f){
+      if (!uploadModal) return;
+      if (uploadModalFname)  uploadModalFname.textContent  = f.name;
+      if (uploadModalStatus) uploadModalStatus.textContent = '';
+      if (uploadModalConfirm) uploadModalConfirm.disabled  = false;
+      if (uploadModalCancel)  uploadModalCancel.disabled   = false;
+      uploadModal.hidden = false;
+      if (uploadModalConfirm) uploadModalConfirm.focus();
+      document.addEventListener('keydown', escUploadCloser);
+    }
+    function closeUploadModal(){
+      if (!uploadModal) return;
+      uploadModal.hidden = true;
+      document.removeEventListener('keydown', escUploadCloser);
+    }
+    function escUploadCloser(e){ if (e.key === 'Escape') closeUploadModal(); }
+
+    if (uploadModalCancel) uploadModalCancel.addEventListener('click', closeUploadModal);
+    if (uploadModal) uploadModal.addEventListener('click', e => { if (e.target === uploadModal) closeUploadModal(); });
+
+    if (uploadModalConfirm){
+      uploadModalConfirm.addEventListener('click', async () => {
+        const f = inputUpload.files[0];
+        if (!f){ closeUploadModal(); return; }
+        uploadModalConfirm.disabled = true;
+        if (uploadModalCancel) uploadModalCancel.disabled = true;
+        const mb = (f.size / 1024 / 1024).toFixed(1);
+        if (uploadModalStatus) uploadModalStatus.textContent = 'Uploading ' + f.name + ' (' + mb + ' MiB)…';
+        try{
+          const r = await fetch('/cgi-bin/upload_restore_history.sh', {
+            method: 'POST',
+            body: f,
+            headers: {'Content-Type': 'application/octet-stream'},
+            cache: 'no-store'
+          });
+          const t = await r.text();
+          closeUploadModal();
+          if (outUpload){ outUpload.style.display = ''; outUpload.textContent = (t || 'Done.').trim(); }
+        }catch(err){
+          if (uploadModalStatus) uploadModalStatus.textContent = 'Error: ' + err;
+          uploadModalConfirm.disabled = false;
+          if (uploadModalCancel) uploadModalCancel.disabled = false;
+        }finally{
+          btnUpload.disabled = false;
+        }
+      });
+    }
+
+    btnUpload.addEventListener('click', () => {
+      const f = inputUpload.files[0];
+      if (!f) return;
+      openUploadModal(f);
     });
   }
 
