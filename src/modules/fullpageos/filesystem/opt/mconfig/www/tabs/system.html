@@ -276,6 +276,41 @@
           </div>
           <div class="sys-out mono" id="out-restore"></div>
         </form>
+
+        <!-- Web divider -->
+        <div style="border-top:1px solid var(--border);margin:4px 0 0;padding-top:8px;">
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim);margin-bottom:4px;">Via browser</div>
+        </div>
+
+        <!-- Download bundle to browser -->
+        <div class="ph-panel">
+          <div>
+            <div class="ph-title">Download bundle</div>
+            <div class="hint">Download the current history bundle directly to your computer.</div>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-download-bundle">Download Bundle</button>
+          </div>
+          <div class="sys-out mono" id="out-download" style="display:none"></div>
+        </div>
+
+        <!-- Upload & restore from browser -->
+        <div class="ph-panel">
+          <div>
+            <div class="ph-title">Restore from uploaded bundle</div>
+            <div class="hint">Upload a <code>.tgz</code> bundle to restore history from your computer.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+            <label class="btn btn-ghost" style="cursor:pointer;margin:0;" for="input-upload-bundle">Choose file…</label>
+            <input type="file" id="input-upload-bundle" accept=".tgz,application/gzip"
+              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;">
+            <span id="upload-filename" class="dim" style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;"></span>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-upload-restore" disabled>Upload &amp; Restore</button>
+          </div>
+          <div class="sys-out mono" id="out-upload" style="display:none"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -588,6 +623,61 @@
         const t = await r.text();
         outRestore.textContent = (t||'Done.').trim();
       }catch(err){ outRestore.textContent = 'Error: '+err; }
+    });
+  }
+
+  // ---- Download history bundle to browser ----
+  const btnDownload = document.getElementById('btn-download-bundle');
+  const outDownload = document.getElementById('out-download');
+  if (btnDownload){
+    btnDownload.addEventListener('click', () => {
+      if (outDownload){ outDownload.style.display = ''; outDownload.textContent = 'Preparing bundle — download will start shortly…'; }
+      btnDownload.disabled = true;
+      const a = document.createElement('a');
+      a.href = '/cgi-bin/download_history.sh?ts=' + Date.now();
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => {
+        btnDownload.disabled = false;
+        if (outDownload) outDownload.textContent = 'Download triggered. Check your browser downloads.';
+      }, 3000);
+    });
+  }
+
+  // ---- Upload & restore from browser ----
+  const inputUpload  = document.getElementById('input-upload-bundle');
+  const btnUpload    = document.getElementById('btn-upload-restore');
+  const outUpload    = document.getElementById('out-upload');
+  const uploadFname  = document.getElementById('upload-filename');
+  if (inputUpload && btnUpload){
+    inputUpload.addEventListener('change', () => {
+      const f = inputUpload.files[0];
+      if (uploadFname) uploadFname.textContent = f ? f.name : '';
+      btnUpload.disabled = !f;
+    });
+    btnUpload.addEventListener('click', async () => {
+      const f = inputUpload.files[0];
+      if (!f) return;
+      if (!confirm('Upload "' + f.name + '" and restore history?\nThis will overwrite the current database.')) return;
+      btnUpload.disabled = true;
+      const mb = (f.size / 1024 / 1024).toFixed(1);
+      if (outUpload){ outUpload.style.display = ''; outUpload.textContent = 'Uploading ' + f.name + ' (' + mb + ' MiB)…'; }
+      try{
+        const r = await fetch('/cgi-bin/upload_restore_history.sh', {
+          method: 'POST',
+          body: f,
+          headers: {'Content-Type': 'application/octet-stream'},
+          cache: 'no-store'
+        });
+        const t = await r.text();
+        if (outUpload) outUpload.textContent = (t || 'Done.').trim();
+      }catch(err){
+        if (outUpload) outUpload.textContent = 'Error: ' + err;
+      }finally{
+        btnUpload.disabled = false;
+      }
     });
   }
 
