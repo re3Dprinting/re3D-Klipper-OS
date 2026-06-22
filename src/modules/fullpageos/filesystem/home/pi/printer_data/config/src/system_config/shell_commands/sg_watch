@@ -347,6 +347,9 @@ if __name__ == "__main__":
             motor_thresholds = sg.get("motor_thresholds", {})
             default_thresh   = sg.get("collision_threshold", 40)
             drop_fraction    = sg.get("drop_fraction", 0.40)
+            alpha_rise       = sg.get("baseline_alpha", 0.10)
+            alpha_fall       = sg.get("baseline_alpha_fall", alpha_rise * 3)
+            baseline_guard   = sg.get("baseline_guard", 0.15)
             detection_mode   = sg.get("detection_mode", "absolute")
             detected         = sg.get("collision_detected", False)
             monitoring       = sg.get("enabled", False)
@@ -364,8 +367,10 @@ if __name__ == "__main__":
 
             if is_adaptive:
                 print("  {}EWMA: B = baseline  ! = trigger = baseline x{:.0f}%  "
-                      "headroom = (SG-trig)/(base-trig){}".format(
-                          DIM, (1.0 - drop_fraction) * 100, RST))
+                      "headroom = (SG-trig)/(base-trig)  "
+                      "alpha rise={:.2f} fall={:.2f} guard={:.2f}{}".format(
+                          DIM, (1.0 - drop_fraction) * 100,
+                          alpha_rise, alpha_fall, baseline_guard, RST))
             else:
                 print("  {}fixed threshold  ! = per-motor threshold{}".format(
                     DIM, RST))

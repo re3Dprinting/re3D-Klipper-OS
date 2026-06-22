@@ -77,6 +77,12 @@ class StallGuardMonitor:
             'absolute')
         self.baseline_alpha = config.getfloat(
             'baseline_alpha', 0.1, minval=0.01, maxval=0.5)
+        self.baseline_alpha_fall = config.getfloat(
+            'baseline_alpha_fall',
+            min(self.baseline_alpha * 3.0, 0.5),
+            minval=0.01, maxval=0.99)
+        self.baseline_guard = config.getfloat(
+            'baseline_guard', 0.15, minval=0.0, maxval=0.5)
         self.drop_fraction  = config.getfloat(
             'drop_fraction', 0.40, minval=0.05, maxval=0.95)
 
@@ -275,8 +281,14 @@ class StallGuardMonitor:
                 if standstill:
                     # Motor stopped: clear window and arm acceleration blanking.
                     # Do NOT store standstill 0 in sg_values.
+                    # Also reset the EWMA baseline so the next move seeds a
+                    # fresh baseline from its own speed — prevents the elevated
+                    # trigger from a fast move causing false triggers when the
+                    # next move is slower.
                     self._sg_windows[motor].clear()
                     self._accel_blanks[motor] = self.accel_blank_samples
+                    if self.detection_mode == 'adaptive':
+                        self._sg_baselines[motor] = None
                     continue
 
                 # SG_RESULT=0 is ambiguous (pre-STST decel or true stall).
@@ -300,17 +312,28 @@ class StallGuardMonitor:
 
                 self.sg_values[motor] = sg_val
 
-                # Update EWMA baseline (adaptive mode).  Guard against stall
-                # values poisoning the baseline: only update when the sample is
-                # not more than 60 % below the current baseline.
+                # Update EWMA baseline (adaptive mode).
+                #
+                # Guard (baseline_guard): freeze the baseline if SG drops
+                # to < guard × baseline.  Only extreme drops (collisions)
+                # should reach this floor; normal speed reductions stay above
+                # it.  Default 0.15 means baseline is frozen only when SG is
+                # less than 15 % of the current baseline.
+                #
+                # Asymmetric alpha: use a faster fall-alpha when the baseline
+                # needs to track downward (speed reduction) vs the slower
+                # rise-alpha (load increase / higher speed).  This lets the
+                # trigger level catch up quickly after a speed drop without
+                # waiting many samples for the EWMA to converge.
                 if self.detection_mode == 'adaptive':
                     bl = self._sg_baselines.get(motor)
                     if bl is None:
                         self._sg_baselines[motor] = float(sg_val)
-                    elif sg_val >= bl * 0.4:
+                    elif sg_val >= bl * self.baseline_guard:
+                        alpha = (self.baseline_alpha_fall
+                                 if sg_val < bl else self.baseline_alpha)
                         self._sg_baselines[motor] = (
-                            self.baseline_alpha * sg_val
-                            + (1.0 - self.baseline_alpha) * bl)
+                            alpha * sg_val + (1.0 - alpha) * bl)
 
                 # Collect samples for SG_CALIBRATE if active
                 if self._calibrating and motor in self._calibrate_samples:
@@ -766,6 +789,9 @@ class StallGuardMonitor:
             'sg_baselines':        {m: round(v, 1) for m, v in self._sg_baselines.items()
                                     if v is not None},
             'drop_fraction':       self.drop_fraction,
+            'baseline_alpha':      self.baseline_alpha,
+            'baseline_alpha_fall': self.baseline_alpha_fall,
+            'baseline_guard':      self.baseline_guard,
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
         }
