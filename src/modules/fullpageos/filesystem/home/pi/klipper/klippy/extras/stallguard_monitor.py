@@ -373,11 +373,16 @@ class StallGuardMonitor:
                 self.logger.debug("stallguard: get_register(%s): %s", reg_name, e)
 
         # 2) Reconstruct from individual cached fields using probed field names.
+        # Guard: get_field() returns the last value the Klipper field cache
+        # holds — this starts at 0 and stays 0 until an async monitoring cycle
+        # runs.  Only trust it when sg > 0 to avoid silently masking path-1
+        # failures with a stale zero (which the poll loop would then discard
+        # via 'if sg_val == 0: continue', hiding the real read failure).
         if sg_name and stst_name and hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_field'):
             try:
                 sg   = tmc.fields.get_field(sg_name)
                 stst = tmc.fields.get_field(stst_name)
-                if isinstance(sg, int) and isinstance(stst, int):
+                if isinstance(sg, int) and isinstance(stst, int) and sg > 0:
                     return (stst << 31) | (sg & _SG_RESULT_MASK)
             except Exception as e:
                 self.logger.debug("stallguard: get_field(%s/%s): %s", sg_name, stst_name, e)
