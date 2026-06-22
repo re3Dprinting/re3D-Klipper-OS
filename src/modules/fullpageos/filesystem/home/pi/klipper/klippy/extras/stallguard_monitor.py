@@ -20,6 +20,7 @@
 
 import logging
 import math
+from collections import deque
 
 # TMC driver types searched in priority order
 _TMC_TYPES = ['tmc5160', 'tmc2240', 'tmc2130', 'tmc2209', 'tmc2208', 'tmc2660']
@@ -44,7 +45,9 @@ class StallGuardMonitor:
         self.collision_threshold = config.getint(
             'collision_threshold', 100, minval=0, maxval=1023)
         self.consecutive_triggers = config.getint(
-            'consecutive_triggers', 3, minval=1, maxval=50)
+            'consecutive_triggers', 4, minval=1, maxval=50)
+        self.accel_blank_samples = config.getint(
+            'accel_blank_samples', 4, minval=0, maxval=50)
         self.action = config.getchoice(
             'collision_action',
             {'none': 'none', 'pause': 'pause', 'emergency_stop': 'emergency_stop'},
@@ -68,7 +71,8 @@ class StallGuardMonitor:
         # ── Runtime state ────────────────────────────────────────────────────
         self.tmc_drivers        = {}   # motor_name -> tmc object
         self.sg_values          = {}   # motor_name -> last SG_RESULT int or None
-        self.trigger_counts     = {}   # motor_name -> consecutive below-threshold count
+        self._sg_windows        = {}   # motor_name -> deque(maxlen=consecutive_triggers)
+        self._accel_blanks      = {}   # motor_name -> int countdown after standstill
         self._reg_names         = {}   # motor_name -> {reg, sg, stst, stst_reg}
         self.monitoring         = False
         self._timer_handle      = None
@@ -112,7 +116,8 @@ class StallGuardMonitor:
             if tmc is not None:
                 self.tmc_drivers[motor]    = tmc
                 self.sg_values[motor]      = None
-                self.trigger_counts[motor] = 0
+                self._sg_windows[motor]    = deque(maxlen=self.consecutive_triggers)
+                self._accel_blanks[motor]  = self.accel_blank_samples
                 names = self._probe_names(tmc)
                 self._reg_names[motor]     = names
                 self.logger.info(
@@ -143,8 +148,7 @@ class StallGuardMonitor:
             return
         self._homing_active   = True
         self._collision_latch = False
-        for motor in self.trigger_counts:
-            self.trigger_counts[motor] = 0
+        self._reset_windows()
         if not self.monitoring:
             self._start_monitoring()
         self.logger.info("stallguard_monitor: homing started — monitoring armed")
@@ -155,8 +159,7 @@ class StallGuardMonitor:
         if self.homing_only:
             self._stop_monitoring()
             self._collision_latch = False
-            for motor in self.trigger_counts:
-                self.trigger_counts[motor] = 0
+            self._reset_windows()
             self.logger.info("stallguard_monitor: homing complete — monitoring disarmed")
 
     def _find_tmc_driver(self, motor_name):
@@ -202,8 +205,9 @@ class StallGuardMonitor:
         self._timer_handle = self.reactor.register_timer(
             self._poll_callback, self.reactor.NOW)
         self.logger.info("stallguard_monitor: monitoring started "
-                         "(threshold=%d, action=%s, poll=%.2fs)",
-                         self.collision_threshold, self.action, self.poll_interval)
+                         "(threshold=%d, action=%s, poll=%.2fs, window=%d, blank=%d)",
+                         self.collision_threshold, self.action, self.poll_interval,
+                         self.consecutive_triggers, self.accel_blank_samples)
 
     def _stop_monitoring(self):
         self.monitoring = False
@@ -211,6 +215,14 @@ class StallGuardMonitor:
             self.reactor.unregister_timer(self._timer_handle)
             self._timer_handle = None
         self.logger.info("stallguard_monitor: monitoring stopped")
+
+    # ── Window helpers ────────────────────────────────────────────────────────
+
+    def _reset_windows(self):
+        """Clear all rolling-average windows and reset acceleration blanking."""
+        for m in self._sg_windows:
+            self._sg_windows[m].clear()
+            self._accel_blanks[m] = self.accel_blank_samples
 
     # ── Polling ───────────────────────────────────────────────────────────────
 
@@ -228,20 +240,21 @@ class StallGuardMonitor:
                 standstill  = bool(raw & _STST_BIT)
 
                 if standstill:
-                    # Motor is stopped – reset counter, no collision possible.
-                    # Do NOT overwrite sg_values with standstill 0; keep the
-                    # last known movement value so displays stay meaningful.
-                    self.trigger_counts[motor] = 0
+                    # Motor stopped: clear window and arm acceleration blanking.
+                    # Do NOT store standstill 0 in sg_values.
+                    self._sg_windows[motor].clear()
+                    self._accel_blanks[motor] = self.accel_blank_samples
                     continue
 
-                # SG_RESULT=0 is ambiguous: it can mean the motor is below the
-                # TMC's minimum velocity for a valid SG measurement (which
-                # occurs during deceleration BEFORE the STST bit latches), or
-                # a fully-stalled motor.  Treat it as "no data": do not
-                # increment the trigger counter, but also do not reset it.
-                # A real mechanical stall drops through positive low values
-                # before hitting 0, so threshold detection still fires.
+                # SG_RESULT=0 is ambiguous (pre-STST decel or true stall).
+                # Treat as no-data: don't add to window, don't reset it.
                 if sg_val == 0:
+                    continue
+
+                # Blank the first N samples after standstill clears.
+                # SG values are unreliable during initial acceleration.
+                if self._accel_blanks[motor] > 0:
+                    self._accel_blanks[motor] -= 1
                     continue
 
                 self.sg_values[motor] = sg_val
@@ -251,16 +264,21 @@ class StallGuardMonitor:
                     self._calibrate_samples[motor].append(sg_val)
 
                 if self._collision_latch:
-                    # Already triggered; wait for SG_RESET before re-arming
                     continue
 
-                threshold = self._motor_thresholds.get(motor, self.collision_threshold)
-                if sg_val < threshold:
-                    self.trigger_counts[motor] += 1
-                    if self.trigger_counts[motor] >= self.consecutive_triggers:
-                        self._handle_collision(motor, sg_val)
-                else:
-                    self.trigger_counts[motor] = 0
+                # Rolling-average collision detection.
+                # Trigger only when the full window average drops below threshold.
+                # More noise-tolerant than N-consecutive: a single dip barely
+                # moves the average, but a sustained stall trend fires cleanly.
+                window = self._sg_windows[motor]
+                window.append(sg_val)
+                if len(window) == window.maxlen:
+                    avg = sum(window) / window.maxlen
+                    threshold = self._motor_thresholds.get(motor,
+                                                           self.collision_threshold)
+                    if avg < threshold:
+                        window.clear()
+                        self._handle_collision(motor, int(round(avg)))
 
         except Exception:
             self.logger.exception("stallguard_monitor: error in poll callback")
@@ -335,9 +353,8 @@ class StallGuardMonitor:
     def _handle_collision(self, motor, sg_val):
         """React to a detected collision event."""
         self._collision_latch = True
-        # Reset all counters so we don't spam the action
-        for m in self.trigger_counts:
-            self.trigger_counts[m] = 0
+        # Clear the window so we don't immediately re-trigger after SG_RESET
+        self._reset_windows()
 
         msg = ("!! stallguard_monitor: COLLISION on {} "
                "(SG_RESULT={}, threshold={})".format(
@@ -397,8 +414,7 @@ class StallGuardMonitor:
 
     def cmd_SG_START(self, gcmd):
         self._collision_latch = False
-        for m in self.trigger_counts:
-            self.trigger_counts[m] = 0
+        self._reset_windows()
         self._start_monitoring()
         gcmd.respond_info(
             "stallguard_monitor: started (threshold={}, action={})".format(
@@ -429,14 +445,12 @@ class StallGuardMonitor:
             gcmd.respond_info(
                 "stallguard_monitor: all thresholds -> {}".format(threshold))
         self._collision_latch = False
-        for m in self.trigger_counts:
-            self.trigger_counts[m] = 0
+        self._reset_windows()
 
     def cmd_SG_RESET(self, gcmd):
         """Clear the collision latch so monitoring re-arms without restart."""
         self._collision_latch = False
-        for m in self.trigger_counts:
-            self.trigger_counts[m] = 0
+        self._reset_windows()
         gcmd.respond_info("stallguard_monitor: collision latch cleared")
 
     def cmd_SG_DIAG(self, gcmd):
