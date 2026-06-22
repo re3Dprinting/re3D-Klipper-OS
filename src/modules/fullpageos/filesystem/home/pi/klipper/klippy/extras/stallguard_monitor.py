@@ -528,37 +528,48 @@ class StallGuardMonitor:
             gcmd.respond_info("stallguard_monitor: no drivers configured")
             return
 
-        motor = next(iter(self.tmc_drivers))
-        tmc   = self.tmc_drivers[motor]
-        et    = self.reactor.monotonic()
-        names = self._reg_names.get(motor, {})
+        motor     = next(iter(self.tmc_drivers))
+        tmc       = self.tmc_drivers[motor]
+        et        = self.reactor.monotonic()
+        names     = self._reg_names.get(motor, {})
+        reg_name  = names.get('reg')
+        sg_name   = names.get('sg')
+        stst_name = names.get('stst')
         lines = [
             "SG_DIAG for '{}' ({})".format(motor, type(tmc).__name__),
-            "  probed: reg={reg}  sg={sg}  stst={stst}".format(
-                reg=names.get('reg',  'NOT FOUND'),
-                sg=names.get('sg',   'NOT FOUND'),
-                stst=names.get('stst','NOT FOUND')),
+            "  probed: reg={}  sg={}  stst={}".format(
+                reg_name  or 'NOT FOUND',
+                sg_name   or 'NOT FOUND',
+                stst_name or 'NOT FOUND'),
         ]
         if hasattr(tmc, 'fields') and hasattr(tmc.fields, 'all_fields'):
-            all_regs = sorted(tmc.fields.all_fields.keys())
-            lines.append("  all_fields keys: {}".format(all_regs))
+            lines.append("  all_fields keys: {}".format(
+                sorted(tmc.fields.all_fields.keys())))
 
-        # fields.get_reg
+        # fields.get_reg (uses probed register name)
         if hasattr(tmc, 'fields'):
             lines.append("  has fields: yes  (type={})".format(type(tmc.fields).__name__))
             if hasattr(tmc.fields, 'get_reg'):
-                try:
-                    v = tmc.fields.get_reg("DRVSTATUS")
-                    lines.append("  fields.get_reg('DRVSTATUS') -> {} ({})".format(v, type(v).__name__))
-                except Exception as e:
-                    lines.append("  fields.get_reg raised: {}".format(e))
+                if reg_name:
+                    try:
+                        v = tmc.fields.get_reg(reg_name)
+                        lines.append("  fields.get_reg('{}') -> {} ({})".format(
+                            reg_name, v, type(v).__name__))
+                    except Exception as e:
+                        lines.append("  fields.get_reg('{}') raised: {}".format(reg_name, e))
+                else:
+                    lines.append("  fields.get_reg: probed reg name not available")
             else:
                 lines.append("  fields.get_reg: NOT PRESENT")
+            # fields.get_field uses probed field names (lowercase on TMC5160)
             if hasattr(tmc.fields, 'get_field'):
-                for fname in ("SG_RESULT", "STST"):
+                for fname in (sg_name, stst_name):
+                    if not fname:
+                        continue
                     try:
                         v = tmc.fields.get_field(fname)
-                        lines.append("  fields.get_field('{}') -> {} ({})".format(fname, v, type(v).__name__))
+                        lines.append("  fields.get_field('{}') -> {} ({})".format(
+                            fname, v, type(v).__name__))
                     except Exception as e:
                         lines.append("  fields.get_field('{}') raised: {}".format(fname, e))
             else:
@@ -566,7 +577,8 @@ class StallGuardMonitor:
         else:
             lines.append("  has fields: NO")
 
-        # get_status
+        # get_status — drv_status is None at idle (only populated by async
+        # temperature/error monitoring cycle, not on every status call)
         for call_args in [(et,), ()]:
             try:
                 st = tmc.get_status(*call_args)
@@ -574,7 +586,13 @@ class StallGuardMonitor:
                     call_args, sorted(st.keys())))
                 if 'drv_status' in st:
                     v = st['drv_status']
-                    lines.append("  drv_status -> {} ({})".format(v, type(v).__name__))
+                    if v is None:
+                        lines.append(
+                            "  drv_status -> None  "
+                            "(normal at idle — async TMC monitoring cycle not yet run; "
+                            "poll code uses mcu_tmc.get_register instead)")
+                    else:
+                        lines.append("  drv_status -> {} ({})".format(v, type(v).__name__))
                 break
             except TypeError:
                 continue
@@ -582,19 +600,36 @@ class StallGuardMonitor:
                 lines.append("  get_status{} raised: {}".format(call_args, e))
                 break
 
-        # mcu_tmc.get_register
+        # mcu_tmc.get_register — uses probed register name; this is path-1 in
+        # _read_drv_status and is what the poll callback actually uses
         if hasattr(tmc, 'mcu_tmc'):
             lines.append("  has mcu_tmc: yes  (type={})".format(type(tmc.mcu_tmc).__name__))
             if hasattr(tmc.mcu_tmc, 'get_register'):
-                try:
-                    v = tmc.mcu_tmc.get_register("DRVSTATUS")
-                    if isinstance(v, dict):
-                        resp = v.get('response', [])
-                        lines.append("  mcu_tmc.get_register -> dict, response={}".format(list(resp)))
-                    else:
-                        lines.append("  mcu_tmc.get_register -> {} ({})".format(v, type(v).__name__))
-                except Exception as e:
-                    lines.append("  mcu_tmc.get_register raised: {}".format(e))
+                if reg_name:
+                    try:
+                        v = tmc.mcu_tmc.get_register(reg_name)
+                        if isinstance(v, dict):
+                            resp = v.get('response', [])
+                            lines.append("  mcu_tmc.get_register('{}') -> dict, "
+                                         "response={}".format(reg_name, list(resp)))
+                            if len(resp) >= 5:
+                                raw = sum(b << ((3 - i) * 8)
+                                          for i, b in enumerate(bytearray(resp[1:5])))
+                                lines.append("  live read: SG_RESULT={}  STST={}".format(
+                                    raw & _SG_RESULT_MASK, (raw >> 31) & 1))
+                        elif isinstance(v, int):
+                            lines.append("  mcu_tmc.get_register('{}') -> 0x{:08X}".format(
+                                reg_name, v))
+                            lines.append("  live read: SG_RESULT={}  STST={}".format(
+                                v & _SG_RESULT_MASK, (v >> 31) & 1))
+                        else:
+                            lines.append("  mcu_tmc.get_register('{}') -> {} ({})".format(
+                                reg_name, v, type(v).__name__))
+                    except Exception as e:
+                        lines.append("  mcu_tmc.get_register('{}') raised: {}".format(
+                            reg_name, e))
+                else:
+                    lines.append("  mcu_tmc.get_register: probed reg name not available")
             else:
                 lines.append("  mcu_tmc.get_register: NOT PRESENT")
         else:
