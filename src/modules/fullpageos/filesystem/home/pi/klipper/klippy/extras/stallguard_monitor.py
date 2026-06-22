@@ -765,6 +765,7 @@ class StallGuardMonitor:
             'motor_thresholds':    dict(self._motor_thresholds),
             'sg_baselines':        {m: round(v, 1) for m, v in self._sg_baselines.items()
                                     if v is not None},
+            'drop_fraction':       self.drop_fraction,
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
         }

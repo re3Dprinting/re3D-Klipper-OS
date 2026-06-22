@@ -12,6 +12,13 @@ Usage (from SSH):
   sg_watch 0.1 -r             fast poll + record
   sg_watch -r --out /tmp/run  save run.csv and run.png to /tmp/
 
+Bar legend:
+  #   current SG value fill (0 -> val)
+  !   trigger threshold
+        absolute mode : fixed per-motor threshold
+        adaptive mode : EWMA_baseline x (1 - drop_fraction)
+  B   EWMA baseline (adaptive mode only)
+
 Deployed to /usr/local/bin/sg_watch by the re3D-OS updater.
 """
 
@@ -32,12 +39,14 @@ DEFAULT_OUT_DIR = os.path.expanduser("~/printer_data/logs")
 CSI   = "\033["
 CLEAR = CSI + "2J" + CSI + "H"
 BOLD  = CSI + "1m"
+DIM   = CSI + "2m"
 RED   = CSI + "31m"
 YEL   = CSI + "33m"
 GRN   = CSI + "32m"
+CYN   = CSI + "36m"
 RST   = CSI + "0m"
 
-BAR_WIDTH = 32
+BAR_WIDTH = 42   # characters for the load bar
 
 
 # ── HTTP fetch ────────────────────────────────────────────────────────────────
@@ -54,75 +63,215 @@ def fetch():
 
 # ── Display helpers ───────────────────────────────────────────────────────────
 
-def sg_bar(val, threshold, max_val=1023):
-    filled = int(val / max_val * BAR_WIDTH)
-    filled = max(0, min(filled, BAR_WIDTH))
-    color  = RED if val < threshold else (YEL if val < threshold * 2 else GRN)
-    return "[" + color + "#" * filled + RST + "-" * (BAR_WIDTH - filled) + "]"
+def _bar_pos(val, max_val, width):
+    """Map a value in [0, max_val] to a character position in [0, width-1]."""
+    return max(0, min(int(val / max_val * width), width - 1))
+
+
+def sg_bar(val, thr, baseline=None, max_val=1023):
+    """
+    Draw a BAR_WIDTH-character load bar.
+
+    Characters used:
+      #  SG value fill (col 0 -> val position)
+      !  trigger threshold marker (fixed or adaptive)
+      B  EWMA baseline marker (adaptive mode only)
+      -  empty / background
+
+    Colour:
+      RED  val < thr            (at or below trigger)
+      YEL  val < thr * 1.6      (within 60 % margin of trigger)
+      GRN  otherwise            (safe headroom)
+    """
+    w  = BAR_WIDTH
+    vp = _bar_pos(val, max_val, w)
+    tp = _bar_pos(thr, max_val, w)
+    bp = _bar_pos(baseline, max_val, w) if baseline is not None else None
+
+    chars = ['-'] * w
+    for i in range(vp + 1):
+        chars[i] = '#'
+    chars[tp] = '!'
+    if bp is not None:
+        chars[bp] = 'B'
+
+    if val < thr:
+        color = RED
+    elif val < thr * 1.6:
+        color = YEL
+    else:
+        color = GRN
+    return "[" + color + "".join(chars) + RST + "]"
+
+
+def headroom_pct(val, thr, baseline):
+    """
+    Fraction of the [trigger -> baseline] range remaining above the trigger.
+
+      100%  = SG at baseline          (normal, fully healthy)
+        0%  = SG at trigger threshold  (about to fire)
+      < 0%  = SG below trigger         (would fire)
+
+    Returns None when the range is invalid (baseline <= trigger).
+    """
+    if baseline is None or baseline <= thr:
+        return None
+    return (val - thr) / (baseline - thr) * 100.0
+
+
+def fmt_headroom(hw):
+    """Format a headroom% value with colour."""
+    if hw is None:
+        return "    ---"
+    col = RED if hw < 0 else (YEL if hw < 30 else GRN)
+    return "{}{:+6.0f}%{}".format(col, hw, RST)
 
 
 # ── Graph generation ──────────────────────────────────────────────────────────
 
-def generate_graph(csv_path, png_path, threshold):
+def generate_graph(csv_path, png_path):
     """Read a recorded CSV and write a PNG graph using matplotlib."""
     try:
         import matplotlib
-        matplotlib.use("Agg")   # headless - no display required
+        matplotlib.use("Agg")   # headless – no display required
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
     except ImportError:
-        print("  matplotlib not available - skipping graph (install python3-matplotlib)")
+        print("  matplotlib not available — skipping graph "
+              "(install python3-matplotlib)")
         return
 
-    # Parse CSV: timestamp, motor, sg_result, threshold, collision_latched
-    series = {}   # motor -> ([datetime], [int])
+    # ── Parse CSV ─────────────────────────────────────────────────────────────
+    series         = {}   # motor -> lists
+    detection_mode = "absolute"
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
-            motor = row["motor"]
+            motor = row.get("motor", "")
+            if not motor:
+                continue
             if motor not in series:
-                series[motor] = ([], [])
+                series[motor] = dict(times=[], vals=[], baselines=[],
+                                     triggers=[], margins=[])
             try:
-                ts  = datetime.datetime.fromisoformat(row["timestamp"])
-                val = int(row["sg_result"])
-                series[motor][0].append(ts)
-                series[motor][1].append(val)
+                series[motor]["times"].append(
+                    datetime.datetime.fromisoformat(row["timestamp"]))
+                series[motor]["vals"].append(int(row["sg_result"]))
+                series[motor]["baselines"].append(
+                    float(row["baseline"]) if row.get("baseline") else None)
+                series[motor]["triggers"].append(
+                    float(row["trigger"])  if row.get("trigger")  else None)
+                series[motor]["margins"].append(
+                    float(row["margin_pct"])
+                    if row.get("margin_pct") and row["margin_pct"] != ""
+                    else None)
+                if row.get("detection_mode"):
+                    detection_mode = row["detection_mode"]
             except (ValueError, KeyError):
                 pass
 
     if not series:
-        print("  No data in CSV - skipping graph.")
+        print("  No data in CSV — skipping graph.")
         return
 
-    motors    = sorted(series.keys())
-    n         = len(motors)
-    fig, axes = plt.subplots(n, 1, figsize=(14, 3 * n), sharex=True)
-    if n == 1:
-        axes = [axes]
+    motors      = sorted(series.keys())
+    n           = len(motors)
+    is_adaptive = (detection_mode == "adaptive" and
+                   any(any(b is not None for b in series[m]["baselines"])
+                       for m in motors))
+    rows_per    = 2 if is_adaptive else 1
 
-    fig.suptitle("StallGuard Recording  --  {}".format(os.path.basename(csv_path)),
-                 fontsize=11)
+    fig, axes_all = plt.subplots(n * rows_per, 1,
+                                 figsize=(14, 3 * n * rows_per),
+                                 sharex=True)
+    if n * rows_per == 1:
+        axes_all = [axes_all]
 
-    for ax, motor in zip(axes, motors):
-        times, vals = series[motor]
+    fig.suptitle("StallGuard Recording  —  {}  (mode={})".format(
+        os.path.basename(csv_path), detection_mode), fontsize=11)
+
+    for idx, motor in enumerate(motors):
+        d     = series[motor]
+        times = d["times"]
+        vals  = d["vals"]
+        bases = d["baselines"]
+        trigs = d["triggers"]
+        margs = d["margins"]
         if not times:
             continue
 
-        # Shade regions below threshold red
-        ax.fill_between(times, vals, threshold,
-                        where=[v < threshold for v in vals],
-                        color="red", alpha=0.25, label="below threshold")
-        ax.plot(times, vals, linewidth=0.8, color="steelblue", label="SG_RESULT")
-        ax.axhline(threshold, color="red", linestyle="--",
-                   linewidth=1.0, label="threshold={}".format(threshold))
+        ax_sg = axes_all[idx * rows_per]
 
-        ax.set_ylabel(motor, fontsize=9)
-        ax.set_ylim(0, 1023)
-        ax.set_yticks([0, 256, 512, 768, 1023])
-        ax.grid(True, alpha=0.3)
-        ax.legend(loc="upper right", fontsize=7)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+        # SG_RESULT line
+        ax_sg.plot(times, vals, linewidth=0.8, color="steelblue",
+                   label="SG_RESULT", zorder=3)
 
-    axes[-1].set_xlabel("Time")
+        # EWMA baseline (adaptive only)
+        base_pts = [(t, b) for t, b in zip(times, bases) if b is not None]
+        if base_pts:
+            bt, bv = zip(*base_pts)
+            ax_sg.plot(bt, bv, linewidth=1.4, color="darkorange",
+                       linestyle="--", label="EWMA baseline", zorder=4)
+
+        # Trigger threshold line
+        trig_pts = [(t, tr) for t, tr in zip(times, trigs) if tr is not None]
+        if trig_pts:
+            tt, tv = zip(*trig_pts)
+            ax_sg.plot(tt, tv, linewidth=1.1, color="crimson",
+                       linestyle=":", label="trigger", zorder=4)
+
+            # Danger zone: 0 to trigger (faint red background)
+            trig_fill = [tr if tr is not None else 0 for tr in trigs]
+            ax_sg.fill_between(times, 0, trig_fill,
+                               color="red", alpha=0.07, zorder=1)
+
+            # Warning zone: trigger to baseline (faint orange)
+            if base_pts:
+                base_fill = [b if b is not None else 0 for b in bases]
+                ax_sg.fill_between(times, trig_fill, base_fill,
+                                   color="orange", alpha=0.05, zorder=1,
+                                   label="approach zone")
+
+        # Highlight excursions below trigger
+        if trig_pts:
+            trig_fill = [tr if tr is not None else 0 for tr in trigs]
+            ax_sg.fill_between(times, vals, trig_fill,
+                               where=[v < t for v, t in zip(vals, trig_fill)],
+                               color="red", alpha=0.35,
+                               label="below trigger", zorder=2)
+
+        ax_sg.set_ylabel("{}\nSG_RESULT".format(motor), fontsize=9)
+        ax_sg.set_ylim(0, 1023)
+        ax_sg.set_yticks([0, 256, 512, 768, 1023])
+        ax_sg.grid(True, alpha=0.3)
+        ax_sg.legend(loc="upper right", fontsize=7)
+        ax_sg.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+
+        # Headroom % subplot (adaptive mode only)
+        if is_adaptive:
+            ax_m = axes_all[idx * rows_per + 1]
+            margin_pts = [(t, m) for t, m in zip(times, margs) if m is not None]
+            if margin_pts:
+                mt, mv = zip(*margin_pts)
+                ax_m.plot(mt, mv, linewidth=0.9, color="mediumpurple",
+                          label="headroom %")
+                ax_m.axhline(0,   color="crimson",  linestyle="--",
+                             linewidth=0.9, label="trigger (0 %)")
+                ax_m.axhline(100, color="seagreen", linestyle=":",
+                             linewidth=0.8, alpha=0.6, label="baseline (100 %)")
+                ax_m.fill_between(mt, mv, 0,
+                                  where=[m < 0 for m in mv],
+                                  color="red", alpha=0.3, label="would trigger")
+                ax_m.fill_between(mt, mv, 0,
+                                  where=[0 <= m < 30 for m in mv],
+                                  color="orange", alpha=0.15,
+                                  label="< 30 % headroom")
+            ax_m.set_ylabel("{}\nheadroom %".format(motor), fontsize=9)
+            ax_m.set_ylim(-50, 150)
+            ax_m.grid(True, alpha=0.3)
+            ax_m.legend(loc="upper right", fontsize=7)
+            ax_m.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+
+    axes_all[-1].set_xlabel("Time")
     plt.xticks(rotation=30, ha="right", fontsize=8)
     plt.tight_layout()
     fig.savefig(png_path, dpi=120)
@@ -154,10 +303,8 @@ if __name__ == "__main__":
         os.makedirs(DEFAULT_OUT_DIR, exist_ok=True)
         args.out = os.path.join(DEFAULT_OUT_DIR, "sg_{}".format(ts))
 
-    # mutable so the KeyboardInterrupt handler sees the updated value
-    threshold = [100]
-    history   = {}
-    recording = []
+    history   = {}    # motor -> [recent sg values] for rolling min/max
+    recording = []    # CSV rows
 
     if args.record:
         print("Recording to : {}".format(args.out + ".csv"))
@@ -188,60 +335,125 @@ if __name__ == "__main__":
                       .get("stallguard_monitor", {}))
 
             if not sg:
-                print("  {}WARNING:{} stallguard_monitor not in Moonraker response.".format(YEL, RST))
+                print("  {}WARNING:{} stallguard_monitor not in Moonraker "
+                      "response.".format(YEL, RST))
                 print("  Check [stallguard_monitor] in printer.cfg.")
                 time.sleep(args.interval)
                 continue
 
-            values       = sg.get("sg_values", {})
-            threshold[0] = sg.get("collision_threshold", threshold[0])
-            detected     = sg.get("collision_detected", False)
-            monitoring   = sg.get("enabled", False)
+            # ── Extract state ─────────────────────────────────────────────────
+            values           = sg.get("sg_values", {})
+            baselines        = sg.get("sg_baselines", {})
+            motor_thresholds = sg.get("motor_thresholds", {})
+            default_thresh   = sg.get("collision_threshold", 40)
+            drop_fraction    = sg.get("drop_fraction", 0.40)
+            detection_mode   = sg.get("detection_mode", "absolute")
+            detected         = sg.get("collision_detected", False)
+            monitoring       = sg.get("enabled", False)
+            homing_active    = sg.get("homing_active", False)
+            is_adaptive      = detection_mode == "adaptive"
 
+            # ── Status header ─────────────────────────────────────────────────
             mon_str  = (GRN + "ON"  + RST) if monitoring else (YEL + "OFF" + RST)
+            hom_str  = (" " + CYN + "[HOMING]" + RST) if homing_active else ""
             coll_str = (RED + BOLD + "!! COLLISION LATCHED !!" + RST) if detected \
                        else (GRN + "clear" + RST)
+            mode_col = CYN if is_adaptive else RST
+            print("  monitoring={}{}  mode={}{}{}  collision={}".format(
+                mon_str, hom_str, mode_col, detection_mode, RST, coll_str))
 
-            print("  monitoring={}  threshold={}  collision={}".format(
-                mon_str, threshold[0], coll_str))
+            if is_adaptive:
+                print("  {}EWMA: B = baseline  ! = trigger = baseline x{:.0f}%  "
+                      "headroom = (SG-trig)/(base-trig){}".format(
+                          DIM, (1.0 - drop_fraction) * 100, RST))
+            else:
+                print("  {}fixed threshold  ! = per-motor threshold{}".format(
+                    DIM, RST))
             print()
-            print("  {:<16}  {:>10}  {:<{bw}}  {:>6}  {:>6}".format(
-                "motor", "SG_RESULT", "load", "min", "max", bw=BAR_WIDTH + 2))
-            print("  " + "-" * 74)
 
+            # ── Column headers ────────────────────────────────────────────────
+            bw = BAR_WIDTH + 2
+            if is_adaptive:
+                print("  {:<16}  {:>6}  {:>8}  {:>7}  {:<{bw}}  {:>7}  {:>5}  {:>5}".format(
+                    "motor", "SG", "baseline", "trigger",
+                    "load  [0" + "-" * (BAR_WIDTH - 8) + "1023]",
+                    "headrm", "min", "max",
+                    bw=bw))
+            else:
+                print("  {:<16}  {:>6}  {:>7}  {:<{bw}}  {:>5}  {:>5}".format(
+                    "motor", "SG", "thresh",
+                    "load  [0" + "-" * (BAR_WIDTH - 8) + "1023]",
+                    "min", "max",
+                    bw=bw))
+            print("  " + "-" * (85 if is_adaptive else 68))
+
+            # ── Per-motor rows ────────────────────────────────────────────────
             for motor in sorted(values.keys()):
-                val = values[motor]
+                val          = values.get(motor)
+                motor_thresh = motor_thresholds.get(motor, default_thresh)
+                bl           = baselines.get(motor)   # None until EWMA warms up
 
+                # Effective trigger for bar and headroom calculation
+                if is_adaptive and bl is not None:
+                    thr = float(bl) * (1.0 - drop_fraction)
+                else:
+                    thr = float(motor_thresh)
+
+                # Rolling min/max history
                 if motor not in history:
                     history[motor] = []
                 if val is not None:
                     history[motor].append(val)
                     if len(history[motor]) > 500:
                         history[motor].pop(0)
-                    if args.record:
-                        recording.append({
-                            "timestamp":         now.isoformat(),
-                            "motor":             motor,
-                            "sg_result":         val,
-                            "threshold":         threshold[0],
-                            "collision_latched": int(detected),
-                        })
+                hist = history[motor]
+                lo   = min(hist) if hist else (val or 0)
+                hi   = max(hist) if hist else (val or 0)
 
                 if val is None:
-                    print("  {:<16}  {:>10}".format(motor, "N/A"))
+                    print("  {:<16}  {:>6}".format(motor, "N/A"))
                     continue
 
-                hist = history[motor]
-                lo   = min(hist) if hist else val
-                hi   = max(hist) if hist else val
-                bar  = sg_bar(val, threshold[0])
-                note = "{}<<< LOW{}".format(RED, RST) if val < threshold[0] else ""
-                print("  {:<16}  {:>10}  {}  {:>6}  {:>6}  {}".format(
-                    motor, val, bar, lo, hi, note))
+                bar  = sg_bar(val, thr, bl if is_adaptive else None)
+                flag = "  {}<<< TRIGGER{}".format(RED, RST) if val < thr else ""
+
+                if is_adaptive:
+                    if bl is not None:
+                        hw   = headroom_pct(val, thr, float(bl))
+                        hw_s = fmt_headroom(hw)
+                        print("  {:<16}  {:>6}  {:>8.1f}  {:>7.1f}  {}  {}  {:>5}  {:>5}{}".format(
+                            motor, val, float(bl), thr, bar, hw_s, lo, hi, flag))
+                    else:
+                        print("  {:<16}  {:>6}  {:>8}  {:>7.1f}  {}  {:>7}  {:>5}  {:>5}{}".format(
+                            motor, val, "(warmup)", thr, bar, "---", lo, hi, flag))
+                else:
+                    print("  {:<16}  {:>6}  {:>7.0f}  {}  {:>5}  {:>5}{}".format(
+                        motor, val, motor_thresh, bar, lo, hi, flag))
+
+                # CSV row
+                if args.record:
+                    hw_val = None
+                    if is_adaptive and bl is not None:
+                        hw_val = headroom_pct(val, thr, float(bl))
+                    recording.append({
+                        "timestamp":         now.isoformat(),
+                        "motor":             motor,
+                        "sg_result":         val,
+                        "detection_mode":    detection_mode,
+                        "threshold":         motor_thresh,
+                        "baseline":          "{:.1f}".format(float(bl))
+                                             if bl is not None else "",
+                        "trigger":           "{:.1f}".format(thr),
+                        "margin":            val - thr,
+                        "margin_pct":        "{:.1f}".format(hw_val)
+                                             if hw_val is not None else "",
+                        "collision_latched": int(detected),
+                    })
 
             if args.record:
                 print()
-                print("  {} samples recorded".format(len(recording)))
+                print("  {} samples recorded  "
+                      "(Ctrl+C to stop and write CSV + graph)".format(len(recording)))
 
             time.sleep(args.interval)
 
@@ -251,12 +463,16 @@ if __name__ == "__main__":
             csv_path = args.out + ".csv"
             png_path = args.out + ".png"
             print("Writing CSV  : {}".format(csv_path))
+            fieldnames = [
+                "timestamp", "motor", "sg_result", "detection_mode",
+                "threshold", "baseline", "trigger",
+                "margin", "margin_pct", "collision_latched",
+            ]
             with open(csv_path, "w", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=[
-                    "timestamp", "motor", "sg_result", "threshold", "collision_latched"])
+                w = csv.DictWriter(f, fieldnames=fieldnames)
                 w.writeheader()
                 w.writerows(recording)
             print("  {} rows written.".format(len(recording)))
-            generate_graph(csv_path, png_path, threshold[0])
+            generate_graph(csv_path, png_path)
         elif args.record:
             print("  No data recorded.")
