@@ -48,7 +48,8 @@ class StallGuardMonitor:
             'collision_action',
             {'none': 'none', 'pause': 'pause', 'emergency_stop': 'emergency_stop'},
             'pause')
-        self.enabled = config.getboolean('enabled', True)
+        self.enabled      = config.getboolean('enabled', True)
+        self.homing_only  = config.getboolean('homing_only', True)
 
         # ── Runtime state ────────────────────────────────────────────────────
         self.tmc_drivers      = {}   # motor_name -> tmc object
@@ -58,6 +59,7 @@ class StallGuardMonitor:
         self.monitoring       = False
         self._timer_handle    = None
         self._collision_latch = False   # set on first collision; cleared by SG_RESET
+        self._homing_active   = False   # True while G28 is running
 
         # ── Klipper hooks ────────────────────────────────────────────────────
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -106,8 +108,37 @@ class StallGuardMonitor:
                 "stallguard_monitor: no drivers found; monitoring disabled")
             return
 
-        if self.enabled:
+        # Register homing events regardless of homing_only so SG_START / SG_STOP
+        # still work manually when homing_only is False.
+        self.printer.register_event_handler(
+            "homing:home_rails_begin", self._handle_homing_begin)
+        self.printer.register_event_handler(
+            "homing:home_rails_end",   self._handle_homing_end)
+
+        if self.enabled and not self.homing_only:
             self._start_monitoring()
+
+    def _handle_homing_begin(self, homing_state, rails):
+        """Auto-arm monitoring at the start of any G28 homing move."""
+        if not self.enabled:
+            return
+        self._homing_active   = True
+        self._collision_latch = False
+        for motor in self.trigger_counts:
+            self.trigger_counts[motor] = 0
+        if not self.monitoring:
+            self._start_monitoring()
+        self.logger.info("stallguard_monitor: homing started — monitoring armed")
+
+    def _handle_homing_end(self, homing_state, rails):
+        """Disarm monitoring when G28 homing completes."""
+        self._homing_active = False
+        if self.homing_only:
+            self._stop_monitoring()
+            self._collision_latch = False
+            for motor in self.trigger_counts:
+                self.trigger_counts[motor] = 0
+            self.logger.info("stallguard_monitor: homing complete — monitoring disarmed")
 
     def _find_tmc_driver(self, motor_name):
         """Return the first TMC driver object found for motor_name, or None."""
@@ -308,11 +339,14 @@ class StallGuardMonitor:
             return
 
         eventtime = self.reactor.monotonic()
+        mode = ("HOMING" if self._homing_active
+                else ("ON" if self.monitoring else "OFF"))
         lines = [
-            "StallGuard Monitor  threshold={}  action={}  monitoring={}".format(
+            "StallGuard Monitor  threshold={}  action={}  monitoring={}{}".format(
                 self.collision_threshold,
                 self.action,
-                "ON" if self.monitoring else "OFF"),
+                mode,
+                "  [homing-only]" if self.homing_only else ""),
             "  {:<14} {:>10}  {}".format("motor", "SG_RESULT", "state")
         ]
         for motor in self.motor_names:
@@ -448,6 +482,8 @@ class StallGuardMonitor:
         """Expose values to Moonraker / macros via printer['stallguard_monitor']."""
         return {
             'enabled':             self.monitoring,
+            'homing_only':         self.homing_only,
+            'homing_active':       self._homing_active,
             'collision_threshold': self.collision_threshold,
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
