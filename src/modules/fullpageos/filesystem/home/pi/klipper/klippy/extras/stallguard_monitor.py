@@ -19,6 +19,7 @@
 # Add [stallguard_monitor] to printer.cfg (see stallguard_monitor.cfg)
 
 import logging
+import math
 
 # TMC driver types searched in priority order
 _TMC_TYPES = ['tmc5160', 'tmc2240', 'tmc2130', 'tmc2209', 'tmc2208', 'tmc2660']
@@ -51,15 +52,30 @@ class StallGuardMonitor:
         self.enabled      = config.getboolean('enabled', True)
         self.homing_only  = config.getboolean('homing_only', True)
 
+        # Per-motor threshold overrides (falls back to collision_threshold if absent)
+        self._motor_thresholds = {}
+        for motor in self.motor_names:
+            key = 'collision_threshold_' + motor.replace(' ', '_')
+            self._motor_thresholds[motor] = config.getint(
+                key, self.collision_threshold, minval=0, maxval=1023)
+
+        # Baseline calibration parameters
+        self.calibrate_distance = config.getfloat(
+            'calibrate_distance', 20., minval=5., maxval=200.)
+        self.calibrate_speed = config.getfloat(
+            'calibrate_speed', 50., minval=5., maxval=300.)
+
         # ── Runtime state ────────────────────────────────────────────────────
-        self.tmc_drivers      = {}   # motor_name -> tmc object
-        self.sg_values        = {}   # motor_name -> last SG_RESULT int or None
-        self.trigger_counts   = {}   # motor_name -> consecutive below-threshold count
-        self._reg_names       = {}   # motor_name -> {reg, sg, stst, stst_reg}
-        self.monitoring       = False
-        self._timer_handle    = None
-        self._collision_latch = False   # set on first collision; cleared by SG_RESET
-        self._homing_active   = False   # True while G28 is running
+        self.tmc_drivers        = {}   # motor_name -> tmc object
+        self.sg_values          = {}   # motor_name -> last SG_RESULT int or None
+        self.trigger_counts     = {}   # motor_name -> consecutive below-threshold count
+        self._reg_names         = {}   # motor_name -> {reg, sg, stst, stst_reg}
+        self.monitoring         = False
+        self._timer_handle      = None
+        self._collision_latch   = False  # set on first collision; cleared by SG_RESET
+        self._homing_active     = False  # True while G28 is running
+        self._calibrating       = False  # True during SG_CALIBRATE move
+        self._calibrate_samples = {}     # motor -> [sg_val, ...] during calibration
 
         # ── Klipper hooks ────────────────────────────────────────────────────
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -83,6 +99,9 @@ class StallGuardMonitor:
         self.gcode.register_command(
             'SG_DIAG', self.cmd_SG_DIAG,
             desc="Dump raw TMC driver attributes to diagnose READ ERR")
+        self.gcode.register_command(
+            'SG_CALIBRATE', self.cmd_SG_CALIBRATE,
+            desc="Move each axis and report baseline SG statistics for belt/tension check")
 
     # ── Initialisation ────────────────────────────────────────────────────────
 
@@ -227,11 +246,16 @@ class StallGuardMonitor:
 
                 self.sg_values[motor] = sg_val
 
+                # Collect samples for SG_CALIBRATE if active
+                if self._calibrating and motor in self._calibrate_samples:
+                    self._calibrate_samples[motor].append(sg_val)
+
                 if self._collision_latch:
                     # Already triggered; wait for SG_RESET before re-arming
                     continue
 
-                if sg_val < self.collision_threshold:
+                threshold = self._motor_thresholds.get(motor, self.collision_threshold)
+                if sg_val < threshold:
                     self.trigger_counts[motor] += 1
                     if self.trigger_counts[motor] >= self.consecutive_triggers:
                         self._handle_collision(motor, sg_val)
@@ -317,7 +341,8 @@ class StallGuardMonitor:
 
         msg = ("!! stallguard_monitor: COLLISION on {} "
                "(SG_RESULT={}, threshold={})".format(
-                   motor, sg_val, self.collision_threshold))
+                   motor, sg_val,
+                   self._motor_thresholds.get(motor, self.collision_threshold)))
         self.logger.warning(msg)
 
         if self.action == 'emergency_stop':
@@ -342,29 +367,31 @@ class StallGuardMonitor:
         mode = ("HOMING" if self._homing_active
                 else ("ON" if self.monitoring else "OFF"))
         lines = [
-            "StallGuard Monitor  threshold={}  action={}  monitoring={}{}".format(
-                self.collision_threshold,
-                self.action,
-                mode,
-                "  [homing-only]" if self.homing_only else ""),
-            "  {:<14} {:>10}  {}".format("motor", "SG_RESULT", "state")
+            "StallGuard Monitor  action={}  monitoring={}{}  default_threshold={}".format(
+                self.action, mode,
+                "  [homing-only]" if self.homing_only else "",
+                self.collision_threshold),
+            "  {:<16} {:>10}  {:>9}  {}".format("motor", "SG_RESULT", "threshold", "state")
         ]
         for motor in self.motor_names:
-            tmc = self.tmc_drivers.get(motor)
+            tmc    = self.tmc_drivers.get(motor)
+            thresh = self._motor_thresholds.get(motor, self.collision_threshold)
             if tmc is None:
-                lines.append("  {:<14} {:>10}".format(motor, "NO DRIVER"))
+                lines.append("  {:<16} {:>10}  {:>9}".format(motor, "NO DRIVER", thresh))
                 continue
             raw = self._read_drv_status(tmc, motor, eventtime)
             if raw is None:
                 lines.append(
-                    "  {:<14} {:>10}  (run SG_DIAG for details)".format(motor, "READ ERR"))
+                    "  {:<16} {:>10}  {:>9}  (run SG_DIAG for details)".format(
+                        motor, "READ ERR", thresh))
                 continue
             sg_val     = raw & _SG_RESULT_MASK
             standstill = bool(raw & _STST_BIT)
             self.sg_values[motor] = sg_val
-            flag  = " <<< LOW" if (sg_val < self.collision_threshold and not standstill) else ""
+            flag  = " <<< LOW" if (sg_val < thresh and not standstill) else ""
             state = "standstill" if standstill else "moving"
-            lines.append("  {:<14} {:>10}  {}{}".format(motor, sg_val, state, flag))
+            lines.append("  {:<16} {:>10}  {:>9}  {}{}".format(
+                motor, sg_val, thresh, state, flag))
 
         gcmd.respond_info("\n".join(lines))
 
@@ -383,13 +410,27 @@ class StallGuardMonitor:
 
     def cmd_SG_SET_THRESHOLD(self, gcmd):
         threshold = gcmd.get_int('THRESHOLD', minval=0, maxval=1023)
-        self.collision_threshold = threshold
-        # Clear latch so monitoring arms immediately at new threshold
+        motor     = gcmd.get('MOTOR', None)
+        if motor is not None:
+            motor = motor.strip()
+            if motor not in self._motor_thresholds:
+                gcmd.respond_info(
+                    "stallguard_monitor: unknown motor '{}'; configured: {}".format(
+                        motor, ', '.join(self.motor_names)))
+                return
+            self._motor_thresholds[motor] = threshold
+            gcmd.respond_info(
+                "stallguard_monitor: threshold for {} -> {}".format(motor, threshold))
+        else:
+            # Apply to all motors
+            self.collision_threshold = threshold
+            for m in self._motor_thresholds:
+                self._motor_thresholds[m] = threshold
+            gcmd.respond_info(
+                "stallguard_monitor: all thresholds -> {}".format(threshold))
         self._collision_latch = False
         for m in self.trigger_counts:
             self.trigger_counts[m] = 0
-        gcmd.respond_info(
-            "stallguard_monitor: collision threshold -> {}".format(threshold))
 
     def cmd_SG_RESET(self, gcmd):
         """Clear the collision latch so monitoring re-arms without restart."""
@@ -478,6 +519,101 @@ class StallGuardMonitor:
 
         gcmd.respond_info("\n".join(lines))
 
+    def cmd_SG_CALIBRATE(self, gcmd):
+        """Move each axis and report baseline SG statistics."""
+        dist  = gcmd.get_float('DISTANCE', self.calibrate_distance, minval=5., maxval=200.)
+        speed = gcmd.get_float('SPEED', self.calibrate_speed, minval=5., maxval=300.)
+
+        toolhead = self.printer.lookup_object('toolhead')
+        curpos   = list(toolhead.get_position())
+
+        # Group configured motors by axis index (X=0, Y=1, Z=2)
+        def _axis_of(name):
+            n = name.lower()
+            if '_x' in n or n.endswith('x'): return 0
+            if '_y' in n or n.endswith('y'): return 1
+            if '_z' in n or n.endswith('z'): return 2
+            return None
+
+        axis_motors = {}
+        for motor in self.tmc_drivers:
+            ax = _axis_of(motor)
+            if ax is not None:
+                axis_motors.setdefault(ax, []).append(motor)
+            else:
+                gcmd.respond_info(
+                    "SG_CALIBRATE: cannot map '{}' to X/Y/Z, skipping".format(motor))
+
+        if not axis_motors:
+            gcmd.respond_info("SG_CALIBRATE: no motors with recognisable axis names")
+            return
+
+        was_monitoring = self.monitoring
+        if not was_monitoring:
+            self._start_monitoring()
+
+        results = {}
+        for ax_idx in sorted(axis_motors):
+            motors    = axis_motors[ax_idx]
+            axis_name = 'XYZ'[ax_idx]
+
+            for m in motors:
+                self._calibrate_samples[m] = []
+            self._calibrating = True
+
+            gcmd.respond_info(
+                "SG_CALIBRATE: {} +{:.0f}mm then -{:.0f}mm @ {:.0f}mm/s".format(
+                    axis_name, dist, dist, speed))
+            try:
+                fwd = list(curpos)
+                fwd[ax_idx] += dist
+                toolhead.move(fwd, speed)
+                toolhead.wait_moves()
+                toolhead.move(curpos, speed)
+                toolhead.wait_moves()
+            except Exception as exc:
+                self._calibrating = False
+                gcmd.respond_info(
+                    "SG_CALIBRATE: move failed on {}: {}".format(axis_name, exc))
+                continue
+
+            self._calibrating = False
+            for m in motors:
+                results[m] = list(self._calibrate_samples.get(m, []))
+
+        if not was_monitoring:
+            self._stop_monitoring()
+
+        # ── Report ──────────────────────────────────────────────────────────
+        hdr = "── SG Calibration  distance={:.0f}mm  speed={:.0f}mm/s ──".format(
+            dist, speed)
+        col = "  {:<18} {:>6}  {:>6}  {:>6}  {:>6}  {:>6}  {:>9}  {}".format(
+            "motor", "mean", "stddev", "min", "max", "n", "threshold", "margin / note")
+        rows = [hdr, col]
+        for motor in self.motor_names:
+            if motor not in results:
+                continue
+            samples = [s for s in results[motor] if s > 0]
+            thresh  = self._motor_thresholds.get(motor, self.collision_threshold)
+            if not samples:
+                rows.append("  {:<18} {:>6}  {:>6}  {:>6}  {:>6}  {:>6}  {:>9}  no data".format(
+                    motor, '-', '-', '-', '-', 0, thresh))
+                continue
+            mean   = sum(samples) / len(samples)
+            stddev = math.sqrt(sum((s - mean) ** 2 for s in samples) / len(samples))
+            margin = mean - thresh
+            if margin < 0:
+                note = "!! THRESHOLD ABOVE BASELINE — will always trigger"
+            elif margin < 15:
+                note = "WARN: margin < 15, consider lowering threshold"
+            else:
+                note = "OK"
+            rows.append(
+                "  {:<18} {:>6.1f}  {:>6.1f}  {:>6}  {:>6}  {:>6}  {:>9}  {:.1f}  {}".format(
+                    motor, mean, stddev, min(samples), max(samples),
+                    len(samples), thresh, margin, note))
+        gcmd.respond_info("\n".join(rows))
+
     def get_status(self, eventtime):
         """Expose values to Moonraker / macros via printer['stallguard_monitor']."""
         return {
@@ -485,6 +621,7 @@ class StallGuardMonitor:
             'homing_only':         self.homing_only,
             'homing_active':       self._homing_active,
             'collision_threshold': self.collision_threshold,
+            'motor_thresholds':    dict(self._motor_thresholds),
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
         }
