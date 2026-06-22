@@ -70,7 +70,7 @@ class StallGuardMonitor:
 
         # Velocity gating + adaptive detection
         self.min_speed_mm_s = config.getfloat(
-            'min_speed_mm_s', 5., minval=0., maxval=500.)
+            'min_speed_mm_s', 0., minval=0., maxval=500.)
         self.detection_mode = config.getchoice(
             'detection_mode',
             {'absolute': 'absolute', 'adaptive': 'adaptive'},
@@ -254,8 +254,12 @@ class StallGuardMonitor:
         _tvel = None
         if self.min_speed_mm_s > 0 and self._toolhead is not None:
             try:
-                _tvel = abs(float(
-                    self._toolhead.get_status(eventtime).get('velocity', 0) or 0))
+                v = self._toolhead.get_status(eventtime).get('velocity')
+                if v is not None:
+                    _tvel = abs(float(v))
+                # If 'velocity' is absent from toolhead status (older Klipper
+                # builds do not expose it), _tvel stays None and gating is
+                # skipped — accel_blank_samples handles the accel phase alone.
             except Exception:
                 pass
 
@@ -595,6 +599,23 @@ class StallGuardMonitor:
                 lines.append("  mcu_tmc.get_register: NOT PRESENT")
         else:
             lines.append("  has mcu_tmc: NO")
+
+        # Toolhead velocity availability (needed for min_speed_mm_s gating)
+        if self._toolhead is not None:
+            try:
+                st = self._toolhead.get_status(self.reactor.monotonic())
+                v  = st.get('velocity')
+                if v is not None:
+                    lines.append("  toolhead velocity: {:.1f} mm/s (gating available)".format(
+                        abs(float(v))))
+                else:
+                    lines.append(
+                        "  toolhead velocity: NOT in status \u2014 min_speed_mm_s gating "
+                        "will be skipped (set min_speed_mm_s: 0)")
+            except Exception as e:
+                lines.append("  toolhead velocity: ERROR ({})".format(e))
+        else:
+            lines.append("  toolhead: not found")
 
         gcmd.respond_info("\n".join(lines))
 
