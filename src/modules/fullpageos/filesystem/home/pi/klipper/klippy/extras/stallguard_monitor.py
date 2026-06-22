@@ -38,7 +38,7 @@ class StallGuardMonitor:
 
         # ── Configuration ────────────────────────────────────────────────────
         self.poll_interval = config.getfloat(
-            'poll_interval', 0.1, minval=0.05, maxval=5.0)
+            'poll_interval', 0.1, minval=0.02, maxval=5.0)
         self.motor_names = config.getlist('motors')
         self.collision_threshold = config.getint(
             'collision_threshold', 100, minval=0, maxval=1023)
