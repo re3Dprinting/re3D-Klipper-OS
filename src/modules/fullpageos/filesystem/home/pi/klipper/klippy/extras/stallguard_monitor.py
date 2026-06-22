@@ -54,6 +54,7 @@ class StallGuardMonitor:
         self.tmc_drivers      = {}   # motor_name -> tmc object
         self.sg_values        = {}   # motor_name -> last SG_RESULT int or None
         self.trigger_counts   = {}   # motor_name -> consecutive below-threshold count
+        self._reg_names       = {}   # motor_name -> {reg, sg, stst, stst_reg}
         self.monitoring       = False
         self._timer_handle    = None
         self._collision_latch = False   # set on first collision; cleared by SG_RESET
@@ -91,8 +92,11 @@ class StallGuardMonitor:
                 self.tmc_drivers[motor]    = tmc
                 self.sg_values[motor]      = None
                 self.trigger_counts[motor] = 0
+                names = self._probe_names(tmc)
+                self._reg_names[motor]     = names
                 self.logger.info(
-                    "stallguard_monitor: registered driver for '%s'", motor)
+                    "stallguard_monitor: '%s' reg=%s sg=%s stst=%s",
+                    motor, names.get('reg'), names.get('sg'), names.get('stst'))
             else:
                 self.logger.warning(
                     "stallguard_monitor: no TMC driver found for '%s' - skipping", motor)
@@ -114,6 +118,30 @@ class StallGuardMonitor:
             except Exception:
                 pass
         return None
+
+    def _probe_names(self, tmc):
+        """
+        Scan fields.all_fields to discover the actual register/field names used
+        by this Klipper build for StallGuard result and standstill indicator.
+        Returns a dict with keys: reg, sg, stst_reg, stst.
+        """
+        result = {}
+        if not (hasattr(tmc, 'fields') and hasattr(tmc.fields, 'all_fields')):
+            return result
+        sg_patterns   = ('sg_result', 'sg4_result', 'sgresult')
+        stst_patterns = ('stst', 'standstill')
+        for reg_name, fields_dict in tmc.fields.all_fields.items():
+            for field_name in fields_dict.keys():
+                fl = field_name.lower()
+                if 'reg' not in result and any(p in fl for p in sg_patterns):
+                    result['reg'] = reg_name
+                    result['sg']  = field_name
+                if 'stst' not in result and any(p in fl for p in stst_patterns):
+                    result['stst_reg'] = reg_name
+                    result['stst']     = field_name
+                if 'reg' in result and 'stst' in result:
+                    return result
+        return result
 
     # ── Monitoring control ────────────────────────────────────────────────────
 
@@ -142,7 +170,7 @@ class StallGuardMonitor:
 
         try:
             for motor, tmc in self.tmc_drivers.items():
-                raw = self._read_drv_status(tmc, eventtime)
+                raw = self._read_drv_status(tmc, motor, eventtime)
                 if raw is None:
                     continue
 
@@ -174,47 +202,23 @@ class StallGuardMonitor:
 
     # ── Register read ─────────────────────────────────────────────────────────
 
-    def _read_drv_status(self, tmc, eventtime):
+    def _read_drv_status(self, tmc, motor, eventtime):
         """
-        Return the raw DRVSTATUS register value as an int, or None on error.
-        Tries four paths to handle API differences across Klipper versions.
-        Run SG_DIAG to see exactly which path succeeds or why each fails.
+        Return a value with SG_RESULT in bits[9:0] and STST in bit[31],
+        or None if nothing could be read.
+        Uses names discovered at startup by _probe_names() so the code is
+        not sensitive to which exact string this Klipper build uses.
         """
-        # 1) Klipper field cache via fields.get_reg() (method may not exist
-        #    on all builds – guard with hasattr before calling)
-        if hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_reg'):
-            try:
-                val = tmc.fields.get_reg("DRVSTATUS")
-                if isinstance(val, int):
-                    return val
-                self.logger.debug("stallguard: fields.get_reg returned %s", type(val).__name__)
-            except Exception as e:
-                self.logger.debug("stallguard: fields.get_reg raised: %s", e)
+        names     = self._reg_names.get(motor, {})
+        reg_name  = names.get('reg')
+        sg_name   = names.get('sg')
+        stst_name = names.get('stst')
 
-        # 2) get_status() dict – try with eventtime first, then without
-        #    (older Klipper builds may not accept the eventtime argument)
-        for call_args in [(eventtime,), ()]:
+        # 1) Direct SPI read with the probed register name – always fresh data.
+        #    Some builds return the raw SPI params dict; decode bytes if so.
+        if reg_name and hasattr(tmc, 'mcu_tmc') and hasattr(tmc.mcu_tmc, 'get_register'):
             try:
-                status = tmc.get_status(*call_args)
-                val = status.get('drv_status')
-                if isinstance(val, int):
-                    return val
-                self.logger.debug(
-                    "stallguard: get_status%s drv_status=%s (%s)",
-                    call_args, val, type(val).__name__)
-                break   # got a response, no point retrying without arg
-            except TypeError:
-                continue  # wrong number of args – retry without eventtime
-            except Exception as e:
-                self.logger.debug("stallguard: get_status%s raised: %s", call_args, e)
-                break
-
-        # 3) Direct SPI/UART via mcu_tmc.get_register().
-        #    Some Klipper builds return an int directly; others return the raw
-        #    SPI params dict {response: [status_byte, b3, b2, b1, b0]}.
-        if hasattr(tmc, 'mcu_tmc') and hasattr(tmc.mcu_tmc, 'get_register'):
-            try:
-                val = tmc.mcu_tmc.get_register("DRVSTATUS")
+                val = tmc.mcu_tmc.get_register(reg_name)
                 if isinstance(val, int):
                     return val
                 if isinstance(val, dict):
@@ -222,22 +226,40 @@ class StallGuardMonitor:
                     if len(resp) >= 5:   # 1 status byte + 4 data bytes
                         data = bytearray(resp[1:5])
                         return sum(b << ((3 - i) * 8) for i, b in enumerate(data))
-                    self.logger.debug("stallguard: mcu_tmc response too short: %s", resp)
-                else:
-                    self.logger.debug("stallguard: get_register returned %s", type(val).__name__)
             except Exception as e:
-                self.logger.debug("stallguard: mcu_tmc.get_register raised: %s", e)
+                self.logger.debug("stallguard: get_register(%s): %s", reg_name, e)
 
-        # 4) Last resort: reconstruct a minimal register value from individual
-        #    cached fields (SG_RESULT + STST) so at least those two bits work.
-        if hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_field'):
+        # 2) Reconstruct from individual cached fields using probed field names.
+        if sg_name and stst_name and hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_field'):
             try:
-                sg  = tmc.fields.get_field("SG_RESULT")
-                stst = tmc.fields.get_field("STST")
+                sg   = tmc.fields.get_field(sg_name)
+                stst = tmc.fields.get_field(stst_name)
                 if isinstance(sg, int) and isinstance(stst, int):
                     return (stst << 31) | (sg & _SG_RESULT_MASK)
             except Exception as e:
-                self.logger.debug("stallguard: fields.get_field raised: %s", e)
+                self.logger.debug("stallguard: get_field(%s/%s): %s", sg_name, stst_name, e)
+
+        # 3) Klipper field cache for the probed register.
+        if reg_name and hasattr(tmc, 'fields') and hasattr(tmc.fields, 'get_reg'):
+            try:
+                val = tmc.fields.get_reg(reg_name)
+                if isinstance(val, int):
+                    return val
+            except Exception as e:
+                self.logger.debug("stallguard: fields.get_reg(%s): %s", reg_name, e)
+
+        # 4) get_status() – drv_status is None until motors have moved at least
+        #    once, so this is a last resort only.
+        for call_args in [(eventtime,), ()]:
+            try:
+                val = tmc.get_status(*call_args).get('drv_status')
+                if isinstance(val, int):
+                    return val
+                break
+            except TypeError:
+                continue
+            except Exception:
+                break
 
         return None
 
@@ -286,7 +308,7 @@ class StallGuardMonitor:
             if tmc is None:
                 lines.append("  {:<14} {:>10}".format(motor, "NO DRIVER"))
                 continue
-            raw = self._read_drv_status(tmc, eventtime)
+            raw = self._read_drv_status(tmc, motor, eventtime)
             if raw is None:
                 lines.append(
                     "  {:<14} {:>10}  (run SG_DIAG for details)".format(motor, "READ ERR"))
@@ -339,7 +361,17 @@ class StallGuardMonitor:
         motor = next(iter(self.tmc_drivers))
         tmc   = self.tmc_drivers[motor]
         et    = self.reactor.monotonic()
-        lines = ["SG_DIAG for '{}' ({})".format(motor, type(tmc).__name__)]
+        names = self._reg_names.get(motor, {})
+        lines = [
+            "SG_DIAG for '{}' ({})".format(motor, type(tmc).__name__),
+            "  probed: reg={reg}  sg={sg}  stst={stst}".format(
+                reg=names.get('reg',  'NOT FOUND'),
+                sg=names.get('sg',   'NOT FOUND'),
+                stst=names.get('stst','NOT FOUND')),
+        ]
+        if hasattr(tmc, 'fields') and hasattr(tmc.fields, 'all_fields'):
+            all_regs = sorted(tmc.fields.all_fields.keys())
+            lines.append("  all_fields keys: {}".format(all_regs))
 
         # fields.get_reg
         if hasattr(tmc, 'fields'):
