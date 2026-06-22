@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""
+sg_watch – Live StallGuard monitor via Moonraker API.
+
+Polls Moonraker's printer-objects endpoint independently of the GCode queue,
+so it works while a print is running without interfering with it at all.
+
+Usage (from SSH):
+  sg_watch              poll every 0.5 s  (default)
+  sg_watch 1            poll every 1 s
+  sg_watch 0.2          poll every 200 ms
+
+Deployed to /usr/local/bin/sg_watch by the re3D-OS updater.
+"""
+
+import sys
+import time
+import json
+import datetime
+import urllib.request
+import urllib.error
+
+INTERVAL = float(sys.argv[1]) if len(sys.argv) > 1 else 0.5
+INTERVAL = max(0.1, min(INTERVAL, 60.0))
+
+MOONRAKER_URL = "http://localhost/printer/objects/query?stallguard_monitor"
+
+# ANSI helpers
+CSI   = "\033["
+CLEAR = CSI + "2J" + CSI + "H"
+BOLD  = CSI + "1m"
+RED   = CSI + "31m"
+YEL   = CSI + "33m"
+GRN   = CSI + "32m"
+RST   = CSI + "0m"
+
+BAR_WIDTH = 32
+
+
+def fetch():
+    try:
+        with urllib.request.urlopen(MOONRAKER_URL, timeout=2) as resp:
+            return json.loads(resp.read()), None
+    except urllib.error.URLError as e:
+        return None, "Moonraker unreachable: {}".format(e.reason)
+    except Exception as e:
+        return None, str(e)
+
+
+def sg_bar(val, threshold, max_val=1023):
+    filled = int(val / max_val * BAR_WIDTH)
+    filled = max(0, min(filled, BAR_WIDTH))
+    if val < threshold:
+        color = RED
+    elif val < threshold * 2:
+        color = YEL
+    else:
+        color = GRN
+    bar = color + "#" * filled + RST + "-" * (BAR_WIDTH - filled)
+    return "[" + bar + "]"
+
+
+def run():
+    history = {}   # motor -> list of last N values for min/max display
+
+    while True:
+        data, err = fetch()
+        now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+        print(CLEAR, end="")
+        print("{}StallGuard Live Monitor{}  {}  interval={:.1f}s  Ctrl+C to stop".format(
+            BOLD, RST, now, INTERVAL))
+        print()
+
+        if err:
+            print("  {}ERROR:{} {}".format(RED, RST, err))
+            print()
+            print("  Is Klipper/Moonraker running?")
+            time.sleep(INTERVAL)
+            continue
+
+        sg = (data.get("result", {})
+                  .get("status", {})
+                  .get("stallguard_monitor", {}))
+
+        if not sg:
+            print("  {}WARNING:{} stallguard_monitor not in Moonraker response.".format(YEL, RST))
+            print("  Make sure [stallguard_monitor] is in printer.cfg and")
+            print("  stallguard_monitor.py is in ~/klipper/klippy/extras/")
+            time.sleep(INTERVAL)
+            continue
+
+        values     = sg.get("sg_values", {})
+        threshold  = sg.get("collision_threshold", 100)
+        detected   = sg.get("collision_detected", False)
+        monitoring = sg.get("enabled", False)
+
+        mon_str  = (GRN + "ON" + RST) if monitoring else (YEL + "OFF" + RST)
+        coll_str = (RED + BOLD + "!! COLLISION LATCHED !!" + RST) if detected else (GRN + "clear" + RST)
+
+        print("  monitoring={}  threshold={}  collision={}".format(
+            mon_str, threshold, coll_str))
+        print()
+        print("  {:<16}  {:>10}  {:<{bw}}  {:>6}  {:>6}  {}".format(
+            "motor", "SG_RESULT", "load", "min", "max", "state",
+            bw=BAR_WIDTH + 2))
+        print("  " + "─" * (16 + 10 + BAR_WIDTH + 2 + 6 + 6 + 14))
+
+        for motor in sorted(values.keys()):
+            val = values[motor]
+
+            # Track rolling min/max
+            if motor not in history:
+                history[motor] = []
+            if val is not None:
+                history[motor].append(val)
+                if len(history[motor]) > 200:
+                    history[motor].pop(0)
+
+            if val is None:
+                print("  {:<16}  {:>10}".format(motor, "N/A"))
+                continue
+
+            hist = history[motor]
+            lo   = min(hist) if hist else val
+            hi   = max(hist) if hist else val
+            bar  = sg_bar(val, threshold)
+
+            # Rough standstill heuristic from the value alone
+            # (STST bit is in bit 31 of the raw register, but Moonraker only
+            #  exposes the processed SG_RESULT integer for now)
+            note = ""
+            if val < threshold:
+                note = "{}<<< LOW{}".format(RED, RST)
+
+            print("  {:<16}  {:>10}  {}  {:>6}  {:>6}  {}".format(
+                motor, val, bar, lo, hi, note))
+
+        time.sleep(INTERVAL)
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except KeyboardInterrupt:
+        print("\n\nStopped.")
