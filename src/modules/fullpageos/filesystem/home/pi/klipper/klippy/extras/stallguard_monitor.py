@@ -179,16 +179,19 @@ class StallGuardMonitor:
 
                 if standstill:
                     # Motor is stopped – reset counter, no collision possible.
-                    # Do NOT overwrite sg_values with the standstill 0; keep
-                    # the last known movement value so displays stay meaningful.
+                    # Do NOT overwrite sg_values with standstill 0; keep the
+                    # last known movement value so displays stay meaningful.
                     self.trigger_counts[motor] = 0
                     continue
 
-                # If STST could not be probed, a zero almost certainly means
-                # the motor just decelerated to standstill (not a true stall).
-                # Skip it to avoid false triggers when STST bit is unavailable.
-                names = self._reg_names.get(motor, {})
-                if sg_val == 0 and not names.get('stst'):
+                # SG_RESULT=0 is ambiguous: it can mean the motor is below the
+                # TMC's minimum velocity for a valid SG measurement (which
+                # occurs during deceleration BEFORE the STST bit latches), or
+                # a fully-stalled motor.  Treat it as "no data": do not
+                # increment the trigger counter, but also do not reset it.
+                # A real mechanical stall drops through positive low values
+                # before hitting 0, so threshold detection still fires.
+                if sg_val == 0:
                     continue
 
                 self.sg_values[motor] = sg_val
