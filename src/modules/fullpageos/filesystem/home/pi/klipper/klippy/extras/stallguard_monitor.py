@@ -68,6 +68,18 @@ class StallGuardMonitor:
         self.calibrate_speed = config.getfloat(
             'calibrate_speed', 50., minval=5., maxval=300.)
 
+        # Velocity gating + adaptive detection
+        self.min_speed_mm_s = config.getfloat(
+            'min_speed_mm_s', 5., minval=0., maxval=500.)
+        self.detection_mode = config.getchoice(
+            'detection_mode',
+            {'absolute': 'absolute', 'adaptive': 'adaptive'},
+            'absolute')
+        self.baseline_alpha = config.getfloat(
+            'baseline_alpha', 0.1, minval=0.01, maxval=0.5)
+        self.drop_fraction  = config.getfloat(
+            'drop_fraction', 0.40, minval=0.05, maxval=0.95)
+
         # ── Runtime state ────────────────────────────────────────────────────
         self.tmc_drivers        = {}   # motor_name -> tmc object
         self.sg_values          = {}   # motor_name -> last SG_RESULT int or None
@@ -80,6 +92,8 @@ class StallGuardMonitor:
         self._homing_active     = False  # True while G28 is running
         self._calibrating       = False  # True during SG_CALIBRATE move
         self._calibrate_samples = {}     # motor -> [sg_val, ...] during calibration
+        self._toolhead          = None   # looked up in _handle_ready
+        self._sg_baselines      = {}     # motor -> float EWMA (adaptive mode)
 
         # ── Klipper hooks ────────────────────────────────────────────────────
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -118,6 +132,7 @@ class StallGuardMonitor:
                 self.sg_values[motor]      = None
                 self._sg_windows[motor]    = deque(maxlen=self.consecutive_triggers)
                 self._accel_blanks[motor]  = self.accel_blank_samples
+                self._sg_baselines[motor]  = None
                 names = self._probe_names(tmc)
                 self._reg_names[motor]     = names
                 self.logger.info(
@@ -138,6 +153,8 @@ class StallGuardMonitor:
             "homing:home_rails_begin", self._handle_homing_begin)
         self.printer.register_event_handler(
             "homing:home_rails_end",   self._handle_homing_end)
+
+        self._toolhead = self.printer.lookup_object('toolhead', None)
 
         if self.enabled and not self.homing_only:
             self._start_monitoring()
@@ -219,10 +236,11 @@ class StallGuardMonitor:
     # ── Window helpers ────────────────────────────────────────────────────────
 
     def _reset_windows(self):
-        """Clear all rolling-average windows and reset acceleration blanking."""
+        """Clear all rolling-average windows, blanking counters, and baselines."""
         for m in self._sg_windows:
             self._sg_windows[m].clear()
-            self._accel_blanks[m] = self.accel_blank_samples
+            self._accel_blanks[m]  = self.accel_blank_samples
+            self._sg_baselines[m]  = None   # re-initialises on first valid sample
 
     # ── Polling ───────────────────────────────────────────────────────────────
 
@@ -230,14 +248,25 @@ class StallGuardMonitor:
         if not self.monitoring:
             return self.reactor.NEVER
 
+        # Cache toolhead commanded velocity once per poll (covers all motors).
+        # This reflects Klipper's trapezoid planner so it drops naturally during
+        # both acceleration AND deceleration phases.
+        _tvel = None
+        if self.min_speed_mm_s > 0 and self._toolhead is not None:
+            try:
+                _tvel = abs(float(
+                    self._toolhead.get_status(eventtime).get('velocity', 0) or 0))
+            except Exception:
+                pass
+
         try:
             for motor, tmc in self.tmc_drivers.items():
                 raw = self._read_drv_status(tmc, motor, eventtime)
                 if raw is None:
                     continue
 
-                sg_val      = raw & _SG_RESULT_MASK
-                standstill  = bool(raw & _STST_BIT)
+                sg_val     = raw & _SG_RESULT_MASK
+                standstill = bool(raw & _STST_BIT)
 
                 if standstill:
                     # Motor stopped: clear window and arm acceleration blanking.
@@ -251,13 +280,33 @@ class StallGuardMonitor:
                 if sg_val == 0:
                     continue
 
-                # Blank the first N samples after standstill clears.
-                # SG values are unreliable during initial acceleration.
+                # Velocity gate: skip and clear window when the toolhead's
+                # commanded speed is below min_speed_mm_s.  Because this uses
+                # Klipper's own planner velocity it catches both the accel AND
+                # decel phases of every move automatically.
+                if _tvel is not None and _tvel < self.min_speed_mm_s:
+                    self._sg_windows[motor].clear()
+                    continue
+
+                # Sample-count blanking right after standstill clears.
+                # Handles the brief ramp-up before the velocity gate takes over.
                 if self._accel_blanks[motor] > 0:
                     self._accel_blanks[motor] -= 1
                     continue
 
                 self.sg_values[motor] = sg_val
+
+                # Update EWMA baseline (adaptive mode).  Guard against stall
+                # values poisoning the baseline: only update when the sample is
+                # not more than 60 % below the current baseline.
+                if self.detection_mode == 'adaptive':
+                    bl = self._sg_baselines.get(motor)
+                    if bl is None:
+                        self._sg_baselines[motor] = float(sg_val)
+                    elif sg_val >= bl * 0.4:
+                        self._sg_baselines[motor] = (
+                            self.baseline_alpha * sg_val
+                            + (1.0 - self.baseline_alpha) * bl)
 
                 # Collect samples for SG_CALIBRATE if active
                 if self._calibrating and motor in self._calibrate_samples:
@@ -266,19 +315,24 @@ class StallGuardMonitor:
                 if self._collision_latch:
                     continue
 
-                # Rolling-average collision detection.
-                # Trigger only when the full window average drops below threshold.
-                # More noise-tolerant than N-consecutive: a single dip barely
-                # moves the average, but a sustained stall trend fires cleanly.
+                # Rolling-average detection: fire when window average drops
+                # below the effective trigger level.
                 window = self._sg_windows[motor]
                 window.append(sg_val)
                 if len(window) == window.maxlen:
                     avg = sum(window) / window.maxlen
-                    threshold = self._motor_thresholds.get(motor,
-                                                           self.collision_threshold)
-                    if avg < threshold:
-                        window.clear()
-                        self._handle_collision(motor, int(round(avg)))
+                    if self.detection_mode == 'adaptive':
+                        bl = self._sg_baselines.get(motor)
+                        if bl is not None and bl > 0:
+                            if avg < bl * (1.0 - self.drop_fraction):
+                                window.clear()
+                                self._handle_collision(motor, int(round(avg)))
+                    else:
+                        thresh = self._motor_thresholds.get(
+                            motor, self.collision_threshold)
+                        if avg < thresh:
+                            window.clear()
+                            self._handle_collision(motor, int(round(avg)))
 
         except Exception:
             self.logger.exception("stallguard_monitor: error in poll callback")
@@ -405,10 +459,21 @@ class StallGuardMonitor:
             sg_val     = raw & _SG_RESULT_MASK
             standstill = bool(raw & _STST_BIT)
             self.sg_values[motor] = sg_val
-            flag  = " <<< LOW" if (sg_val < thresh and not standstill) else ""
+            if self.detection_mode == 'adaptive':
+                bl = self._sg_baselines.get(motor)
+                if bl is not None:
+                    eff = int(bl * (1.0 - self.drop_fraction))
+                    thresh_str = "~{} (bl={:.0f})".format(eff, bl)
+                    flag = " <<< LOW" if (sg_val < eff and not standstill) else ""
+                else:
+                    thresh_str = "?(warming)"
+                    flag = ""
+            else:
+                thresh_str = str(thresh)
+                flag = " <<< LOW" if (sg_val < thresh and not standstill) else ""
             state = "standstill" if standstill else "moving"
-            lines.append("  {:<16} {:>10}  {:>9}  {}{}".format(
-                motor, sg_val, thresh, state, flag))
+            lines.append("  {:<16} {:>10}  {:>16}  {}{}".format(
+                motor, sg_val, thresh_str, state, flag))
 
         gcmd.respond_info("\n".join(lines))
 
@@ -634,8 +699,11 @@ class StallGuardMonitor:
             'enabled':             self.monitoring,
             'homing_only':         self.homing_only,
             'homing_active':       self._homing_active,
+            'detection_mode':      self.detection_mode,
             'collision_threshold': self.collision_threshold,
             'motor_thresholds':    dict(self._motor_thresholds),
+            'sg_baselines':        {m: round(v, 1) for m, v in self._sg_baselines.items()
+                                    if v is not None},
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
         }
