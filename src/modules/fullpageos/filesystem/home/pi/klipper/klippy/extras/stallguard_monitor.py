@@ -177,12 +177,21 @@ class StallGuardMonitor:
                 sg_val      = raw & _SG_RESULT_MASK
                 standstill  = bool(raw & _STST_BIT)
 
-                self.sg_values[motor] = sg_val
-
                 if standstill:
-                    # Motor is stopped – reset counter, no collision possible
+                    # Motor is stopped – reset counter, no collision possible.
+                    # Do NOT overwrite sg_values with the standstill 0; keep
+                    # the last known movement value so displays stay meaningful.
                     self.trigger_counts[motor] = 0
                     continue
+
+                # If STST could not be probed, a zero almost certainly means
+                # the motor just decelerated to standstill (not a true stall).
+                # Skip it to avoid false triggers when STST bit is unavailable.
+                names = self._reg_names.get(motor, {})
+                if sg_val == 0 and not names.get('stst'):
+                    continue
+
+                self.sg_values[motor] = sg_val
 
                 if self._collision_latch:
                     # Already triggered; wait for SG_RESET before re-arming
