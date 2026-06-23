@@ -89,6 +89,8 @@ class StallGuardMonitor:
             'pre_stall_blank_samples', 0, minval=0, maxval=50)
         self.drop_fraction  = config.getfloat(
             'drop_fraction', 0.40, minval=0.05, maxval=0.95)
+        # Optional CSV motion trace (set path to auto-start; use SG_TRACE_START at runtime)
+        self.trace_file = config.get('trace_file', None)
 
         # ── Runtime state ────────────────────────────────────────────────────
         self.tmc_drivers        = {}   # motor_name -> tmc object
@@ -106,6 +108,8 @@ class StallGuardMonitor:
         self._calibrate_samples = {}     # motor -> [sg_val, ...] during calibration
         self._toolhead          = None   # looked up in _handle_ready
         self._sg_baselines      = {}     # motor -> float EWMA (adaptive mode)
+        self._trace_fh          = None   # file handle for CSV motion trace
+        self._trace_writer      = None   # csv.writer for motion trace
 
         # ── Klipper hooks ────────────────────────────────────────────────────
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -132,6 +136,12 @@ class StallGuardMonitor:
         self.gcode.register_command(
             'SG_CALIBRATE', self.cmd_SG_CALIBRATE,
             desc="Move each axis and report baseline SG statistics for belt/tension check")
+        self.gcode.register_command(
+            'SG_TRACE_START', self.cmd_SG_TRACE_START,
+            desc="Start CSV motion trace log (SG_TRACE_START [FILE=/path/to/file.csv])")
+        self.gcode.register_command(
+            'SG_TRACE_STOP', self.cmd_SG_TRACE_STOP,
+            desc="Stop CSV motion trace log and close file")
 
     # ── Initialisation ────────────────────────────────────────────────────────
 
@@ -169,6 +179,9 @@ class StallGuardMonitor:
             "homing:home_rails_end",   self._handle_homing_end)
 
         self._toolhead = self.printer.lookup_object('toolhead', None)
+        self.printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
+        if self.trace_file:
+            self._open_trace_file(self.trace_file)
 
         if self.enabled and not self.homing_only:
             self._start_monitoring()
@@ -192,6 +205,71 @@ class StallGuardMonitor:
             self._collision_latch = False
             self._reset_windows()
             self.logger.info("stallguard_monitor: homing complete — monitoring disarmed")
+
+    def _handle_disconnect(self):
+        """Flush and close the trace file on printer disconnect or shutdown."""
+        if self._trace_fh is not None:
+            try:
+                self._trace_fh.flush()
+                self._trace_fh.close()
+            except Exception:
+                pass
+            self._trace_fh = None
+            self._trace_writer = None
+
+    def _open_trace_file(self, path):
+        """Open (or reopen) the CSV motion trace file for writing."""
+        import csv
+        # Close any previously open file first
+        if self._trace_fh is not None:
+            try:
+                self._trace_fh.flush()
+                self._trace_fh.close()
+            except Exception:
+                pass
+            self._trace_fh = None
+            self._trace_writer = None
+        try:
+            self._trace_fh = open(path, 'w', newline='', buffering=1)  # line-buffered
+            self._trace_writer = csv.writer(self._trace_fh)
+            self._trace_writer.writerow([
+                'time_s', 'motor', 'sg', 'baseline', 'trigger',
+                'window_avg', 'window_n', 'vel_mms',
+                'pos_x', 'pos_y', 'pos_z', 'state'])
+            self.logger.info("stallguard_monitor: trace -> %s", path)
+        except Exception as e:
+            self.logger.warning("stallguard_monitor: trace open failed: %s", e)
+            self._trace_fh = None
+            self._trace_writer = None
+
+    def _write_trace(self, eventtime, motor, sg_val, state, vel, pos):
+        """
+        Write one row to the motion trace CSV.
+        state codes: M=moving, G=guard_zone, A=accel_blank, V=vel_gated, C=collision
+        Called from the reactor callback — all exceptions silently swallowed.
+        """
+        if self._trace_writer is None:
+            return
+        try:
+            bl = self._sg_baselines.get(motor)
+            if self.detection_mode == 'adaptive' and bl is not None:
+                trig = round(bl * (1.0 - self.drop_fraction), 1)
+            else:
+                trig = self._motor_thresholds.get(motor, self.collision_threshold)
+            w = self._sg_windows.get(motor)
+            w_avg = round(sum(w) / len(w), 1) if w else ''
+            self._trace_writer.writerow([
+                round(eventtime, 3), motor, sg_val,
+                round(bl, 1) if bl is not None else '',
+                trig,
+                w_avg, len(w) if w is not None else 0,
+                round(vel, 1) if vel is not None else '',
+                round(pos[0], 2) if pos else '',
+                round(pos[1], 2) if pos else '',
+                round(pos[2], 2) if pos else '',
+                state])
+        except Exception:
+            pass
 
     def _find_tmc_driver(self, motor_name):
         """Return the first TMC driver object found for motor_name, or None."""
@@ -279,6 +357,14 @@ class StallGuardMonitor:
             except Exception:
                 pass
 
+        # Cache toolhead position once per poll for trace logging.
+        _tpos = None
+        if self._trace_writer is not None and self._toolhead is not None:
+            try:
+                _tpos = self._toolhead.get_position()
+            except Exception:
+                pass
+
         try:
             for motor, tmc in self.tmc_drivers.items():
                 raw = self._read_drv_status(tmc, motor, eventtime)
@@ -314,12 +400,14 @@ class StallGuardMonitor:
                 # decel phases of every move automatically.
                 if _tvel is not None and _tvel < self.min_speed_mm_s:
                     self._sg_windows[motor].clear()
+                    self._write_trace(eventtime, motor, sg_val, 'V', _tvel, _tpos)
                     continue
 
                 # Sample-count blanking right after standstill clears.
                 # Handles the brief ramp-up before the velocity gate takes over.
                 if self._accel_blanks[motor] > 0:
                     self._accel_blanks[motor] -= 1
+                    self._write_trace(eventtime, motor, sg_val, 'A', _tvel, _tpos)
                     continue
 
                 self.sg_values[motor] = sg_val
@@ -381,7 +469,14 @@ class StallGuardMonitor:
                 if self._pre_stall_blanks.get(motor, 0) > 0:
                     self._pre_stall_blanks[motor] -= 1
                     self._sg_windows[motor].clear()
+                    self._write_trace(eventtime, motor, sg_val, 'B', _tvel, _tpos)
                     continue
+
+                # Write one trace row for every detection-eligible sample.
+                self._write_trace(
+                    eventtime, motor, sg_val,
+                    'G' if self._in_guard_zone.get(motor, False) else 'M',
+                    _tvel, _tpos)
 
                 # Collect samples for SG_CALIBRATE if active
                 if self._calibrating and motor in self._calibrate_samples:
@@ -400,12 +495,14 @@ class StallGuardMonitor:
                         bl = self._sg_baselines.get(motor)
                         if bl is not None and bl > 0:
                             if avg < bl * (1.0 - self.drop_fraction):
+                                self._write_trace(eventtime, motor, int(round(avg)), 'C', _tvel, _tpos)
                                 window.clear()
                                 self._handle_collision(motor, int(round(avg)))
                     else:
                         thresh = self._motor_thresholds.get(
                             motor, self.collision_threshold)
                         if avg < thresh:
+                            self._write_trace(eventtime, motor, int(round(avg)), 'C', _tvel, _tpos)
                             window.clear()
                             self._handle_collision(motor, int(round(avg)))
 
@@ -837,6 +934,33 @@ class StallGuardMonitor:
                     len(samples), thresh, margin, note))
         gcmd.respond_info("\n".join(rows))
 
+    def cmd_SG_TRACE_START(self, gcmd):
+        """Start (or restart) CSV motion trace logging."""
+        default = self.trace_file or '/tmp/stallguard_trace.csv'
+        path = gcmd.get('FILE', default)
+        self._open_trace_file(path)
+        if self._trace_writer is not None:
+            gcmd.respond_info(
+                "stallguard_monitor: trace logging -> {}  "
+                "(SG_TRACE_STOP to stop)".format(path))
+        else:
+            gcmd.respond_info(
+                "stallguard_monitor: trace FAILED -- check path/permissions: {}".format(path))
+
+    def cmd_SG_TRACE_STOP(self, gcmd):
+        """Stop CSV motion trace logging and close the file."""
+        if self._trace_fh is not None:
+            try:
+                self._trace_fh.flush()
+                self._trace_fh.close()
+            except Exception:
+                pass
+            self._trace_fh = None
+            self._trace_writer = None
+            gcmd.respond_info("stallguard_monitor: trace stopped")
+        else:
+            gcmd.respond_info("stallguard_monitor: trace not active")
+
     def get_status(self, eventtime):
         """Expose values to Moonraker / macros via printer['stallguard_monitor']."""
         return {
@@ -855,6 +979,7 @@ class StallGuardMonitor:
             'baseline_shift_clear': self.baseline_shift_clear,
             'pre_stall_blank_samples': self.pre_stall_blank_samples,
             'collision_detected':  self._collision_latch,
+            'trace_active':        self._trace_fh is not None,
             'sg_values':           dict(self.sg_values),
         }
 
