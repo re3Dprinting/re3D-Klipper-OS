@@ -85,6 +85,8 @@ class StallGuardMonitor:
             'baseline_guard', 0.15, minval=0.0, maxval=0.5)
         self.baseline_shift_clear = config.getfloat(
             'baseline_shift_clear', 0.15, minval=0.0, maxval=1.0)
+        self.pre_stall_blank_samples = config.getint(
+            'pre_stall_blank_samples', 3, minval=0, maxval=50)
         self.drop_fraction  = config.getfloat(
             'drop_fraction', 0.40, minval=0.05, maxval=0.95)
 
@@ -93,6 +95,8 @@ class StallGuardMonitor:
         self.sg_values          = {}   # motor_name -> last SG_RESULT int or None
         self._sg_windows        = {}   # motor_name -> deque(maxlen=consecutive_triggers)
         self._accel_blanks      = {}   # motor_name -> int countdown after standstill
+        self._pre_stall_blanks  = {}   # motor_name -> int countdown in guard zone
+        self._in_guard_zone     = {}   # motor_name -> bool (SG below guard threshold)
         self._reg_names         = {}   # motor_name -> {reg, sg, stst, stst_reg}
         self.monitoring         = False
         self._timer_handle      = None
@@ -140,6 +144,8 @@ class StallGuardMonitor:
                 self.sg_values[motor]      = None
                 self._sg_windows[motor]    = deque(maxlen=self.consecutive_triggers)
                 self._accel_blanks[motor]  = self.accel_blank_samples
+                self._pre_stall_blanks[motor] = 0
+                self._in_guard_zone[motor] = False
                 self._sg_baselines[motor]  = None
                 names = self._probe_names(tmc)
                 self._reg_names[motor]     = names
@@ -247,8 +253,10 @@ class StallGuardMonitor:
         """Clear all rolling-average windows, blanking counters, and baselines."""
         for m in self._sg_windows:
             self._sg_windows[m].clear()
-            self._accel_blanks[m]  = self.accel_blank_samples
-            self._sg_baselines[m]  = None   # re-initialises on first valid sample
+            self._accel_blanks[m]     = self.accel_blank_samples
+            self._pre_stall_blanks[m] = 0
+            self._in_guard_zone[m]    = False
+            self._sg_baselines[m]     = None   # re-initialises on first valid sample
 
     # ── Polling ───────────────────────────────────────────────────────────────
 
@@ -288,7 +296,9 @@ class StallGuardMonitor:
                     # trigger from a fast move causing false triggers when the
                     # next move is slower.
                     self._sg_windows[motor].clear()
-                    self._accel_blanks[motor] = self.accel_blank_samples
+                    self._accel_blanks[motor]     = self.accel_blank_samples
+                    self._pre_stall_blanks[motor] = 0
+                    self._in_guard_zone[motor]    = False
                     if self.detection_mode == 'adaptive':
                         self._sg_baselines[motor] = None
                     continue
@@ -339,17 +349,39 @@ class StallGuardMonitor:
                     old_bl = self._sg_baselines.get(motor)
                     if old_bl is None:
                         self._sg_baselines[motor] = float(sg_val)
+                        self._in_guard_zone[motor] = False
                     elif sg_val >= old_bl * self.baseline_guard:
                         alpha = (self.baseline_alpha_fall
                                  if sg_val < old_bl else self.baseline_alpha)
                         self._sg_baselines[motor] = (
                             alpha * sg_val + (1.0 - alpha) * old_bl)
-                        # Clear window while baseline is still settling
+                        # Clear window if baseline is still settling
                         if self.baseline_shift_clear > 0:
                             new_bl = self._sg_baselines[motor]
                             if (abs(new_bl - old_bl) / old_bl
                                     > self.baseline_shift_clear):
                                 self._sg_windows[motor].clear()
+                        self._in_guard_zone[motor] = False
+                    else:
+                        # Guard zone (SG < guard × baseline): baseline frozen.
+                        # On first entry arm the pre-stall blank.  While the
+                        # blank is counting down the detection window is cleared
+                        # every sample so it cannot fire.
+                        # – Normal decel-to-stop: STST latches during or after
+                        #   the blank, resetting everything → no trigger.
+                        # – Real collision:      STST never latches, so the
+                        #   window fills after the blank expires → FIRE.
+                        if not self._in_guard_zone.get(motor, False):
+                            self._pre_stall_blanks[motor] = (
+                                self.pre_stall_blank_samples)
+                        self._in_guard_zone[motor] = True
+
+                # Pre-stall blank countdown (runs in guard zone only).
+                # Window is cleared each sample while the counter is active.
+                if self._pre_stall_blanks.get(motor, 0) > 0:
+                    self._pre_stall_blanks[motor] -= 1
+                    self._sg_windows[motor].clear()
+                    continue
 
                 # Collect samples for SG_CALIBRATE if active
                 if self._calibrating and motor in self._calibrate_samples:
@@ -455,20 +487,22 @@ class StallGuardMonitor:
     def _handle_collision(self, motor, sg_val):
         """React to a detected collision event."""
         self._collision_latch = True
-        # Clear the window so we don't immediately re-trigger after SG_RESET
-        self._reset_windows()
 
+        # Capture baseline and effective trigger BEFORE reset_windows() clears them.
         if self.detection_mode == 'adaptive':
-            bl = self._sg_baselines.get(motor)
-            if bl is not None and bl > 0:
+            bl_snap = self._sg_baselines.get(motor)
+            if bl_snap is not None and bl_snap > 0:
                 thr_info = "trigger={} (adaptive, bl={:.0f})".format(
-                    int(bl * (1.0 - self.drop_fraction)), bl)
+                    int(bl_snap * (1.0 - self.drop_fraction)), bl_snap)
             else:
                 thr_info = "threshold={} (adaptive warmup)".format(
                     self._motor_thresholds.get(motor, self.collision_threshold))
         else:
             thr_info = "threshold={}".format(
                 self._motor_thresholds.get(motor, self.collision_threshold))
+
+        # Clear the window so we don't immediately re-trigger after SG_RESET
+        self._reset_windows()
 
         msg = ("!! stallguard_monitor: COLLISION on {} "
                "(SG_RESULT={}, {})".format(motor, sg_val, thr_info))
@@ -819,6 +853,7 @@ class StallGuardMonitor:
             'baseline_alpha_fall': self.baseline_alpha_fall,
             'baseline_guard':      self.baseline_guard,
             'baseline_shift_clear': self.baseline_shift_clear,
+            'pre_stall_blank_samples': self.pre_stall_blank_samples,
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
         }
