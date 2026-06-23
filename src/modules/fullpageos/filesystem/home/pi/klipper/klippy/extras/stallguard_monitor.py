@@ -414,55 +414,68 @@ class StallGuardMonitor:
 
                 # Update EWMA baseline (adaptive mode).
                 #
-                # Guard (baseline_guard): freeze the baseline if SG drops
-                # to < guard × baseline.  Only extreme drops (collisions)
-                # should reach this floor; normal speed reductions stay above
-                # it.  Default 0.15 means baseline is frozen only when SG is
-                # less than 15 % of the current baseline.
+                # Freeze-on-drop: when SG falls below the detection trigger
+                # (baseline × (1 − drop_fraction)) the baseline is frozen at
+                # its last-known-good value so it cannot adapt to the stall
+                # load.  On the *first* entry into this zone the detection
+                # window is cleared — but only if every sample currently in
+                # the window is above the trigger (i.e. the window was built
+                # on normal motion data).  On re-entries caused by the TMC
+                # driver's oscillating stall pattern (low → spike → low) the
+                # window is kept so that progress accumulates across cycles.
                 #
-                # Asymmetric alpha: use a faster fall-alpha when the baseline
-                # needs to track downward (speed reduction) vs the slower
-                # rise-alpha (load increase / higher speed).  This lets the
-                # trigger level catch up quickly after a speed drop without
-                # waiting many samples for the EWMA to converge.
+                # Why this works for each scenario:
+                #  • Real stall: SG drops sharply, baseline frozen at healthy
+                #    value, window clears once, fills quickly (2-3 polls)
+                #    with sub-trigger values → FIRES.
+                #  • Decel-to-stop (probe/mesh): one sub-trigger sample before
+                #    STST latches; standstill handler resets everything before
+                #    the window reaches consecutive_triggers → NO FIRE.
+                #  • Speed change: SG stays above trigger (trigger adapts as
+                #    baseline adapts), no freeze, baseline_shift_clear clears
+                #    the window while the EWMA settles → NO FIRE.
                 #
-                # Shift-clear: if the baseline itself moved by more than
-                # baseline_shift_clear in one step the detection window is
-                # cleared.  When baseline is FROZEN (collision → guard hit,
-                # shift = 0) the window is NOT cleared so detection fires.
-                # When baseline is ADAPTING (speed change, large shift) the
-                # window resets each sample until the baseline stabilises,
-                # preventing the window from filling against a stale trigger.
+                # Above the trigger: asymmetric EWMA alpha — fast fall-alpha
+                # when SG is below baseline (speed reduction) and slow
+                # rise-alpha otherwise.  baseline_shift_clear still clears
+                # the window during rapid speed changes (it only fires here,
+                # in the non-frozen path, so it no longer fires during stalls).
                 if self.detection_mode == 'adaptive':
                     old_bl = self._sg_baselines.get(motor)
                     if old_bl is None:
                         self._sg_baselines[motor] = float(sg_val)
                         self._in_guard_zone[motor] = False
-                    elif sg_val >= old_bl * self.baseline_guard:
-                        alpha = (self.baseline_alpha_fall
-                                 if sg_val < old_bl else self.baseline_alpha)
-                        self._sg_baselines[motor] = (
-                            alpha * sg_val + (1.0 - alpha) * old_bl)
-                        # Clear window if baseline is still settling
-                        if self.baseline_shift_clear > 0:
-                            new_bl = self._sg_baselines[motor]
-                            if (abs(new_bl - old_bl) / old_bl
-                                    > self.baseline_shift_clear):
-                                self._sg_windows[motor].clear()
-                        self._in_guard_zone[motor] = False
                     else:
-                        # Guard zone (SG < guard × baseline): baseline frozen.
-                        # On first entry arm the pre-stall blank.  While the
-                        # blank is counting down the detection window is cleared
-                        # every sample so it cannot fire.
-                        # – Normal decel-to-stop: STST latches during or after
-                        #   the blank, resetting everything → no trigger.
-                        # – Real collision:      STST never latches, so the
-                        #   window fills after the blank expires → FIRE.
-                        if not self._in_guard_zone.get(motor, False):
-                            self._pre_stall_blanks[motor] = (
-                                self.pre_stall_blank_samples)
-                        self._in_guard_zone[motor] = True
+                        trigger_val = old_bl * (1.0 - self.drop_fraction)
+                        if sg_val < trigger_val:
+                            # Below detection trigger: freeze baseline.
+                            if not self._in_guard_zone.get(motor, False):
+                                # First entry — clear window only when it
+                                # contains exclusively above-trigger samples
+                                # (clean normal-motion data).  If it already
+                                # has sub-trigger samples the motor is in an
+                                # oscillating stall; keep progress.
+                                window = self._sg_windows[motor]
+                                if all(s >= trigger_val for s in window):
+                                    window.clear()
+                            self._in_guard_zone[motor] = True
+                            # Baseline intentionally NOT updated.
+                        else:
+                            # Above trigger: update EWMA normally.
+                            alpha = (self.baseline_alpha_fall
+                                     if sg_val < old_bl else self.baseline_alpha)
+                            self._sg_baselines[motor] = (
+                                alpha * sg_val + (1.0 - alpha) * old_bl)
+                            # Shift-clear: window reset while baseline settles
+                            # after a speed change.  Frozen-baseline samples
+                            # never reach this path so shift-clear no longer
+                            # fires during oscillating stalls.
+                            if self.baseline_shift_clear > 0:
+                                new_bl = self._sg_baselines[motor]
+                                if (abs(new_bl - old_bl) / old_bl
+                                        > self.baseline_shift_clear):
+                                    self._sg_windows[motor].clear()
+                            self._in_guard_zone[motor] = False
 
                 # Pre-stall blank countdown (runs in guard zone only).
                 # Window is cleared each sample while the counter is active.
