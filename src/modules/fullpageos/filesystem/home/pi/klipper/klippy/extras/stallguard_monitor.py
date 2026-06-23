@@ -94,6 +94,14 @@ class StallGuardMonitor:
         # confirm your TMC doesn't produce spurious zeros at speed).
         self.stall_zero_count = config.getint(
             'stall_zero_count', 0, minval=0, maxval=200)
+        # Absolute SG floor for adaptive mode: collision only fires when the
+        # window average is ALSO below this value.  Prevents false triggers on
+        # speed changes (direction reversal, fast→slow) where SG drops relative
+        # to the baseline but is still well above stall territory.  A physically
+        # locked rotor reads SG near 0 at any speed; speed-change SG is typically
+        # 30-100% of baseline.  0 = disabled (relative criterion only).
+        self.adaptive_min_sg = config.getint(
+            'adaptive_min_sg', 0, minval=0, maxval=1023)
         # Optional CSV motion trace (set path to auto-start; use SG_TRACE_START at runtime)
         self.trace_file = config.get('trace_file', None)
 
@@ -582,7 +590,10 @@ class StallGuardMonitor:
                     if self.detection_mode == 'adaptive':
                         bl = self._sg_baselines.get(motor)
                         if bl is not None and bl > 0:
-                            if avg < bl * (1.0 - self.drop_fraction):
+                            rel_drop = avg < bl * (1.0 - self.drop_fraction)
+                            abs_floor = (self.adaptive_min_sg == 0
+                                         or avg < self.adaptive_min_sg)
+                            if rel_drop and abs_floor:
                                 self._write_trace(eventtime, motor, int(round(avg)), 'C', _tvel, _tpos)
                                 window.clear()
                                 self._handle_collision(motor, int(round(avg)))
@@ -1061,6 +1072,7 @@ class StallGuardMonitor:
             'sg_baselines':        {m: round(v, 1) for m, v in self._sg_baselines.items()
                                     if v is not None},
             'drop_fraction':       self.drop_fraction,
+            'adaptive_min_sg':     self.adaptive_min_sg,
             'baseline_alpha':      self.baseline_alpha,
             'baseline_alpha_fall': self.baseline_alpha_fall,
             'baseline_guard':      self.baseline_guard,
