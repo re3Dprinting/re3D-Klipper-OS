@@ -89,6 +89,11 @@ class StallGuardMonitor:
             'pre_stall_blank_samples', 0, minval=0, maxval=50)
         self.drop_fraction  = config.getfloat(
             'drop_fraction', 0.40, minval=0.05, maxval=0.95)
+        # Consecutive SG=0 samples (past velocity gate + accel blank) needed to
+        # declare a hard stall.  0 = disabled (safe default — enable once you
+        # confirm your TMC doesn't produce spurious zeros at speed).
+        self.stall_zero_count = config.getint(
+            'stall_zero_count', 0, minval=0, maxval=200)
         # Optional CSV motion trace (set path to auto-start; use SG_TRACE_START at runtime)
         self.trace_file = config.get('trace_file', None)
 
@@ -108,6 +113,8 @@ class StallGuardMonitor:
         self._calibrate_samples = {}     # motor -> [sg_val, ...] during calibration
         self._toolhead          = None   # looked up in _handle_ready
         self._sg_baselines      = {}     # motor -> float EWMA (adaptive mode)
+        self._stall_spike_count = {}     # motor -> consecutive above-trigger count while in guard zone
+        self._sg_zero_counts    = {}     # motor -> consecutive SG=0 count while moving
         self._trace_fh          = None   # file handle for CSV motion trace
         self._trace_writer      = None   # csv.writer for motion trace
 
@@ -157,6 +164,8 @@ class StallGuardMonitor:
                 self._pre_stall_blanks[motor] = 0
                 self._in_guard_zone[motor] = False
                 self._sg_baselines[motor]  = None
+                self._stall_spike_count[motor] = 0
+                self._sg_zero_counts[motor]    = 0
                 names = self._probe_names(tmc)
                 self._reg_names[motor]     = names
                 self.logger.info(
@@ -331,10 +340,12 @@ class StallGuardMonitor:
         """Clear all rolling-average windows, blanking counters, and baselines."""
         for m in self._sg_windows:
             self._sg_windows[m].clear()
-            self._accel_blanks[m]     = self.accel_blank_samples
-            self._pre_stall_blanks[m] = 0
-            self._in_guard_zone[m]    = False
-            self._sg_baselines[m]     = None   # re-initialises on first valid sample
+            self._accel_blanks[m]      = self.accel_blank_samples
+            self._pre_stall_blanks[m]  = 0
+            self._in_guard_zone[m]     = False
+            self._stall_spike_count[m] = 0
+            self._sg_zero_counts[m]    = 0
+            self._sg_baselines[m]      = None   # re-initialises on first valid sample
 
     # ── Polling ───────────────────────────────────────────────────────────────
 
@@ -382,24 +393,28 @@ class StallGuardMonitor:
                     # trigger from a fast move causing false triggers when the
                     # next move is slower.
                     self._sg_windows[motor].clear()
-                    self._accel_blanks[motor]     = self.accel_blank_samples
-                    self._pre_stall_blanks[motor] = 0
-                    self._in_guard_zone[motor]    = False
+                    self._accel_blanks[motor]      = self.accel_blank_samples
+                    self._pre_stall_blanks[motor]  = 0
+                    self._in_guard_zone[motor]     = False
+                    self._stall_spike_count[motor] = 0
+                    self._sg_zero_counts[motor]    = 0
                     if self.detection_mode == 'adaptive':
                         self._sg_baselines[motor] = None
-                    continue
-
-                # SG_RESULT=0 is ambiguous (pre-STST decel or true stall).
-                # Treat as no-data: don't add to window, don't reset it.
-                if sg_val == 0:
                     continue
 
                 # Velocity gate: skip and clear window when the toolhead's
                 # commanded speed is below min_speed_mm_s.  Because this uses
                 # Klipper's own planner velocity it catches both the accel AND
                 # decel phases of every move automatically.
+                # Also resets guard-zone state so that after a low-speed phase
+                # the motor starts fresh — prevents false triggers when a frozen
+                # high-speed baseline is still active after a speed change.
                 if _tvel is not None and _tvel < self.min_speed_mm_s:
                     self._sg_windows[motor].clear()
+                    self._in_guard_zone[motor]     = False
+                    self._pre_stall_blanks[motor]  = 0
+                    self._stall_spike_count[motor] = 0
+                    self._sg_zero_counts[motor]    = 0
                     self._write_trace(eventtime, motor, sg_val, 'V', _tvel, _tpos)
                     continue
 
@@ -410,6 +425,24 @@ class StallGuardMonitor:
                     self._write_trace(eventtime, motor, sg_val, 'A', _tvel, _tpos)
                     continue
 
+                # SG_RESULT=0: ambiguous near decel-to-stop but unambiguous in
+                # a hard physical stall (rotor fully locked at speed).  Counting
+                # consecutive zeros AFTER the velocity gate and accel blank
+                # ensures legitimate near-stop zeros are already filtered out.
+                # stall_zero_count=0 (default) disables this path entirely.
+                if sg_val == 0:
+                    if self.stall_zero_count > 0 and not self._collision_latch:
+                        cnt = self._sg_zero_counts.get(motor, 0) + 1
+                        self._sg_zero_counts[motor] = cnt
+                        if cnt >= self.stall_zero_count:
+                            self._sg_zero_counts[motor] = 0
+                            self._write_trace(
+                                eventtime, motor, 0, 'C', _tvel, _tpos)
+                            self._handle_collision(motor, 0)
+                    continue
+
+                # Non-zero sample: reset consecutive-zero counter.
+                self._sg_zero_counts[motor] = 0
                 self.sg_values[motor] = sg_val
 
                 # Update EWMA baseline (adaptive mode).
@@ -472,21 +505,52 @@ class StallGuardMonitor:
                             self._in_guard_zone[motor] = True
                             # Baseline intentionally NOT updated.
                         else:
-                            # Above trigger: update EWMA normally.
-                            alpha = (self.baseline_alpha_fall
-                                     if sg_val < old_bl else self.baseline_alpha)
-                            self._sg_baselines[motor] = (
-                                alpha * sg_val + (1.0 - alpha) * old_bl)
-                            # Shift-clear: window reset while baseline settles
-                            # after a speed change.  Frozen-baseline samples
-                            # never reach this path so shift-clear no longer
-                            # fires during oscillating stalls.
-                            if self.baseline_shift_clear > 0:
-                                new_bl = self._sg_baselines[motor]
-                                if (abs(new_bl - old_bl) / old_bl
-                                        > self.baseline_shift_clear):
+                            # Above detection trigger.
+                            if self._in_guard_zone.get(motor, False):
+                                # Spike above trigger while guard zone is active
+                                # (oscillating stall: stall → brief spike → stall).
+                                # Count consecutive spikes; only exit guard zone
+                                # after consecutive_triggers samples confirm
+                                # genuine recovery.  Do NOT update the baseline
+                                # on individual spikes — alpha_fall=0.5 would
+                                # rapidly lower the baseline (and thus the
+                                # trigger) on every oscillation cycle, making
+                                # detection impossible.  Do NOT fire shift_clear
+                                # (baseline is frozen, so the EWMA delta is
+                                # effectively zero anyway).
+                                cnt = self._stall_spike_count.get(motor, 0) + 1
+                                self._stall_spike_count[motor] = cnt
+                                if cnt >= self.consecutive_triggers:
+                                    # Genuine recovery confirmed.
+                                    self._in_guard_zone[motor]     = False
+                                    self._stall_spike_count[motor] = 0
+                                    self._pre_stall_blanks[motor]  = 0
+                                    alpha = (self.baseline_alpha_fall
+                                             if sg_val < old_bl
+                                             else self.baseline_alpha)
+                                    self._sg_baselines[motor] = (
+                                        alpha * sg_val + (1.0 - alpha) * old_bl)
+                                    # Clear window on recovery so stale
+                                    # sub-trigger samples don't immediately
+                                    # re-trigger after motor recovers.
                                     self._sg_windows[motor].clear()
-                            self._in_guard_zone[motor] = False
+                            else:
+                                # Normal above-trigger sample (not in guard zone).
+                                self._stall_spike_count[motor] = 0
+                                alpha = (self.baseline_alpha_fall
+                                         if sg_val < old_bl else self.baseline_alpha)
+                                self._sg_baselines[motor] = (
+                                    alpha * sg_val + (1.0 - alpha) * old_bl)
+                                # Shift-clear: window reset while baseline settles
+                                # after a speed change.  Only fires in this normal
+                                # above-trigger path; the frozen-baseline
+                                # oscillation path above never reaches this code.
+                                if self.baseline_shift_clear > 0:
+                                    new_bl = self._sg_baselines[motor]
+                                    if (abs(new_bl - old_bl) / old_bl
+                                            > self.baseline_shift_clear):
+                                        self._sg_windows[motor].clear()
+                                self._in_guard_zone[motor] = False
 
                 # Pre-stall blank countdown (runs in guard zone only).
                 # Window is cleared each sample while the counter is active.
@@ -1005,6 +1069,8 @@ class StallGuardMonitor:
             'collision_detected':  self._collision_latch,
             'trace_active':        self._trace_fh is not None,
             'sg_values':           dict(self.sg_values),
+            'stall_spike_counts':  dict(self._stall_spike_count),
+            'sg_zero_counts':      dict(self._sg_zero_counts),
         }
 
 
