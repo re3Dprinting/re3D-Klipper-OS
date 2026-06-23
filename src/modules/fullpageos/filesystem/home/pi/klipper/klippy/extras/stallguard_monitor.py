@@ -86,7 +86,7 @@ class StallGuardMonitor:
         self.baseline_shift_clear = config.getfloat(
             'baseline_shift_clear', 0.15, minval=0.0, maxval=1.0)
         self.pre_stall_blank_samples = config.getint(
-            'pre_stall_blank_samples', 3, minval=0, maxval=50)
+            'pre_stall_blank_samples', 0, minval=0, maxval=50)
         self.drop_fraction  = config.getfloat(
             'drop_fraction', 0.40, minval=0.05, maxval=0.95)
 
