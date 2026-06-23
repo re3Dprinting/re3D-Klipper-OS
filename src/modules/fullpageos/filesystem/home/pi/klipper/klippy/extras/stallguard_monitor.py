@@ -83,6 +83,8 @@ class StallGuardMonitor:
             minval=0.01, maxval=0.99)
         self.baseline_guard = config.getfloat(
             'baseline_guard', 0.15, minval=0.0, maxval=0.5)
+        self.baseline_shift_clear = config.getfloat(
+            'baseline_shift_clear', 0.15, minval=0.0, maxval=1.0)
         self.drop_fraction  = config.getfloat(
             'drop_fraction', 0.40, minval=0.05, maxval=0.95)
 
@@ -325,15 +327,29 @@ class StallGuardMonitor:
                 # rise-alpha (load increase / higher speed).  This lets the
                 # trigger level catch up quickly after a speed drop without
                 # waiting many samples for the EWMA to converge.
+                #
+                # Shift-clear: if the baseline itself moved by more than
+                # baseline_shift_clear in one step the detection window is
+                # cleared.  When baseline is FROZEN (collision → guard hit,
+                # shift = 0) the window is NOT cleared so detection fires.
+                # When baseline is ADAPTING (speed change, large shift) the
+                # window resets each sample until the baseline stabilises,
+                # preventing the window from filling against a stale trigger.
                 if self.detection_mode == 'adaptive':
-                    bl = self._sg_baselines.get(motor)
-                    if bl is None:
+                    old_bl = self._sg_baselines.get(motor)
+                    if old_bl is None:
                         self._sg_baselines[motor] = float(sg_val)
-                    elif sg_val >= bl * self.baseline_guard:
+                    elif sg_val >= old_bl * self.baseline_guard:
                         alpha = (self.baseline_alpha_fall
-                                 if sg_val < bl else self.baseline_alpha)
+                                 if sg_val < old_bl else self.baseline_alpha)
                         self._sg_baselines[motor] = (
-                            alpha * sg_val + (1.0 - alpha) * bl)
+                            alpha * sg_val + (1.0 - alpha) * old_bl)
+                        # Clear window while baseline is still settling
+                        if self.baseline_shift_clear > 0:
+                            new_bl = self._sg_baselines[motor]
+                            if (abs(new_bl - old_bl) / old_bl
+                                    > self.baseline_shift_clear):
+                                self._sg_windows[motor].clear()
 
                 # Collect samples for SG_CALIBRATE if active
                 if self._calibrating and motor in self._calibrate_samples:
@@ -442,10 +458,20 @@ class StallGuardMonitor:
         # Clear the window so we don't immediately re-trigger after SG_RESET
         self._reset_windows()
 
+        if self.detection_mode == 'adaptive':
+            bl = self._sg_baselines.get(motor)
+            if bl is not None and bl > 0:
+                thr_info = "trigger={} (adaptive, bl={:.0f})".format(
+                    int(bl * (1.0 - self.drop_fraction)), bl)
+            else:
+                thr_info = "threshold={} (adaptive warmup)".format(
+                    self._motor_thresholds.get(motor, self.collision_threshold))
+        else:
+            thr_info = "threshold={}".format(
+                self._motor_thresholds.get(motor, self.collision_threshold))
+
         msg = ("!! stallguard_monitor: COLLISION on {} "
-               "(SG_RESULT={}, threshold={})".format(
-                   motor, sg_val,
-                   self._motor_thresholds.get(motor, self.collision_threshold)))
+               "(SG_RESULT={}, {})".format(motor, sg_val, thr_info))
         self.logger.warning(msg)
 
         if self.action == 'emergency_stop':
@@ -792,6 +818,7 @@ class StallGuardMonitor:
             'baseline_alpha':      self.baseline_alpha,
             'baseline_alpha_fall': self.baseline_alpha_fall,
             'baseline_guard':      self.baseline_guard,
+            'baseline_shift_clear': self.baseline_shift_clear,
             'collision_detected':  self._collision_latch,
             'sg_values':           dict(self.sg_values),
         }
