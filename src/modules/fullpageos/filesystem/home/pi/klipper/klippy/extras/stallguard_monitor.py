@@ -458,6 +458,17 @@ class StallGuardMonitor:
                                 window = self._sg_windows[motor]
                                 if all(s >= trigger_val for s in window):
                                     window.clear()
+                                # Arm pre-stall blank.  During a planned
+                                # decel-to-stop the blank absorbs the low-SG
+                                # samples that appear near zero velocity; STST
+                                # latches during the blank and the standstill
+                                # handler resets everything → no trigger.
+                                # During a forced stall Klipper keeps sending
+                                # step pulses so STST never latches; the blank
+                                # expires and detection fires on the still-low
+                                # frozen-baseline window.
+                                self._pre_stall_blanks[motor] = (
+                                    self.pre_stall_blank_samples)
                             self._in_guard_zone[motor] = True
                             # Baseline intentionally NOT updated.
                         else:
