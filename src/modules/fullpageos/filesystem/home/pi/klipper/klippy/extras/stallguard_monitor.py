@@ -195,11 +195,15 @@ class StallGuardMonitor:
     def _handle_homing_end(self, homing_state, rails):
         """Disarm monitoring when G28 homing completes."""
         self._homing_active = False
+        # Always flush windows and latch when homing ends so any SG=0 samples
+        # accumulated during endstop loading don't carry over into printing.
+        self._collision_latch = False
+        self._reset_windows()
         if self.homing_only:
             self._stop_monitoring()
-            self._collision_latch = False
-            self._reset_windows()
             self.logger.info("stallguard_monitor: homing complete — monitoring disarmed")
+        else:
+            self.logger.info("stallguard_monitor: homing complete — windows cleared, monitoring continues")
 
     def _handle_disconnect(self):
         """Flush and close the trace file on printer disconnect or shutdown."""
