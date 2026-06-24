@@ -104,6 +104,14 @@ class StallGuardMonitor:
         self.accel_blank_samples = config.getint(
             'accel_blank_samples', 3, minval=0, maxval=50)
 
+        # Steady-velocity gate (mm/s^2): skip SG while the toolhead is
+        # accelerating OR decelerating faster than this.  During hard decel the
+        # motor is back-driven and SG_RESULT collapses to ~0 even though the
+        # axis is still moving fast (the classic decel false trigger).  Cruise
+        # has ~0 acceleration, so SG is only judged at steady speed.  0 = off.
+        self.max_accel_mm_s2 = config.getfloat(
+            'max_accel_mm_s2', 500., minval=0., maxval=100000.)
+
         self.action = config.getchoice(
             'collision_action',
             {'none': 'none', 'm117': 'm117', 'pause': 'pause',
@@ -141,6 +149,8 @@ class StallGuardMonitor:
         self._calibrate_samples = {}     # motor -> [sg_val, ...] during calibration
         self._motion_report     = None   # [motion_report] object for live velocity
         self._have_velocity     = False  # True if a velocity source is available
+        self._prev_vel          = None   # last poll's planner velocity (mm/s)
+        self._prev_vel_time     = None   # eventtime of last velocity sample
         self._trace_fh          = None   # file handle for CSV motion trace
         self._trace_writer      = None   # csv.writer for motion trace
 
@@ -281,7 +291,7 @@ class StallGuardMonitor:
         """
         Write one row to the motion trace CSV.
         state codes: M=moving(>=thresh), G=below_thresh, A=accel_blank,
-                     V=vel_gated, C=collision
+                     V=vel_gated, D=accel/decel_gated, C=collision
         Called from the reactor callback — all exceptions silently swallowed.
         """
         if self._trace_writer is None:
@@ -401,6 +411,31 @@ class StallGuardMonitor:
 
         vel = self._get_velocity(eventtime)
         pos = self._get_position(eventtime) if self._trace_writer is not None else None
+
+        # Live acceleration from the change in planner velocity between polls.
+        accel = None
+        if (vel is not None and self._prev_vel is not None
+                and self._prev_vel_time is not None):
+            dt = eventtime - self._prev_vel_time
+            if dt > 0:
+                accel = abs(vel - self._prev_vel) / dt
+        self._prev_vel      = vel
+        self._prev_vel_time = eventtime
+
+        # Steady-velocity gate: skip every motor while the toolhead is
+        # accelerating OR decelerating.  During hard decel the motor is
+        # back-driven and SG_RESULT briefly collapses to ~0 even though the axis
+        # is still moving fast — the classic decel false trigger.  Judging SG
+        # only at near-constant (cruise) velocity removes it; a real collision
+        # happens at steady commanded speed (Klipper is open-loop, so the
+        # planner velocity stays constant while SG drops) and is still caught.
+        if (self.max_accel_mm_s2 > 0 and accel is not None
+                and accel > self.max_accel_mm_s2):
+            for motor in self.tmc_drivers:
+                self._sg_windows[motor].clear()
+                self._accel_blanks[motor] = self.accel_blank_samples
+                self._write_trace(eventtime, motor, '', 'D', vel, pos)
+            return eventtime + self.poll_interval
 
         # Velocity gate: below the gate (standstill, accel start, decel end) SG
         # is unreliable — skip every motor and clear the windows so detection
@@ -593,9 +628,9 @@ class StallGuardMonitor:
         vel_str = ("{:.1f} mm/s".format(vel) if vel is not None else "n/a")
         lines = [
             "StallGuard Monitor  action={}  monitoring={}  "
-            "default_threshold={}  min_speed={:.1f}  vel={}".format(
+            "default_threshold={}  min_speed={:.1f}  max_accel={:.0f}  vel={}".format(
                 self.action, mode, self.collision_threshold,
-                self.min_speed_mm_s, vel_str),
+                self.min_speed_mm_s, self.max_accel_mm_s2, vel_str),
             "  {:<16} {:>10}  {:>9}  {}".format(
                 "motor", "SG_RESULT", "threshold", "state"),
         ]
@@ -930,6 +965,7 @@ class StallGuardMonitor:
             'homing_active':       self._homing_active,
             'collision_threshold': self.collision_threshold,
             'min_speed_mm_s':      self.min_speed_mm_s,
+            'max_accel_mm_s2':     self.max_accel_mm_s2,
             'motor_thresholds':    dict(self._motor_thresholds),
             'collision_detected':  self._collision_latch,
             'trace_active':        self._trace_fh is not None,
