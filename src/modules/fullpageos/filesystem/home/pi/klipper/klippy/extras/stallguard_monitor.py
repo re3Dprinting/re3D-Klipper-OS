@@ -112,6 +112,18 @@ class StallGuardMonitor:
         self.max_accel_mm_s2 = config.getfloat(
             'max_accel_mm_s2', 500., minval=0., maxval=100000.)
 
+        # Pre-stall blank: number of consecutive below-threshold samples to wait
+        # out BEFORE counting toward a trigger.  This is the reliable decel
+        # discriminator: SG_RESULT and the standstill (STST) flag come from the
+        # SAME DRV_STATUS read, so they are perfectly time-aligned (unlike the
+        # velocity feed, which can lag the motor by 100s of ms).  On a normal
+        # decel-to-stop the motor reaches standstill within ~1-2 full-step
+        # periods and STST sets during this blank, clearing the window so it
+        # never fires.  In a real collision Klipper keeps sending step pulses,
+        # STST never sets, so the streak survives the blank and fires.
+        self.pre_stall_blank_samples = config.getint(
+            'pre_stall_blank_samples', 8, minval=0, maxval=100)
+
         self.action = config.getchoice(
             'collision_action',
             {'none': 'none', 'm117': 'm117', 'pause': 'pause',
@@ -140,6 +152,7 @@ class StallGuardMonitor:
         self.sg_values          = {}   # motor_name -> last SG_RESULT int or None
         self._sg_windows        = {}   # motor_name -> deque(maxlen=consecutive_triggers)
         self._accel_blanks      = {}   # motor_name -> int countdown after gate cross
+        self._below_streaks     = {}   # motor_name -> consecutive below-thresh count
         self._reg_names         = {}   # motor_name -> {reg, sg, stst, stst_reg}
         self.monitoring         = False
         self._timer_handle      = None
@@ -200,6 +213,7 @@ class StallGuardMonitor:
                 self.sg_values[motor]     = None
                 self._sg_windows[motor]   = deque(maxlen=self.consecutive_triggers)
                 self._accel_blanks[motor] = self.accel_blank_samples
+                self._below_streaks[motor] = 0
                 names = self._probe_names(tmc)
                 self._reg_names[motor]    = names
                 self.logger.info(
@@ -374,7 +388,8 @@ class StallGuardMonitor:
         """Clear all detection windows and blanking counters."""
         for m in self._sg_windows:
             self._sg_windows[m].clear()
-            self._accel_blanks[m] = self.accel_blank_samples
+            self._accel_blanks[m]  = self.accel_blank_samples
+            self._below_streaks[m] = 0
 
     def _get_velocity(self, eventtime):
         """Return the live planner velocity in mm/s, or None if unavailable."""
@@ -433,7 +448,8 @@ class StallGuardMonitor:
                 and accel > self.max_accel_mm_s2):
             for motor in self.tmc_drivers:
                 self._sg_windows[motor].clear()
-                self._accel_blanks[motor] = self.accel_blank_samples
+                self._accel_blanks[motor]  = self.accel_blank_samples
+                self._below_streaks[motor] = 0
                 self._write_trace(eventtime, motor, '', 'D', vel, pos)
             return eventtime + self.poll_interval
 
@@ -445,7 +461,8 @@ class StallGuardMonitor:
         if gated:
             for motor in self.tmc_drivers:
                 self._sg_windows[motor].clear()
-                self._accel_blanks[motor] = self.accel_blank_samples
+                self._accel_blanks[motor]  = self.accel_blank_samples
+                self._below_streaks[motor] = 0
                 self._write_trace(eventtime, motor, '', 'V', vel, pos)
             return eventtime + self.poll_interval
 
@@ -459,9 +476,13 @@ class StallGuardMonitor:
                 standstill = bool(raw & _STST_BIT)
 
                 if standstill:
-                    # Motor reports standstill — SG is meaningless here.
+                    # Motor reports standstill — SG is meaningless here.  This
+                    # is the discriminator: a normal stop reaches standstill and
+                    # clears any in-progress below-threshold streak before it can
+                    # fire.
                     self._sg_windows[motor].clear()
-                    self._accel_blanks[motor] = self.accel_blank_samples
+                    self._accel_blanks[motor]  = self.accel_blank_samples
+                    self._below_streaks[motor] = 0
                     continue
 
                 # Settle blanking right after the axis first crosses the gate.
@@ -485,20 +506,28 @@ class StallGuardMonitor:
                     # recovery spike (direction change, speed change, decel)
                     # resets the detector before it can fire.
                     window.clear()
+                    self._below_streaks[motor] = 0
                     self._write_trace(eventtime, motor, sg_val, 'M', vel, pos)
                     continue
 
-                # Below threshold — accumulate toward a collision.  The
-                # threshold should be a LOW value only reached when the rotor is
-                # physically blocked; normal motion at any speed stays above it.
+                # Below threshold — potential collision.  First wait out the
+                # pre-stall blank: SG_RESULT and STST share one register read,
+                # so on a normal decel-to-stop STST sets during the blank (the
+                # standstill branch above clears the streak) and we never fire.
+                # A real stall keeps stepping (STST stays 0) so the streak
+                # survives the blank and then accumulates toward a trigger.
                 self._write_trace(eventtime, motor, sg_val, 'G', vel, pos)
                 if self._collision_latch:
+                    continue
+                self._below_streaks[motor] += 1
+                if self._below_streaks[motor] <= self.pre_stall_blank_samples:
                     continue
                 window.append(sg_val)
                 if len(window) == window.maxlen:
                     avg = int(round(sum(window) / window.maxlen))
                     self._write_trace(eventtime, motor, avg, 'C', vel, pos)
                     window.clear()
+                    self._below_streaks[motor] = 0
                     self._handle_collision(motor, avg)
 
         except Exception:
@@ -628,9 +657,11 @@ class StallGuardMonitor:
         vel_str = ("{:.1f} mm/s".format(vel) if vel is not None else "n/a")
         lines = [
             "StallGuard Monitor  action={}  monitoring={}  "
-            "default_threshold={}  min_speed={:.1f}  max_accel={:.0f}  vel={}".format(
+            "default_threshold={}  min_speed={:.1f}  max_accel={:.0f}  "
+            "blank={}  vel={}".format(
                 self.action, mode, self.collision_threshold,
-                self.min_speed_mm_s, self.max_accel_mm_s2, vel_str),
+                self.min_speed_mm_s, self.max_accel_mm_s2,
+                self.pre_stall_blank_samples, vel_str),
             "  {:<16} {:>10}  {:>9}  {}".format(
                 "motor", "SG_RESULT", "threshold", "state"),
         ]
@@ -966,6 +997,7 @@ class StallGuardMonitor:
             'collision_threshold': self.collision_threshold,
             'min_speed_mm_s':      self.min_speed_mm_s,
             'max_accel_mm_s2':     self.max_accel_mm_s2,
+            'pre_stall_blank':     self.pre_stall_blank_samples,
             'motor_thresholds':    dict(self._motor_thresholds),
             'collision_detected':  self._collision_latch,
             'trace_active':        self._trace_fh is not None,
