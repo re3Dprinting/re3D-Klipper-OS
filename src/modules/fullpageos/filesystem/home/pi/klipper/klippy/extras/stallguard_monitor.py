@@ -1,34 +1,65 @@
 # stallguard_monitor.py
 #
-# Klipper extra: monitor TMC StallGuard values during motion to detect
-# collisions and physical stalls before damage occurs.
+# Klipper extra: print-collision detection using TMC StallGuard.
 #
-# Inspired by Prusa MK3S/TMC2130 crash detection:
-#   • Fixed absolute threshold — only reached when the rotor is truly blocked
-#   • Window clears on any above-threshold sample (direction changes and speed
-#     changes produce SG well above a near-zero stall threshold, so they reset
-#     the detector rather than accumulating toward a false trigger)
-#   • Hardware TCOOLTHRS gates StallGuard in the chip at low step rates
-#   • Hardware SFILT (4-full-step filter) suppresses per-step noise
+# GOAL
+# ────
+# Detect a *physical collision* during printing — the toolhead or gantry hits
+# the printed part, a clip, or the frame — and stop before damage occurs.
+# It deliberately does NOTHING during homing (G28), and only looks at the
+# motors while they are actually cruising during a normal/printing move.
 #
-# For each configured TMC driver, add to its Klipper section:
+# WHY THIS IS RELIABLE (and simple to tune)
+# ──────────────────────────────────────────────
+# A collision blocks the rotor, so SG_RESULT collapses to ~0 *at any speed*.
+# Normal motion — fast travel, slow perimeters, corners — keeps SG well above a
+# low threshold.  Three things remove every common false-trigger source:
+#
+#   1. HOMING SUPPRESSION   — monitoring is muted for the whole G28 sequence,
+#                             so endstop loading never looks like a stall.
+#   2. VELOCITY GATE        — SG is only evaluated while the live planner
+#                             velocity (from [motion_report]) is above
+#                             min_speed_mm_s.  This drops during BOTH
+#                             acceleration and deceleration, so the unreliable
+#                             low-speed parts of every move are skipped.
+#   3. LOW THRESHOLD + N    — a near-zero threshold reached only by a blocked
+#                             rotor, confirmed by N consecutive samples; the
+#                             window clears the instant SG recovers.
+#
+# TUNING (no false triggers, no missed stalls)
+# ────────────────────────────────────────────
+#   1. Set  collision_action: none   (log only)
+#   2. Run a normal print (or SG_CALIBRATE) with SG_TRACE_START and note the
+#      LOWEST SG seen during real printing moves above min_speed_mm_s.
+#   3. Set collision_threshold to roughly HALF that minimum (keep it low,
+#      typically 10-30).  Set min_speed_mm_s just below your slowest real
+#      printing speed.
+#   4. Hand-block an axis mid-move to confirm it fires, then set
+#      collision_action: pause (or emergency_stop).
+#
+# collision_action choices:
+#   none           - log to console only
+#   m117           - show the hit on the printer display, motion NOT stopped
+#                    (use this to test detection without interrupting a print)
+#   pause          - run the PAUSE macro
+#   emergency_stop - immediate MCU shutdown
+#
+# Recommended per-TMC settings (add to each [tmc5160 stepper_x] block, etc.):
 #   driver_SGT:       0    # stall sensitivity: -64..63, lower = more sensitive
-#   driver_TCOOLTHRS: 500  # hardware speed gate (~15 mm/s at 12 MHz, 100 s/mm)
-#   driver_SFILT:     1    # 4-full-step hardware filtering during printing
+#   driver_SFILT:     1    # 4-full-step hardware filtering (smoother SG)
+#   driver_TCOOLTHRS: 500  # optional hardware speed gate (belt-and-suspenders)
 #
-# GCode commands exposed:
-#   SG_STATUS                     - print current SG_RESULT for all motors
-#   SG_START                      - enable monitoring
-#   SG_STOP                       - disable monitoring
-#   SG_SET_THRESHOLD THRESHOLD=N  - change threshold at runtime
-#   SG_RESET                      - clear collision latch so printing can resume
-#   SG_CALIBRATE                  - move each axis and report SG statistics
-#   SG_DIAG                       - diagnose TMC register read path
-#   SG_TRACE_START                - start CSV motion trace
-#   SG_TRACE_STOP                 - stop CSV motion trace
+# GCode commands:
+#   SG_STATUS                       - report SG_RESULT + threshold per motor
+#   SG_START / SG_STOP              - enable / disable monitoring
+#   SG_SET_THRESHOLD THRESHOLD=N    - change threshold at runtime (+ MOTOR=name)
+#   SG_SET_SPEED SPEED=N            - change the velocity gate at runtime
+#   SG_RESET                        - clear collision latch so printing resumes
+#   SG_CALIBRATE                    - move each axis and report SG statistics
+#   SG_DIAG                         - diagnose the TMC register read path
+#   SG_TRACE_START / SG_TRACE_STOP  - CSV motion trace for tuning
 #
 # Place this file at ~/klipper/klippy/extras/stallguard_monitor.py
-# Add [stallguard_monitor] to printer.cfg (see stallguard_standalone.cfg)
 
 import logging
 import math
@@ -52,59 +83,64 @@ class StallGuardMonitor:
 
         # ── Configuration ────────────────────────────────────────────────────
         self.poll_interval = config.getfloat(
-            'poll_interval', 0.1, minval=0.02, maxval=5.0)
+            'poll_interval', 0.02, minval=0.01, maxval=5.0)
         self.motor_names = config.getlist('motors')
+
+        # Threshold: a LOW value (10-30) reached only when the rotor is blocked.
         self.collision_threshold = config.getint(
-            'collision_threshold', 100, minval=0, maxval=1023)
+            'collision_threshold', 20, minval=0, maxval=1023)
+
+        # Consecutive below-threshold samples required to declare a collision.
         self.consecutive_triggers = config.getint(
-            'consecutive_triggers', 4, minval=1, maxval=50)
+            'consecutive_triggers', 3, minval=1, maxval=50)
+
+        # Velocity gate (mm/s): SG is only evaluated when the live planner
+        # velocity is at or above this.  Covers accel AND decel ramps.
+        self.min_speed_mm_s = config.getfloat(
+            'min_speed_mm_s', 20., minval=0., maxval=1000.)
+
+        # Samples to discard each time the axis first crosses the velocity gate
+        # (settle time for SG right after the speed ramps up).
         self.accel_blank_samples = config.getint(
-            'accel_blank_samples', 4, minval=0, maxval=50)
+            'accel_blank_samples', 3, minval=0, maxval=50)
+
         self.action = config.getchoice(
             'collision_action',
-            {'none': 'none', 'pause': 'pause', 'emergency_stop': 'emergency_stop'},
+            {'none': 'none', 'm117': 'm117', 'pause': 'pause',
+             'emergency_stop': 'emergency_stop'},
             'pause')
-        self.enabled      = config.getboolean('enabled', True)
-        self.homing_only  = config.getboolean('homing_only', True)
+        self.enabled = config.getboolean('enabled', True)
 
-        # Per-motor threshold overrides (falls back to collision_threshold if absent)
+        # Per-motor threshold overrides (fall back to collision_threshold).
         self._motor_thresholds = {}
         for motor in self.motor_names:
             key = 'collision_threshold_' + motor.replace(' ', '_')
             self._motor_thresholds[motor] = config.getint(
                 key, self.collision_threshold, minval=0, maxval=1023)
 
-        # Baseline calibration parameters
+        # SG_CALIBRATE move parameters.
         self.calibrate_distance = config.getfloat(
             'calibrate_distance', 20., minval=5., maxval=200.)
         self.calibrate_speed = config.getfloat(
             'calibrate_speed', 50., minval=5., maxval=300.)
 
-        # Software velocity gate — backup for hardware TCOOLTHRS.
-        # Prefer setting driver_TCOOLTHRS in each TMC section (hardware gate).
-        self.min_speed_mm_s = config.getfloat(
-            'min_speed_mm_s', 0., minval=0., maxval=500.)
-        # Consecutive SG=0 samples past velocity gate and accel blank needed to
-        # declare a hard stall.  0 = disabled (safe default).
-        self.stall_zero_count = config.getint(
-            'stall_zero_count', 0, minval=0, maxval=200)
-        # Optional CSV motion trace (set path to auto-start; use SG_TRACE_START at runtime)
+        # Optional CSV motion trace (set a path to auto-start at boot).
         self.trace_file = config.get('trace_file', None)
 
         # ── Runtime state ────────────────────────────────────────────────────
         self.tmc_drivers        = {}   # motor_name -> tmc object
         self.sg_values          = {}   # motor_name -> last SG_RESULT int or None
         self._sg_windows        = {}   # motor_name -> deque(maxlen=consecutive_triggers)
-        self._accel_blanks      = {}   # motor_name -> int countdown after standstill
-        self._sg_zero_counts    = {}   # motor -> consecutive SG=0 count while moving
+        self._accel_blanks      = {}   # motor_name -> int countdown after gate cross
         self._reg_names         = {}   # motor_name -> {reg, sg, stst, stst_reg}
         self.monitoring         = False
         self._timer_handle      = None
         self._collision_latch   = False  # set on first collision; cleared by SG_RESET
-        self._homing_active     = False  # True while G28 is running
+        self._homing_active     = False  # True while G28 is running -> never fire
         self._calibrating       = False  # True during SG_CALIBRATE move
         self._calibrate_samples = {}     # motor -> [sg_val, ...] during calibration
-        self._toolhead          = None   # looked up in _handle_ready
+        self._motion_report     = None   # [motion_report] object for live velocity
+        self._have_velocity     = False  # True if a velocity source is available
         self._trace_fh          = None   # file handle for CSV motion trace
         self._trace_writer      = None   # csv.writer for motion trace
 
@@ -123,7 +159,10 @@ class StallGuardMonitor:
             desc="Disable StallGuard collision monitoring")
         self.gcode.register_command(
             'SG_SET_THRESHOLD', self.cmd_SG_SET_THRESHOLD,
-            desc="Set StallGuard collision threshold (SG_SET_THRESHOLD THRESHOLD=100)")
+            desc="Set StallGuard collision threshold (SG_SET_THRESHOLD THRESHOLD=20)")
+        self.gcode.register_command(
+            'SG_SET_SPEED', self.cmd_SG_SET_SPEED,
+            desc="Set the velocity gate in mm/s (SG_SET_SPEED SPEED=20)")
         self.gcode.register_command(
             'SG_RESET', self.cmd_SG_RESET,
             desc="Clear StallGuard collision latch so monitoring resumes")
@@ -147,13 +186,12 @@ class StallGuardMonitor:
         for motor in self.motor_names:
             tmc = self._find_tmc_driver(motor)
             if tmc is not None:
-                self.tmc_drivers[motor]    = tmc
-                self.sg_values[motor]      = None
-                self._sg_windows[motor]     = deque(maxlen=self.consecutive_triggers)
-                self._accel_blanks[motor]   = self.accel_blank_samples
-                self._sg_zero_counts[motor] = 0
+                self.tmc_drivers[motor]   = tmc
+                self.sg_values[motor]     = None
+                self._sg_windows[motor]   = deque(maxlen=self.consecutive_triggers)
+                self._accel_blanks[motor] = self.accel_blank_samples
                 names = self._probe_names(tmc)
-                self._reg_names[motor]     = names
+                self._reg_names[motor]    = names
                 self.logger.info(
                     "stallguard_monitor: '%s' reg=%s sg=%s stst=%s",
                     motor, names.get('reg'), names.get('sg'), names.get('stst'))
@@ -166,44 +204,42 @@ class StallGuardMonitor:
                 "stallguard_monitor: no drivers found; monitoring disabled")
             return
 
-        # Register homing events regardless of homing_only so SG_START / SG_STOP
-        # still work manually when homing_only is False.
+        # Velocity source — [motion_report] is standard on all modern Klipper
+        # builds and gives the live planner velocity (drops on accel AND decel).
+        self._motion_report = self.printer.lookup_object('motion_report', None)
+        self._have_velocity = self._motion_report is not None
+        if not self._have_velocity:
+            self.logger.warning(
+                "stallguard_monitor: [motion_report] not found — velocity gate "
+                "disabled; relying on accel_blank_samples + threshold only")
+
+        # Homing suppression — mute monitoring for the whole G28 sequence.
         self.printer.register_event_handler(
             "homing:home_rails_begin", self._handle_homing_begin)
         self.printer.register_event_handler(
             "homing:home_rails_end",   self._handle_homing_end)
+        self.printer.register_event_handler(
+            "klippy:disconnect", self._handle_disconnect)
 
-        self._toolhead = self.printer.lookup_object('toolhead', None)
-        self.printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
         if self.trace_file:
             self._open_trace_file(self.trace_file)
 
-        if self.enabled and not self.homing_only:
+        if self.enabled:
             self._start_monitoring()
 
     def _handle_homing_begin(self, homing_state, rails):
-        """Auto-arm monitoring at the start of any G28 homing move."""
-        if not self.enabled:
-            return
-        self._homing_active   = True
-        self._collision_latch = False
+        """Mute monitoring at the start of any G28 homing move."""
+        self._homing_active = True
         self._reset_windows()
-        if not self.monitoring:
-            self._start_monitoring()
-        self.logger.info("stallguard_monitor: homing started — monitoring armed")
+        self.logger.info("stallguard_monitor: homing started — monitoring muted")
 
     def _handle_homing_end(self, homing_state, rails):
-        """Disarm monitoring when G28 homing completes."""
+        """Un-mute monitoring when G28 homing completes."""
         self._homing_active = False
-        # Always flush windows and latch when homing ends so any SG=0 samples
-        # accumulated during endstop loading don't carry over into printing.
-        self._collision_latch = False
+        # Clear anything accumulated during endstop loading so it cannot carry
+        # over into the first printing move.
         self._reset_windows()
-        if self.homing_only:
-            self._stop_monitoring()
-            self.logger.info("stallguard_monitor: homing complete — monitoring disarmed")
-        else:
-            self.logger.info("stallguard_monitor: homing complete — windows cleared, monitoring continues")
+        self.logger.info("stallguard_monitor: homing complete — monitoring resumed")
 
     def _handle_disconnect(self):
         """Flush and close the trace file on printer disconnect or shutdown."""
@@ -307,10 +343,13 @@ class StallGuardMonitor:
         self.monitoring    = True
         self._timer_handle = self.reactor.register_timer(
             self._poll_callback, self.reactor.NOW)
-        self.logger.info("stallguard_monitor: monitoring started "
-                         "(threshold=%d, action=%s, poll=%.2fs, window=%d, blank=%d)",
-                         self.collision_threshold, self.action, self.poll_interval,
-                         self.consecutive_triggers, self.accel_blank_samples)
+        self.logger.info(
+            "stallguard_monitor: monitoring started "
+            "(threshold=%d, action=%s, poll=%.3fs, window=%d, "
+            "min_speed=%.1f, blank=%d)",
+            self.collision_threshold, self.action, self.poll_interval,
+            self.consecutive_triggers, self.min_speed_mm_s,
+            self.accel_blank_samples)
 
     def _stop_monitoring(self):
         self.monitoring = False
@@ -325,8 +364,28 @@ class StallGuardMonitor:
         """Clear all detection windows and blanking counters."""
         for m in self._sg_windows:
             self._sg_windows[m].clear()
-            self._accel_blanks[m]   = self.accel_blank_samples
-            self._sg_zero_counts[m] = 0
+            self._accel_blanks[m] = self.accel_blank_samples
+
+    def _get_velocity(self, eventtime):
+        """Return the live planner velocity in mm/s, or None if unavailable."""
+        if not self._have_velocity:
+            return None
+        try:
+            v = self._motion_report.get_status(eventtime).get('live_velocity')
+            if v is not None:
+                return abs(float(v))
+        except Exception:
+            pass
+        return None
+
+    def _get_position(self, eventtime):
+        """Return live [x, y, z, e] for trace logging, or None."""
+        if self._motion_report is None:
+            return None
+        try:
+            return self._motion_report.get_status(eventtime).get('live_position')
+        except Exception:
+            return None
 
     # ── Polling ───────────────────────────────────────────────────────────────
 
@@ -334,28 +393,26 @@ class StallGuardMonitor:
         if not self.monitoring:
             return self.reactor.NEVER
 
-        # Cache toolhead commanded velocity once per poll (covers all motors).
-        # This reflects Klipper's trapezoid planner so it drops naturally during
-        # both acceleration AND deceleration phases.
-        _tvel = None
-        if self.min_speed_mm_s > 0 and self._toolhead is not None:
-            try:
-                v = self._toolhead.get_status(eventtime).get('velocity')
-                if v is not None:
-                    _tvel = abs(float(v))
-                # If 'velocity' is absent from toolhead status (older Klipper
-                # builds do not expose it), _tvel stays None and gating is
-                # skipped — accel_blank_samples handles the accel phase alone.
-            except Exception:
-                pass
+        # Homing: never evaluate, keep windows clear, but keep the timer alive
+        # so monitoring resumes automatically when G28 finishes.
+        if self._homing_active:
+            self._reset_windows()
+            return eventtime + self.poll_interval
 
-        # Cache toolhead position once per poll for trace logging.
-        _tpos = None
-        if self._trace_writer is not None and self._toolhead is not None:
-            try:
-                _tpos = self._toolhead.get_position()
-            except Exception:
-                pass
+        vel = self._get_velocity(eventtime)
+        pos = self._get_position(eventtime) if self._trace_writer is not None else None
+
+        # Velocity gate: below the gate (standstill, accel start, decel end) SG
+        # is unreliable — skip every motor and clear the windows so detection
+        # requires fresh consecutive samples once cruising resumes.
+        gated = (self.min_speed_mm_s > 0 and vel is not None
+                 and vel < self.min_speed_mm_s)
+        if gated:
+            for motor in self.tmc_drivers:
+                self._sg_windows[motor].clear()
+                self._accel_blanks[motor] = self.accel_blank_samples
+                self._write_trace(eventtime, motor, '', 'V', vel, pos)
+            return eventtime + self.poll_interval
 
         try:
             for motor, tmc in self.tmc_drivers.items():
@@ -367,65 +424,17 @@ class StallGuardMonitor:
                 standstill = bool(raw & _STST_BIT)
 
                 if standstill:
-                    # Motor stopped or standstill indicator set.
-                    #
-                    # During homing (_homing_active=True): STST means the
-                    # motor hit its endstop — an expected event, not a stall.
-                    # Always clear the window so we don't fire on endstop load.
-                    # Crash detection before the endstop still works: a crash
-                    # fills the window with SG=0 before STST ever sets.
-                    #
-                    # During printing (_homing_active=False): only clear the
-                    # window when it is empty (genuine inter-move standstill).
-                    # If the window has below-threshold samples, a STST flip is
-                    # almost certainly rotor oscillation during a hard stall
-                    # (TMC drives pulses → rotor hits block → STST=1 → retries).
-                    # Preserving the samples lets the next non-STST SG=0 sample
-                    # complete the window in ~60 ms rather than seconds.
-                    self._sg_zero_counts[motor] = 0
-                    if self._homing_active or not self._sg_windows[motor]:
-                        self._accel_blanks[motor] = self.accel_blank_samples
-                        self._sg_windows[motor].clear()
-                    # Either way, skip this sample (SG unreliable during STST).
-                    continue
-
-                # Velocity gate: skip and clear window when the toolhead's
-                # commanded speed is below min_speed_mm_s (software backup for
-                # hardware TCOOLTHRS).  Clears the window so detection requires
-                # fresh consecutive samples after the low-speed phase.
-                if _tvel is not None and _tvel < self.min_speed_mm_s:
+                    # Motor reports standstill — SG is meaningless here.
                     self._sg_windows[motor].clear()
-                    self._sg_zero_counts[motor] = 0
-                    self._write_trace(eventtime, motor, sg_val, 'V', _tvel, _tpos)
+                    self._accel_blanks[motor] = self.accel_blank_samples
                     continue
 
-                # Sample-count blanking right after standstill clears.
-                # Handles the brief ramp-up before the velocity gate takes over.
+                # Settle blanking right after the axis first crosses the gate.
                 if self._accel_blanks[motor] > 0:
                     self._accel_blanks[motor] -= 1
-                    self._write_trace(eventtime, motor, sg_val, 'A', _tvel, _tpos)
+                    self._write_trace(eventtime, motor, sg_val, 'A', vel, pos)
                     continue
 
-                # SG_RESULT=0: a blocked rotor at speed reliably reads 0.
-                # If stall_zero_count > 0: use the dedicated consecutive-zero
-                # path and skip the main window to avoid double-firing.
-                # If stall_zero_count == 0 (default): fall through to the main
-                # threshold comparison — 0 < threshold(15) so it accumulates in
-                # the detection window and fires after consecutive_triggers
-                # samples, just like any other below-threshold reading.
-                if sg_val == 0 and self.stall_zero_count > 0:
-                    if not self._collision_latch:
-                        cnt = self._sg_zero_counts.get(motor, 0) + 1
-                        self._sg_zero_counts[motor] = cnt
-                        if cnt >= self.stall_zero_count:
-                            self._sg_zero_counts[motor] = 0
-                            self._write_trace(
-                                eventtime, motor, 0, 'C', _tvel, _tpos)
-                            self._handle_collision(motor, 0)
-                    continue
-
-                # Non-zero sample: reset consecutive-zero counter.
-                self._sg_zero_counts[motor] = 0
                 self.sg_values[motor] = sg_val
 
                 # Collect samples for SG_CALIBRATE if active.
@@ -436,33 +445,26 @@ class StallGuardMonitor:
                 window = self._sg_windows[motor]
 
                 if sg_val >= thresh:
-                    # Above threshold: motor running normally.
-                    # Clear the window so detection requires consecutive_triggers
-                    # NEW below-threshold samples to confirm a stall — equivalent
-                    # to Prusa's hardware DIAG de-asserted state.  Any recovery
-                    # spike (direction change, speed change, decel) clears the
-                    # detector before it can fire, eliminating false triggers
-                    # without EWMA baselines, guard zones, or pre-stall blanks.
+                    # Running normally — clear the window so a collision needs
+                    # consecutive_triggers fresh below-threshold samples.  Any
+                    # recovery spike (direction change, speed change, decel)
+                    # resets the detector before it can fire.
                     window.clear()
-                    self._write_trace(eventtime, motor, sg_val, 'M', _tvel, _tpos)
+                    self._write_trace(eventtime, motor, sg_val, 'M', vel, pos)
                     continue
 
-                # Below threshold: potential stall — accumulate toward detection.
-                # The threshold should be a LOW absolute value (5-15) that is
-                # only reached when the rotor is physically blocked.  Normal
-                # motion at any speed — including direction changes — produces
-                # SG well above a near-zero threshold.
-                self._write_trace(eventtime, motor, sg_val, 'G', _tvel, _tpos)
-
+                # Below threshold — accumulate toward a collision.  The
+                # threshold should be a LOW value only reached when the rotor is
+                # physically blocked; normal motion at any speed stays above it.
+                self._write_trace(eventtime, motor, sg_val, 'G', vel, pos)
                 if self._collision_latch:
                     continue
-
                 window.append(sg_val)
                 if len(window) == window.maxlen:
-                    avg = sum(window) / window.maxlen
-                    self._write_trace(eventtime, motor, int(round(avg)), 'C', _tvel, _tpos)
+                    avg = int(round(sum(window) / window.maxlen))
+                    self._write_trace(eventtime, motor, avg, 'C', vel, pos)
                     window.clear()
-                    self._handle_collision(motor, int(round(avg)))
+                    self._handle_collision(motor, avg)
 
         except Exception:
             self.logger.exception("stallguard_monitor: error in poll callback")
@@ -564,8 +566,16 @@ class StallGuardMonitor:
             # Run PAUSE in the background to avoid reactor re-entrancy
             self.printer.get_reactor().register_async_callback(
                 lambda e: self.gcode.run_script("PAUSE\nM118 " + msg))
+        elif self.action == 'm117':
+            # Non-disruptive test action: show the hit on the printer display
+            # (M117) plus the console (M118).  Motion is NOT interrupted, so use
+            # this only while tuning to confirm detection without stopping.
+            disp = "SG COLLISION {} SG={}".format(motor, sg_val)
+            self.printer.get_reactor().register_async_callback(
+                lambda e: self.gcode.run_script(
+                    "M117 " + disp + "\nM118 " + msg))
         else:
-            # action == 'none': log only
+            # action == 'none': log to console only
             self.printer.get_reactor().register_async_callback(
                 lambda e: self.gcode.run_script("M118 " + msg))
 
@@ -577,14 +587,17 @@ class StallGuardMonitor:
             return
 
         eventtime = self.reactor.monotonic()
-        mode = ("HOMING" if self._homing_active
+        mode = ("HOMING-MUTED" if self._homing_active
                 else ("ON" if self.monitoring else "OFF"))
+        vel  = self._get_velocity(eventtime)
+        vel_str = ("{:.1f} mm/s".format(vel) if vel is not None else "n/a")
         lines = [
-            "StallGuard Monitor  action={}  monitoring={}{}  default_threshold={}".format(
-                self.action, mode,
-                "  [homing-only]" if self.homing_only else "",
-                self.collision_threshold),
-            "  {:<16} {:>10}  {:>9}  {}".format("motor", "SG_RESULT", "threshold", "state")
+            "StallGuard Monitor  action={}  monitoring={}  "
+            "default_threshold={}  min_speed={:.1f}  vel={}".format(
+                self.action, mode, self.collision_threshold,
+                self.min_speed_mm_s, vel_str),
+            "  {:<16} {:>10}  {:>9}  {}".format(
+                "motor", "SG_RESULT", "threshold", "state"),
         ]
         for motor in self.motor_names:
             tmc    = self.tmc_drivers.get(motor)
@@ -601,11 +614,10 @@ class StallGuardMonitor:
             sg_val     = raw & _SG_RESULT_MASK
             standstill = bool(raw & _STST_BIT)
             self.sg_values[motor] = sg_val
-            thresh_str = str(thresh)
-            flag = " <<< LOW" if (sg_val < thresh and not standstill) else ""
+            flag  = " <<< LOW" if (sg_val < thresh and not standstill) else ""
             state = "standstill" if standstill else "moving"
-            lines.append("  {:<16} {:>10}  {:>16}  {}{}".format(
-                motor, sg_val, thresh_str, state, flag))
+            lines.append("  {:<16} {:>10}  {:>9}  {}{}".format(
+                motor, sg_val, thresh, state, flag))
 
         gcmd.respond_info("\n".join(lines))
 
@@ -643,6 +655,13 @@ class StallGuardMonitor:
                 "stallguard_monitor: all thresholds -> {}".format(threshold))
         self._collision_latch = False
         self._reset_windows()
+
+    def cmd_SG_SET_SPEED(self, gcmd):
+        speed = gcmd.get_float('SPEED', minval=0., maxval=1000.)
+        self.min_speed_mm_s = speed
+        self._reset_windows()
+        gcmd.respond_info(
+            "stallguard_monitor: velocity gate -> {:.1f} mm/s".format(speed))
 
     def cmd_SG_RESET(self, gcmd):
         """Clear the collision latch so monitoring re-arms without restart."""
@@ -763,22 +782,17 @@ class StallGuardMonitor:
         else:
             lines.append("  has mcu_tmc: NO")
 
-        # Toolhead velocity availability (needed for min_speed_mm_s gating)
-        if self._toolhead is not None:
+        # Velocity source (needed for the min_speed_mm_s gate)
+        if self._motion_report is not None:
             try:
-                st = self._toolhead.get_status(self.reactor.monotonic())
-                v  = st.get('velocity')
-                if v is not None:
-                    lines.append("  toolhead velocity: {:.1f} mm/s (gating available)".format(
-                        abs(float(v))))
-                else:
-                    lines.append(
-                        "  toolhead velocity: NOT in status \u2014 min_speed_mm_s gating "
-                        "will be skipped (set min_speed_mm_s: 0)")
+                v = self._motion_report.get_status(et).get('live_velocity')
+                lines.append("  motion_report.live_velocity: {} mm/s "
+                             "(velocity gate available)".format(
+                                 round(abs(float(v)), 1) if v is not None else 'None'))
             except Exception as e:
-                lines.append("  toolhead velocity: ERROR ({})".format(e))
+                lines.append("  motion_report.live_velocity: ERROR ({})".format(e))
         else:
-            lines.append("  toolhead: not found")
+            lines.append("  motion_report: NOT FOUND — velocity gate disabled")
 
         gcmd.respond_info("\n".join(lines))
 
@@ -851,7 +865,7 @@ class StallGuardMonitor:
         hdr = "── SG Calibration  distance={:.0f}mm  speed={:.0f}mm/s ──".format(
             dist, speed)
         col = "  {:<18} {:>6}  {:>6}  {:>6}  {:>6}  {:>6}  {:>9}  {}".format(
-            "motor", "mean", "stddev", "min", "max", "n", "threshold", "margin / note")
+            "motor", "mean", "stddev", "min", "max", "n", "threshold", "suggest / note")
         rows = [hdr, col]
         for motor in self.motor_names:
             if motor not in results:
@@ -864,17 +878,22 @@ class StallGuardMonitor:
                 continue
             mean   = sum(samples) / len(samples)
             stddev = math.sqrt(sum((s - mean) ** 2 for s in samples) / len(samples))
-            margin = mean - thresh
-            if margin < 0:
-                note = "!! THRESHOLD ABOVE BASELINE — will always trigger"
-            elif margin < 15:
-                note = "WARN: margin < 15, consider lowering threshold"
+            mn     = min(samples)
+            # Suggested threshold: about half the minimum SG seen at speed,
+            # which leaves margin above zero (a blocked rotor) without false
+            # triggers from normal motion.
+            suggest = max(5, int(mn // 2))
+            if thresh >= mn:
+                note = "!! threshold >= min SG ({}) — WILL false-trigger".format(mn)
             else:
                 note = "OK"
             rows.append(
-                "  {:<18} {:>6.1f}  {:>6.1f}  {:>6}  {:>6}  {:>6}  {:>9}  {:.1f}  {}".format(
-                    motor, mean, stddev, min(samples), max(samples),
-                    len(samples), thresh, margin, note))
+                "  {:<18} {:>6.1f}  {:>6.1f}  {:>6}  {:>6}  {:>6}  {:>9}  "
+                "try {}  {}".format(
+                    motor, mean, stddev, mn, max(samples),
+                    len(samples), thresh, suggest, note))
+        rows.append("Set collision_threshold to the suggested value, then verify "
+                    "with SG_TRACE_START during a real print.")
         gcmd.respond_info("\n".join(rows))
 
     def cmd_SG_TRACE_START(self, gcmd):
@@ -908,14 +927,13 @@ class StallGuardMonitor:
         """Expose values to Moonraker / macros via printer['stallguard_monitor']."""
         return {
             'enabled':             self.monitoring,
-            'homing_only':         self.homing_only,
             'homing_active':       self._homing_active,
             'collision_threshold': self.collision_threshold,
+            'min_speed_mm_s':      self.min_speed_mm_s,
             'motor_thresholds':    dict(self._motor_thresholds),
             'collision_detected':  self._collision_latch,
             'trace_active':        self._trace_fh is not None,
             'sg_values':           dict(self.sg_values),
-            'sg_zero_counts':      dict(self._sg_zero_counts),
         }
 
 
