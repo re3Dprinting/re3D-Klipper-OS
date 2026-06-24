@@ -364,19 +364,22 @@ class StallGuardMonitor:
 
                 if standstill:
                     # Motor stopped or standstill indicator set.
-                    # Only clear the detection window and re-arm accel blanking
-                    # when the window is EMPTY (genuine inter-move standstill).
-                    # If the window already has below-threshold samples, a STST
-                    # flip is almost certainly rotor oscillation during a hard
-                    # stall (TMC drives step pulses → motor tries to rotate →
-                    # hits obstruction → STST=1 → tries again).  Clearing the
-                    # window on each such flip resets the accel blank and delays
-                    # detection by seconds; keeping the samples allows the next
-                    # non-STST below-threshold sample to complete the window and
-                    # fire immediately.
+                    #
+                    # During homing (_homing_active=True): STST means the
+                    # motor hit its endstop — an expected event, not a stall.
+                    # Always clear the window so we don't fire on endstop load.
+                    # Crash detection before the endstop still works: a crash
+                    # fills the window with SG=0 before STST ever sets.
+                    #
+                    # During printing (_homing_active=False): only clear the
+                    # window when it is empty (genuine inter-move standstill).
+                    # If the window has below-threshold samples, a STST flip is
+                    # almost certainly rotor oscillation during a hard stall
+                    # (TMC drives pulses → rotor hits block → STST=1 → retries).
+                    # Preserving the samples lets the next non-STST SG=0 sample
+                    # complete the window in ~60 ms rather than seconds.
                     self._sg_zero_counts[motor] = 0
-                    if not self._sg_windows[motor]:
-                        # Genuinely stopped between moves — fresh start.
+                    if self._homing_active or not self._sg_windows[motor]:
                         self._accel_blanks[motor] = self.accel_blank_samples
                         self._sg_windows[motor].clear()
                     # Either way, skip this sample (SG unreliable during STST).
