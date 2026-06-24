@@ -386,13 +386,15 @@ class StallGuardMonitor:
                     self._write_trace(eventtime, motor, sg_val, 'A', _tvel, _tpos)
                     continue
 
-                # SG_RESULT=0: ambiguous near decel-to-stop but unambiguous in
-                # a hard physical stall (rotor fully locked at speed).  Counting
-                # consecutive zeros AFTER the velocity gate and accel blank
-                # ensures legitimate near-stop zeros are already filtered out.
-                # stall_zero_count=0 (default) disables this path entirely.
-                if sg_val == 0:
-                    if self.stall_zero_count > 0 and not self._collision_latch:
+                # SG_RESULT=0: a blocked rotor at speed reliably reads 0.
+                # If stall_zero_count > 0: use the dedicated consecutive-zero
+                # path and skip the main window to avoid double-firing.
+                # If stall_zero_count == 0 (default): fall through to the main
+                # threshold comparison — 0 < threshold(15) so it accumulates in
+                # the detection window and fires after consecutive_triggers
+                # samples, just like any other below-threshold reading.
+                if sg_val == 0 and self.stall_zero_count > 0:
+                    if not self._collision_latch:
                         cnt = self._sg_zero_counts.get(motor, 0) + 1
                         self._sg_zero_counts[motor] = cnt
                         if cnt >= self.stall_zero_count:
