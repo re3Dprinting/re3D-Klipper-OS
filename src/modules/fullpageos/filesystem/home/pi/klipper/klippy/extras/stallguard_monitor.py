@@ -537,6 +537,12 @@ class StallGuardMonitor:
 
     def _handle_collision(self, motor, sg_val):
         """React to a detected collision event."""
+        if self._homing_active:
+            # During homing the endstop hit loads the motor against the switch,
+            # producing SG=0 samples that look identical to a stall.  Klipper
+            # already handles missed endstops (probe fail / timeout), so suppress
+            # stallguard collision firing for the entire homing sequence.
+            return
         self._collision_latch = True
         thr_info = "threshold={}".format(
             self._motor_thresholds.get(motor, self.collision_threshold))
