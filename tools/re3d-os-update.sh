@@ -247,6 +247,34 @@ else
   log "${LOG_TAG} WARNING: ${SRC_SG_CFG} not found, skipping StallGuard config."
 fi
 
+# ---------- 5.6) Z-home crash failsafe extra + config ----------
+set_progress 48
+
+SRC_ZF_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/klipper/klippy/extras/z_home_failsafe.py"
+SRC_ZF_CFG="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common/z_home_failsafe_standalone.cfg"
+DST_ZF_PY="/home/pi/klipper/klippy/extras/z_home_failsafe.py"
+DST_ZF_CFG="/home/pi/printer_data/config/z_home_failsafe_standalone.cfg"
+
+if [ -f "${SRC_ZF_PY}" ]; then
+  install -m 0644 -o pi -g pi "${SRC_ZF_PY}" "${DST_ZF_PY}"
+  log "${LOG_TAG} z_home_failsafe.py deployed to Klipper extras."
+else
+  log "${LOG_TAG} WARNING: ${SRC_ZF_PY} not found, skipping Z-home failsafe extra."
+fi
+
+if [ -f "${SRC_ZF_CFG}" ]; then
+  # Deploy the config only if it doesn't exist yet so the operator's tuned
+  # values are never silently overwritten on subsequent updates.
+  if [ ! -f "${DST_ZF_CFG}" ]; then
+    install -m 0644 -o pi -g pi "${SRC_ZF_CFG}" "${DST_ZF_CFG}"
+    log "${LOG_TAG} z_home_failsafe_standalone.cfg deployed (first time)."
+  else
+    log "${LOG_TAG} z_home_failsafe_standalone.cfg already present — skipping to preserve tuned values."
+  fi
+else
+  log "${LOG_TAG} WARNING: ${SRC_ZF_CFG} not found, skipping Z-home failsafe config."
+fi
+
 # ---------- 6) Ensure matplotlib is installed for graphstats ----------
 set_progress 50
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
