@@ -363,10 +363,23 @@ class StallGuardMonitor:
                 standstill = bool(raw & _STST_BIT)
 
                 if standstill:
-                    # Motor stopped: clear detection window and arm accel blank.
-                    self._sg_windows[motor].clear()
-                    self._accel_blanks[motor]   = self.accel_blank_samples
+                    # Motor stopped or standstill indicator set.
+                    # Only clear the detection window and re-arm accel blanking
+                    # when the window is EMPTY (genuine inter-move standstill).
+                    # If the window already has below-threshold samples, a STST
+                    # flip is almost certainly rotor oscillation during a hard
+                    # stall (TMC drives step pulses → motor tries to rotate →
+                    # hits obstruction → STST=1 → tries again).  Clearing the
+                    # window on each such flip resets the accel blank and delays
+                    # detection by seconds; keeping the samples allows the next
+                    # non-STST below-threshold sample to complete the window and
+                    # fire immediately.
                     self._sg_zero_counts[motor] = 0
+                    if not self._sg_windows[motor]:
+                        # Genuinely stopped between moves — fresh start.
+                        self._accel_blanks[motor] = self.accel_blank_samples
+                        self._sg_windows[motor].clear()
+                    # Either way, skip this sample (SG unreliable during STST).
                     continue
 
                 # Velocity gate: skip and clear window when the toolhead's
