@@ -111,6 +111,13 @@ def setup_fgf_printer(printer_config, board, platform):
     custom_path = FGF_PATH / "custom"
     common_setup_printer(FGF_PATH, board, platform)
 
+    # Dual-GBX: two pellet assemblies, 4 heating zones each (extruder..extruder7).
+    dual_extruder_enabled = validate_and_return_config_param(field="dual_extruder_enabled", config=printer_config, valid_selections=["true", "false"], default="false")
+    if dual_extruder_enabled == "true":
+        add_template_file( custom_path / "fgf_dual_extruders.cfg", OUTPUT_PATH / "fgf_extruders.cfg", True)
+        add_template_file( custom_path / "fgf_dual_heaters.cfg", OUTPUT_PATH / "fgf_heaters.cfg", True)
+        add_template_file( custom_path / "fgf_dual_specific.cfg", OUTPUT_PATH / "fgf_dual_specific.cfg", True)
+
     crammer_enabled = validate_and_return_config_param(field="crammer_enabled", config=printer_config, valid_selections=["true", "false"], default="false")
     if crammer_enabled == "true":
         add_template_file( custom_path / "fgf_crammer.cfg", OUTPUT_PATH / "fgf_crammer.cfg", False)
