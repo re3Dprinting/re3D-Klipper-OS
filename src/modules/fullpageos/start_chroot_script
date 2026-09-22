@@ -172,9 +172,9 @@ then
     setupcon -k --save-only
 fi
 
-# Add emoji support
-sudo -u "${BASE_USER}" mkdir -p /home/"${BASE_USER}"/.fonts
-sudo -u "${BASE_USER}" wget --directory-prefix /home/"${BASE_USER}"/.fonts https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf
+
+# Add emoji support system-wide
+apt-get install -y --no-install-recommends fonts-noto-color-emoji
 
 # override password
 if [ "$FULLPAGEOS_OVERRIDE_PASSWORD" != "default" ]
