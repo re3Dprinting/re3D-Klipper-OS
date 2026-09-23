@@ -30,7 +30,7 @@ if [ -n "${QUERY_STRING:-}" ]; then
   for kv in ${QUERY_STRING//&/ }; do parse_kv "$kv"; done
 fi
 if [ "${REQUEST_METHOD:-}" = "POST" ]; then
-  read -r BODY || true
+  BODY="$(dd bs=1 count="${CONTENT_LENGTH:-0}" 2>/dev/null || true)"
   for kv in ${BODY//&/ }; do parse_kv "$kv"; done
 fi
 
