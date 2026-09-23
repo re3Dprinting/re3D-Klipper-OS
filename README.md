@@ -30,6 +30,45 @@ Every new commit an image is created, streamlining development and removing the 
 
 
 ## Installation
+### Dual-Extruder Motor Control
+
+With the dual-extruder machine selected (`dual_extruder_enabled=true`), these
+macros are included when the printer configuration is regenerated:
+
+| Command | Behavior |
+| --- | --- |
+| `T0` | Disable syncing and select assembly 1 (`extruder`). |
+| `T1` | Disable syncing and select assembly 2 (`extruder4`). |
+| `SYNC_EXTRUDERS RATIO=1.5` | Select assembly 1 as leader; motor 2 turns 1.5 revolutions per revolution of motor 1. |
+| `SET_EXTRUDER_SYNC_RATIO RATIO=0.5` | Set the ratio, applying it immediately if already synced. |
+| `SYNC_EXTRUDERS` | Enable syncing with the last ratio (default 1.0 after restart). |
+| `UNSYNC_EXTRUDERS` | Restore independent motors without changing the selected assembly. |
+
+After `T0` or `T1`, normal `G1 E...` moves control only that assembly. Ratios
+must be positive and finite; they also apply to retractions. Motor ratios assume
+the matching gearing in the supplied configuration. Syncing uses assembly 1's
+configured rotation distance and copies its current pressure-advance settings.
+Unsyncing restores assembly 2's configured rotation distance and previous
+pressure-advance settings. Save calibration changes in the configuration before
+using these macros; runtime rotation-distance overrides are not preserved.
+Reissue `SYNC_EXTRUDERS` after changing the leader's pressure advance.
+
+Heat all zones of both assemblies before extrusion. Syncing checks that all
+configured assembly 2 zones are above their minimum extrusion temperatures.
+While synced, Klipper checks extrusion moves against the leader only: keep both
+assemblies hot and choose speeds/ratios within both motors' limits. The startup
+temperature check is not continuous follower-temperature protection.
+
+`T0`/`T1` select motors only; they do not heat zones, park, or apply nozzle
+offsets. Existing `M104`/`M109 T...` heater-zone numbering is unchanged:
+`M104 T1` addresses `extruder1`, not assembly 2. Use `M104 T4` for assembly 2's
+primary heater and its other zone numbers separately.
+
+Macro regression tests: `python -m unittest discover -s tools -p test_dual_extruders.py`
+(requires `jinja2`).
+
+### Image Installation
+
 1. Download the latest re3D-Klipper-OS-x.x.x.img.gz file from the releases page.
 2. Download and install [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
 3. Insert a MicroSD card into your computer. (Must be atleast 32GB)
