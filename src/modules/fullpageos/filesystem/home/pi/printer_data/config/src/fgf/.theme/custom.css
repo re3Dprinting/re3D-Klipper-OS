@@ -115,17 +115,44 @@
 #page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(1) > td.name > span
 { display:none; }
 #page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(1) > td.name:after
-{ content: "Bottom Heater"; }
+{ content: "T0-lower"; }
 
 #page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(2) > td.name > span
 { display:none; }
 #page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(2) > td.name:after
-{ content: "Middle Heater"; }
+{ content: "T0-middle"; }
 
 #page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(3) > td.name > span
 { display:none; }
 #page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(3) > td.name:after
-{ content: "Top Heater"; }
+{ content: "T0-top"; }
+
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(4) > td.name > span
+{ display:none; }
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(4) > td.name:after
+{ content: "T0-aux"; }
+
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(5) > td.name > span
+{ display:none; }
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(5) > td.name:after
+{ content: "T1-lower"; }
+
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(6) > td.name > span
+{ display:none; }
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(6) > td.name:after
+{ content: "T1-middle"; }
+
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(7) > td.name > span
+{ display:none; }
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(7) > td.name:after
+{ content: "T1-top"; }
+
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(8) > td.name > span
+{ display:none; }
+#page-container > div > div > div:nth-child(2) > div.v-card.v-sheet.theme--dark.panel.temperature-panel.mb-3.mb-md-6 > div > div > div > div > div > table > tbody > tr:nth-child(8) > td.name:after
+{ content: "T1-aux"; }
+
+
 
 /* Change location of emergency stop and force text to show on tablets 
 @media (min-width: 768px) and (max-width: 1024px) {
