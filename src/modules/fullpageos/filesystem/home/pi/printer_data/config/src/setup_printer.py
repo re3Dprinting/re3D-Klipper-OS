@@ -92,6 +92,10 @@ def setup_fff_printer(printer_config, board, platform):
     custom_path = FFF_PATH / "custom"
     common_setup_printer(FFF_PATH, board, platform)
 
+    slice_microswiss_hotends_enabled = validate_and_return_config_param(field="slice_microswiss_hotends_enabled", config=printer_config, valid_selections=["true", "false"], default="false")
+    if slice_microswiss_hotends_enabled == "true" and platform in ("regular", "xlt"):
+        add_template_file(custom_path / f"fff_slice_microswiss_{platform}.cfg", OUTPUT_PATH / "zzz_fff_slice_microswiss.cfg", True)
+
     mesh_compensation_enabled = validate_and_return_config_param(field="mesh_compensation_enabled", config=printer_config, valid_selections=["true", "false"], default="false")
     if mesh_compensation_enabled == "true":
         add_template_file( custom_path / "fff_mesh.cfg", OUTPUT_PATH / "fff_mesh.cfg", False)

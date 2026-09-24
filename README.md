@@ -30,6 +30,7 @@ Every new commit an image is created, streamlining development and removing the 
 
 
 ## Installation
+
 1. Download the latest re3D-Klipper-OS-x.x.x.img.gz file from the releases page.
 2. Download and install [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
 3. Insert a MicroSD card into your computer. (Must be atleast 32GB)
