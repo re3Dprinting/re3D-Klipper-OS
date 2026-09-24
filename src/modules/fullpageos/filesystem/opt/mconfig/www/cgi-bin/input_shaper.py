@@ -225,30 +225,6 @@ def worker(identifier):
     atomic_json(path / 'run.json', record)
 
 
-def require_safe_pending_changes(configfile, results):
-    if not configfile.get('save_config_pending'):
-        return
-    validate_recommendations(results)
-    pending = configfile.get('save_config_pending_items')
-    if not isinstance(pending, dict) or not pending:
-        raise ValueError('Klipper has unsaved calibration changes but did not report their details. '
-                         'Review them in Printer Control before saving or discarding; applying would restart Klipper.')
-    replaced = {f'shaper_{field}_{axis}' for axis in results for field in ('type', 'freq')}
-    conflicts = []
-    for section, options in pending.items():
-        if not isinstance(options, dict) or not options:
-            conflicts.append(f'[{section}]')
-            continue
-        for option in options:
-            if section != 'input_shaper' or option not in replaced:
-                conflicts.append(f'[{section}] {option}')
-    if conflicts:
-        raise ValueError('Applying would discard unsaved calibration changes: ' + ', '.join(conflicts) +
-                         '. Review and save or discard these in Printer Control first. '
-                         'The selected run only replaces shaper type/frequency for ' +
-                         ', '.join(axis.upper() for axis in results) + '.')
-
-
 def apply(identifier):
     with acquire_lock():
         path = run_path(identifier)
@@ -259,7 +235,6 @@ def apply(identifier):
         available = require_idle(state)
         if available['fingerprint'] != record['fingerprint']:
             raise ValueError('Printer configuration differs from this run. Run a new test before applying.')
-        require_safe_pending_changes(state['configfile'], record['results'])
         if PRINTER_CONFIG.exists() and re.search(r'^#\*#\s*\[input_shaper\]', PRINTER_CONFIG.read_text(encoding='utf-8'), re.M):
             raise ValueError('printer.cfg contains SAVE_CONFIG input-shaper values. Move those values into standalone.cfg and restart Klipper before applying from this page.')
         if CONFIG.is_symlink():

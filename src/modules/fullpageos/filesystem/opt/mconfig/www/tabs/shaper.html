@@ -273,7 +273,7 @@
             const current = run();
             if (!current) return;
             const values = Object.entries(current.results).map(([axis, result]) => `${axis.toUpperCase()}: ${result.type.toUpperCase()} at ${result.frequency.toFixed(1)} Hz`).join('; ');
-            confirmAction('Apply recommendations?', `${values}. The standalone config will be backed up and updated for these axes. Klipper will restart.`, 'Save and restart', {action:'apply', id:current.id});
+            confirmAction('Apply recommendations?', `${values}. The saved standalone config will be backed up and updated for these axes. Klipper will restart and discard ALL unsaved SAVE_CONFIG changes, including Beacon calibration, PID, and other pending settings.`, 'Apply and discard pending changes', {action:'apply', id:current.id});
           });
           find('confirm').addEventListener('close', () => {
             if (find('confirm').returnValue === 'confirm' && confirmation) act(confirmation);
