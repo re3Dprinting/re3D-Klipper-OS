@@ -1,148 +1,296 @@
-<!-- Input Shaper tab -->
-<style>
-  .out{
-    margin-top:4px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);
-    border:1px solid var(--border);max-height:160px;overflow:auto;font-size:12px;color:var(--gray-200)
-  }
-  .coming-soon-wrap{position:relative}
-  .coming-soon-overlay{
-    position:absolute; inset:0; border-radius:var(--radius);
-    background:rgba(8,11,18,.85); backdrop-filter:saturate(0.6) blur(3px);
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    color:var(--gray-200); z-index:5; pointer-events:auto;
-    border:1px solid var(--border);
-  }
-  .coming-soon-overlay .msg{display:grid; gap:8px; max-width:520px; padding:20px}
-  .coming-soon-overlay .msg strong{font-size:16px; color:var(--fg)}
-  .coming-soon-overlay .msg .sub{font-size:12px; color:var(--muted)}
-  .blur-under{filter:saturate(.4) grayscale(.2) opacity(.7)}
-  .grid2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
-  @media(max-width:980px){.grid2{grid-template-columns:1fr}}
-</style>
+        <style>
+          #shaper-page { display:grid; gap:22px; min-width:0; letter-spacing:0 }
+          #shaper-page h2 { font-size:17px; margin:0; font-weight:700 }
+          #shaper-page p { margin:0 }
+          #shaper-page .sh-section { border-top:1px solid var(--border); padding-top:18px; min-width:0 }
+          #shaper-page .sh-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px }
+          #shaper-page .sh-details { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:0 0 16px }
+          #shaper-page dt { color:var(--muted); font-size:12px; margin-bottom:4px }
+          #shaper-page dd { margin:0; overflow-wrap:anywhere }
+          #shaper-page .sh-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+          #shaper-page button { min-height:42px; border-radius:6px; white-space:normal; letter-spacing:0 }
+          #shaper-page button:disabled { opacity:.45; cursor:not-allowed }
+          #shaper-page .sh-stop { background:var(--error-bg); border:1px solid var(--error); color:var(--error); margin-left:auto }
+          #shaper-page .sh-badge { color:var(--muted); font-size:12px; font-weight:600 }
+          #shaper-page .sh-badge[data-state="ready"] { color:var(--success) }
+          #shaper-page .sh-badge[data-state="busy"] { color:var(--brand) }
+          #shaper-page .sh-notice { color:var(--muted); margin-top:12px; overflow-wrap:anywhere; font-size:13px }
+          #shaper-page .sh-alert { border-left:3px solid var(--brand); padding:10px 12px; background:var(--surface-1); overflow-wrap:anywhere }
+          #shaper-page .sh-select { display:grid; gap:6px; flex:1; min-width:0; max-width:650px }
+          #shaper-page select { width:100%; min-height:42px; min-width:0; text-overflow:ellipsis }
+          #shaper-page .sh-run-meta { color:var(--muted); font-size:12px; overflow-wrap:anywhere; margin:10px 0 14px }
+          #shaper-page .sh-result { border-top:1px solid var(--border); padding-top:14px; margin-top:18px; min-width:0 }
+          #shaper-page .sh-result-header { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:baseline; margin-bottom:12px }
+          #shaper-page .sh-recommendation { font-size:16px; font-weight:600 }
+          #shaper-page .sh-plot { margin:0; width:100%; aspect-ratio:4/3; background:#fff; overflow:hidden; border:1px solid var(--border); border-radius:4px }
+          #shaper-page .sh-plot img { display:block; width:100%; height:100%; object-fit:contain }
+          #shaper-page .sh-links { display:flex; flex-wrap:wrap; gap:18px; margin-top:10px }
+          #shaper-page .sh-links a { color:var(--brand); font-size:13px }
+          #shaper-page .sh-empty { padding:30px 0; color:var(--muted) }
+          #shaper-page dialog { width:calc(100% - 32px); max-width:480px; max-height:90dvh; overflow:auto; padding:24px; background:var(--surface-0); color:var(--fg); border:1px solid var(--border); border-radius:8px }
+          #shaper-page dialog::backdrop { background:rgba(0,0,0,.7) }
+          #shaper-page dialog p { margin:16px 0; line-height:1.6 }
+          #shaper-page dialog .sh-actions { justify-content:flex-end }
+          @media(max-width:650px) {
+            #shaper-page .sh-details { grid-template-columns:1fr; gap:10px }
+            #shaper-page .sh-select { flex:1 0 100%; max-width:none }
+            #shaper-page .sh-stop { margin-left:0 }
+            #shaper-page .sh-actions button { flex:1 1 auto }
+          }
+        </style>
 
-<div class="content">
-  <div class="coming-soon-wrap span2">
-    <div class="blur-under grid2">
-      <form class="card" action="/cgi-bin/input_shaper_measure.sh" method="post" id="shaper-measure-form">
-        <div style="font-weight:800;margin-bottom:6px">Resonance Test</div>
-        <div class="row">
-          <div>
-            <label>Axis</label>
-            <select name="axis" required>
-              <option value="x">X</option>
-              <option value="y">Y</option>
-            </select>
-          </div>
-          <div>
-            <label>Probe (accelerometer)</label>
-            <select name="probe">
-              <option value="adxl345" selected>ADXL345</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
+        <div id="shaper-page">
+          <section aria-labelledby="sh-test-title">
+            <div class="sh-heading"><h2 id="sh-test-title">Resonance calibration</h2><span id="sh-status" class="sh-badge">Checking printer</span></div>
+            <dl class="sh-details">
+              <div><dt>Accelerometers</dt><dd id="sh-sensors">Checking...</dd></div>
+              <div><dt>Saved X tuning</dt><dd id="sh-current-x">Unavailable</dd></div>
+              <div><dt>Saved Y tuning</dt><dd id="sh-current-y">Unavailable</dd></div>
+            </dl>
+            <div class="sh-actions">
+              <button type="button" data-sh-axis="x" disabled>Tune X</button>
+              <button type="button" data-sh-axis="y" disabled>Tune Y</button>
+              <button type="button" data-sh-axis="both" disabled>Tune X + Y</button>
+              <button type="button" id="sh-stop" class="sh-stop">Emergency stop</button>
+            </div>
+            <p id="sh-readiness" class="sh-notice" role="status">Connecting to Klipper...</p>
+          </section>
+          <p id="sh-message" class="sh-alert" role="status" hidden></p>
+          <section class="sh-section" aria-labelledby="sh-history-title">
+            <div class="sh-heading"><h2 id="sh-history-title">Saved runs</h2><button type="button" id="sh-refresh" class="btn-ghost">Refresh</button></div>
+            <div class="sh-actions">
+              <label class="sh-select">Calibration run<select id="sh-history" disabled><option>No saved runs</option></select></label>
+              <button type="button" id="sh-apply" disabled>Apply recommendations</button>
+            </div>
+            <p id="sh-run-meta" class="sh-run-meta"></p>
+            <p id="sh-run-status" role="status"></p>
+            <div id="sh-results"><p class="sh-empty">No calibration results yet.</p></div>
+          </section>
+          <dialog id="sh-confirm" aria-labelledby="sh-confirm-title">
+            <h2 id="sh-confirm-title"></h2>
+            <p id="sh-confirm-body"></p>
+            <form method="dialog" class="sh-actions"><button value="cancel" class="btn-ghost">Cancel</button><button value="confirm" id="sh-confirm-go">Start test</button></form>
+          </dialog>
         </div>
-        <div class="btn-row"><button type="submit" disabled>Start Test</button></div>
-        <div class="out mono" id="out-shaper-measure"></div>
-      </form>
 
-      <form class="card" action="/cgi-bin/set_input_shaper.sh" method="post" id="shaper-apply-form">
-        <div style="font-weight:800;margin-bottom:6px">Apply Shaper Settings</div>
-        <div class="row">
-          <div>
-            <label>X Shaper</label>
-            <select name="x_type">
-              <option value="auto" selected>auto</option>
-              <option value="mzv">mzv</option>
-              <option value="ei">ei</option>
-              <option value="2hump_ei">2hump_ei</option>
-              <option value="zv">zv</option>
-              <option value="zvd">zvd</option>
-              <option value="zvdd">zvdd</option>
-            </select>
-          </div>
-          <div>
-            <label>X Frequency (Hz)</label>
-            <input name="x_freq" type="number" step="0.1" min="1" placeholder="40.0">
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label>Y Shaper</label>
-            <select name="y_type">
-              <option value="auto" selected>auto</option>
-              <option value="mzv">mzv</option>
-              <option value="ei">ei</option>
-              <option value="2hump_ei">2hump_ei</option>
-              <option value="zv">zv</option>
-              <option value="zvd">zvd</option>
-              <option value="zvdd">zvdd</option>
-            </select>
-          </div>
-          <div>
-            <label>Y Frequency (Hz)</label>
-            <input name="y_freq" type="number" step="0.1" min="1" placeholder="40.0">
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label>Save to Config</label>
-            <select name="save">
-              <option value="1">Yes</option>
-              <option value="0" selected>No</option>
-            </select>
-          </div>
-        </div>
-        <div class="btn-row"><button type="submit" disabled>Apply Shaper</button></div>
-        <div class="out mono" id="out-shaper-apply"></div>
-      </form>
-    </div>
+        <script>
+        (() => {
+          const root = document.getElementById('shaper-page');
+          const find = id => root.querySelector(`#sh-${id}`);
+          const controller = new AbortController();
+          const viewport = document.querySelector('meta[name="viewport"]');
+          const originalViewport = viewport?.content;
+          if (viewport) viewport.content = 'width=device-width, initial-scale=1';
+          const endpoint = '/cgi-bin/input_shaper.sh';
+          let snapshot = {printer:null, busy:false, runs:[]};
+          let selected = '', rendered = '';
+          let pending = false, polling = false;
+          let timer, confirmation = null;
+          const notice = message => { find('message').textContent = message; find('message').hidden = !message; };
+          const idle = () => snapshot.printer && ['standby','complete','cancelled','error'].includes(snapshot.printer.print_state);
+          const run = () => snapshot.runs.find(item => item.id === selected);
+          const matching = item => snapshot.printer && item.fingerprint === snapshot.printer.fingerprint;
 
-    <div class="coming-soon-overlay" id="overlay">
-      <div class="msg">
-        <strong>Input Shaper — Coming Soon</strong>
-        <div class="sub">You’ll be able to run resonance tests and apply shaper settings here.</div>
-      </div>
-    </div>
-  </div>
-</div>
+          async function api(body) {
+            const response = await fetch(endpoint, {
+              method:body ? 'POST' : 'GET', cache:'no-store', signal:controller.signal,
+              headers:body ? {'Content-Type':'application/x-www-form-urlencoded'} : {},
+              body:body ? new URLSearchParams(body) : undefined
+            });
+            const text = await response.text();
+            let data;
+            try { data = JSON.parse(text); }
+            catch { throw new Error('Input-shaping service is unavailable. Check the printer connection.'); }
+            if (!response.ok || data.error && !Object.hasOwn(data, 'runs')) throw new Error(data.error || `Request failed (${response.status})`);
+            return data;
+          }
 
-<script>
-(() => {
-  const ENABLED = false; // set true to remove overlay & enable buttons
+          function controls() {
+            const printer = snapshot.printer;
+            const homed = printer && [...'xyz'].every(axis => printer.homed.includes(axis));
+            root.querySelectorAll('[data-sh-axis]').forEach(button => {
+              const axes = button.dataset.shAxis === 'both' ? ['x','y'] : [button.dataset.shAxis];
+              button.disabled = pending || snapshot.busy || !idle() || !homed || !axes.every(axis => printer.axes.includes(axis));
+            });
+            const current = run();
+            find('apply').disabled = pending || snapshot.busy || !idle() || !current || current.status !== 'complete' || !matching(current);
+            find('refresh').disabled = polling;
+          }
 
-  function wireAjaxForm(formId,outId){
-    const f=document.getElementById(formId);
-    const out=document.getElementById(outId);
-    if(!f||!out) return;
-    f.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      out.textContent='Running…';
-      try{
-        const fd=new FormData(f);
-        const resp=await fetch(f.action,{
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(fd)
-        });
-        const text=await resp.text();
-        out.textContent=text.trim()||'Done.';
-      }catch(err){ out.textContent=`Error: ${err}`; }
-    });
-  }
+          function renderRun() {
+            const current = run();
+            find('run-meta').textContent = current ? `${current.id} | ${current.sensors.join(', ')}` : '';
+            find('run-status').textContent = current ? current.message + (current.applied ? ` Last applied: ${new Date(current.applied).toLocaleString()}.` : '') +
+              (!matching(current) && snapshot.printer ? ' Configuration has changed; applying is disabled.' : '') : '';
+            const signature = JSON.stringify(current && {id:current.id, results:current.results, artifacts:current.artifacts, status:current.status});
+            if (signature !== rendered) {
+              rendered = signature;
+              const container = find('results');
+              container.replaceChildren();
+              for (const axis of current?.axes || []) {
+                const result = current.results[axis];
+                const section = document.createElement('section');
+                section.className = 'sh-result';
+                const heading = document.createElement('div');
+                heading.className = 'sh-result-header';
+                const title = document.createElement('h2');
+                title.textContent = `${axis.toUpperCase()} axis`;
+                heading.append(title);
+                const recommendation = document.createElement('span');
+                recommendation.className = 'sh-recommendation';
+                recommendation.textContent = result ? `${result.type.toUpperCase()} / ${result.frequency.toFixed(1)} Hz` : 'No recommendation yet';
+                heading.append(recommendation);
+                section.append(heading);
+                const base = `/calibration_data/input_shaper/${encodeURIComponent(current.id)}/${axis}`;
+                if (result) {
+                  const figure = document.createElement('figure');
+                  figure.className = 'sh-plot';
+                  const image = document.createElement('img');
+                  image.src = `${base}.png`;
+                  image.alt = `Klipper frequency response and recommended input shapers for the ${axis.toUpperCase()} axis`;
+                  image.width = 800;
+                  image.height = 600;
+                  image.addEventListener('error', () => {
+                    const error = document.createElement('p');
+                    error.className = 'sh-empty';
+                    error.textContent = 'Plot could not be loaded. Refresh to retry.';
+                    figure.replaceChildren(error);
+                  });
+                  figure.append(image);
+                  section.append(figure);
+                }
+                const links = document.createElement('div');
+                links.className = 'sh-links';
+                const availableFiles = current.artifacts?.[axis] || (result ? ['csv','png','txt'] : []);
+                const files = [['csv','Download CSV'],['png','Download plot'],['txt','Analysis log']].filter(([extension]) => availableFiles.includes(extension));
+                for (const [extension, label] of files) {
+                  const link = document.createElement('a');
+                  link.href = `${base}.${extension}`;
+                  link.download = `${current.id}_${axis}.${extension}`;
+                  link.textContent = label;
+                  links.append(link);
+                }
+                section.append(links);
+                container.append(section);
+              }
+              if (!current) {
+                const empty = document.createElement('p');
+                empty.className = 'sh-empty';
+                empty.textContent = 'No calibration results yet.';
+                container.append(empty);
+              }
+              if (current?.status === 'error' || current?.status === 'interrupted') {
+                const link = document.createElement('a');
+                link.href = `/calibration_data/input_shaper/${encodeURIComponent(current.id)}/worker.log`;
+                link.textContent = 'Worker log';
+                link.target = '_blank';
+                link.rel = 'noopener';
+                container.append(link);
+              }
+            }
+            controls();
+          }
 
-  const overlay = document.getElementById('overlay');
-  const wrap = overlay?.parentElement;
-  const buttons = wrap?.querySelectorAll('button') || [];
-  if (ENABLED){
-    overlay?.remove();
-    buttons.forEach(b=>b.disabled=false);
-    const blur = wrap.querySelector('.blur-under');
-    blur && blur.classList.remove('blur-under');
-  }else{
-    buttons.forEach(b=>b.disabled=true);
-  }
+          function render() {
+            const printer = snapshot.printer;
+            find('sensors').textContent = printer ? printer.sensors.join(', ') || 'None configured' : 'Unavailable';
+            for (const axis of ['x','y']) {
+              const current = printer?.current;
+              find(`current-${axis}`).textContent = current ? `${(current[`shaper_type_${axis}`] || 'mzv').toUpperCase()} / ${Number(current[`shaper_freq_${axis}`] || 0).toFixed(1)} Hz` : 'Unavailable';
+            }
+            const status = find('status');
+            status.textContent = snapshot.busy ? 'Calibration running' : printer ? 'Connected' : 'Unavailable';
+            status.dataset.state = snapshot.busy ? 'busy' : printer ? 'ready' : '';
+            let readiness = snapshot.error || '';
+            if (printer) {
+              if (!printer.sensors.length) readiness = 'No supported accelerometer section is loaded in the current config.';
+              else if (!printer.resonance_tester) readiness = 'Accelerometer configured; [resonance_tester] is missing.';
+              else if (!printer.axes.length) readiness = 'No X or Y accelerometer is assigned in [resonance_tester].';
+              else if (!idle()) readiness = `Printer state: ${printer.print_state}. Calibration requires an idle printer.`;
+              else if (![...'xyz'].every(axis => printer.homed.includes(axis))) readiness = 'Home all axes in Printer Control before calibration.';
+              else if (snapshot.busy) readiness = snapshot.runs.find(item => ['queued','testing','plotting'].includes(item.status))?.message || 'Operation in progress';
+              else readiness = `Ready for ${printer.axes.map(axis => axis.toUpperCase()).join(' and ')} calibration.`;
+            }
+            find('readiness').textContent = readiness;
+            const selector = find('history');
+            if (!snapshot.runs.some(item => item.id === selected)) selected = snapshot.runs[0]?.id || '';
+            const optionsKey = JSON.stringify(snapshot.runs.map(item => [item.id, item.status]));
+            if (selector.dataset.options !== optionsKey) {
+              selector.replaceChildren();
+              for (const item of snapshot.runs) {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = `${new Date(item.created).toLocaleString()} | ${item.host} | ${item.axes.join('+').toUpperCase()} | ${item.status}`;
+                selector.append(option);
+              }
+              if (!snapshot.runs.length) selector.add(new Option('No saved runs', ''));
+              selector.dataset.options = optionsKey;
+            }
+            selector.value = selected;
+            selector.disabled = !snapshot.runs.length;
+            renderRun();
+          }
 
-  wireAjaxForm('shaper-measure-form','out-shaper-measure');
-  wireAjaxForm('shaper-apply-form','out-shaper-apply');
-})();
-</script>
+          async function refresh() {
+            if (polling || !root.isConnected) return;
+            polling = true;
+            clearTimeout(timer);
+            controls();
+            try { snapshot = await api(); render(); }
+            catch (error) {
+              if (error.name !== 'AbortError') { snapshot.printer = null; snapshot.error = error.message; render(); }
+            } finally {
+              polling = false;
+              controls();
+              if (root.isConnected) timer = setTimeout(refresh, 4000);
+            }
+          }
+
+          async function act(body) {
+            pending = true;
+            controls();
+            try {
+              const result = await api(body);
+              if (result.id) selected = result.id;
+              notice(result.message || 'Calibration started.');
+            } catch (error) { if (error.name !== 'AbortError') notice(error.message); }
+            finally { pending = false; await refresh(); controls(); }
+          }
+
+          function confirmAction(title, message, label, body) {
+            confirmation = body;
+            find('confirm-title').textContent = title;
+            find('confirm-body').textContent = message;
+            find('confirm-go').textContent = label;
+            find('confirm').returnValue = 'cancel';
+            find('confirm').showModal();
+          }
+          root.querySelectorAll('[data-sh-axis]').forEach(button => button.addEventListener('click', () => {
+            const axis = button.dataset.shAxis;
+            confirmAction(`Tune ${axis === 'both' ? 'X + Y' : axis.toUpperCase()}`, 'The printer will move to its configured resonance test points and vibrate the selected axes. Secure the accelerometer, remove the print, and clear the motion area. Continue?', 'Start test', {action:'start', axis});
+          }));
+          find('apply').addEventListener('click', () => {
+            const current = run();
+            if (!current) return;
+            const values = Object.entries(current.results).map(([axis, result]) => `${axis.toUpperCase()}: ${result.type.toUpperCase()} at ${result.frequency.toFixed(1)} Hz`).join('; ');
+            confirmAction('Apply recommendations?', `${values}. The standalone config will be backed up and updated for these axes. Klipper will restart.`, 'Save and restart', {action:'apply', id:current.id});
+          });
+          find('confirm').addEventListener('close', () => {
+            if (find('confirm').returnValue === 'confirm' && confirmation) act(confirmation);
+            confirmation = null;
+          });
+          find('stop').addEventListener('click', () => act({action:'stop'}));
+          find('history').addEventListener('change', event => { selected = event.target.value; renderRun(); });
+          find('refresh').addEventListener('click', () => { rendered = ''; refresh(); });
+          const observer = new MutationObserver(() => {
+            if (!root.isConnected) {
+              clearTimeout(timer);
+              controller.abort();
+              if (viewport && originalViewport) viewport.content = originalViewport;
+              observer.disconnect();
+            }
+          });
+          observer.observe(root.parentElement.parentElement, {childList:true});
+          refresh();
+        })();
+        </script>
