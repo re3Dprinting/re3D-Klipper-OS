@@ -50,6 +50,7 @@ SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/conf
 SRC_COMMON="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common"
 SRC_SHELL_CMDS="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands"
 SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
+SRC_BED_CYCLING="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/gcodes/Bed Cycling"
 
 # Target locations on the LIVE system
 DST_MCONFIG="/opt/mconfig/www"
@@ -59,6 +60,7 @@ DST_COMMON="/home/pi/printer_data/config/src/common"
 DST_SHELL_CMDS="/usr/local/bin"
 DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
+DST_BED_CYCLING="/home/pi/printer_data/gcodes/Bed Cycling"
 
 # ---------- Start ----------
 set_status "running"
@@ -75,6 +77,22 @@ if [ ! -d "${REPO_DIR}/.git" ]; then
   log "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
   set_status "error"
   exit 1
+fi
+
+# ---------- Bundled bed cycling: add missing files only ----------
+if [ -d "${SRC_BED_CYCLING}" ]; then
+  if [ -L "${DST_BED_CYCLING}" ] || { [ -e "${DST_BED_CYCLING}" ] && [ ! -d "${DST_BED_CYCLING}" ]; }; then
+    log "${LOG_TAG} WARNING: Bed Cycling destination is not a regular directory; leaving it untouched."
+  else
+    log "${LOG_TAG} Adding missing bed-cycling files (preserving all existing G-code)..."
+    sudo -u pi mkdir -p "${DST_BED_CYCLING}"
+    for bed_cycle_file in "${SRC_BED_CYCLING}/"*.gcode; do
+      [ -f "${bed_cycle_file}" ] || continue
+      sudo -u pi cp -n -- "${bed_cycle_file}" "${DST_BED_CYCLING}/"
+    done
+  fi
+else
+  log "${LOG_TAG} WARNING: ${SRC_BED_CYCLING} not found, skipping bed-cycling files."
 fi
 
 # ---------- 1) Configurator: /opt/mconfig/www ----------
