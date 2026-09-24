@@ -22,7 +22,7 @@ BACKUPS = Path('/home/pi/printer_data/config/.input_shaper_backups')
 PRINTER_CONFIG = Path('/home/pi/printer_data/config/printer.cfg')
 PLOTTER = Path('/home/pi/klipper/scripts/calibrate_shaper.py')
 CSV_TEMP = Path('/tmp')
-SENSORS = {'adxl345', 'lis2dw', 'lis3dh', 'mpu9250', 'icm20948', 'bmi160', 'bmi088'}
+SENSORS = {'adxl345', 'lis2dw', 'lis3dh', 'mpu9250', 'icm20948', 'bmi160', 'bmi088', 'beacon'}
 SHAPERS = {'zv', 'mzv', 'zvd', 'ei', '2hump_ei', '3hump_ei'}
 RUN_ID = re.compile(r'\d{8}T\d{6}Z_[a-zA-Z0-9_-]+_[0-9a-f]{8}')
 
