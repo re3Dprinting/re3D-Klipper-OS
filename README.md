@@ -30,28 +30,6 @@ Every new commit an image is created, streamlining development and removing the 
 
 
 ## Installation
-### Slice Engineering / Micro Swiss Hotends
-
-For Gigabot 4 and Gigabot 4 XLT, enable **Slice Engineering / Micro Swiss Hotends**
-under **Additional Options** in the machine selector, then set the machine and
-reboot. Alternatively, set `slice_microswiss_hotends_enabled=true` in the `[fff]`
-section of `.master.cfg` before regenerating the printer configuration.
-
-| Platform | X maximum | Y maximum/endstop | Z maximum |
-| --- | --- | --- | --- |
-| Regular | 587 | 587 | 582 |
-| XLT | 585 | 740 | 886 |
-
-X and Y rotation distances are 54. This option changes motion dimensions only,
-not heater tuning. It defaults to `false`; disabling it and regenerating restores
-the stock profile. Existing standalone overrides still take precedence, so remove
-duplicate hotend dimensions from standalone configuration when using this option.
-Terabot and FGF machines do not apply these profiles.
-
-Regression tests: `python -B -m unittest discover -s tools -p test_hotend_selection.py`
-(requires Jinja2 and Bash for the CGI checks).
-
-### Image Installation
 
 1. Download the latest re3D-Klipper-OS-x.x.x.img.gz file from the releases page.
 2. Download and install [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
