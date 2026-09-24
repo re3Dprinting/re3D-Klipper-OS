@@ -62,4 +62,5 @@ if [[ -f "$CONFIG_FILE" ]]; then
   patch_flag "crammer"
   patch_flag "heater_bed"
   patch_flag "mesh_compensation"
+  patch_flag "slice_microswiss_hotends"
 fi

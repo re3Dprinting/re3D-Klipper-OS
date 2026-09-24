@@ -23,6 +23,9 @@ crammer_enabled=$crammer_enabled
 heater_bed_enabled=$heater_bed_enabled
 mesh_compensation_enabled=$mesh_compensation_enabled
 EOF
+    if [[ "$section" == "fff" ]]; then
+        printf 'slice_microswiss_hotends_enabled=false\n' >>"$config_file"
+    fi
 }
 
 set_combination() {
