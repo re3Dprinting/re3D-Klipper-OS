@@ -13,9 +13,22 @@ Usage:
 
 After patching, add 'is_non_critical: True' to any secondary [mcu xxx] section
 in your printer.cfg. The primary [mcu] cannot be non-critical.
+
+Legacy support is tested against v0.13.0-192-g3ef760c18. On that architecture,
+the secondary MCU must be present at Klipper startup; UART/USB serial devices
+can disconnect and reconnect after initialization. CAN and pipe connections
+are not supported as non-critical MCUs. reconnect_interval must be positive
+and defaults to 2 seconds. Firmware changes require a full Klipper restart.
+Only mark optional peripherals non-critical, never MCUs needed for motion,
+heaters, or safety. Hardware unplug/replug testing is still required before
+using this on a printer.
+
+Regression tests (point KLIPPER_TEST_ROOT at an upstream checkout):
+    python -B -m unittest discover -s tools -p test_noncritical_mcu.py -v
 """
 
 import argparse
+import ast
 import os
 import re
 import shutil
@@ -122,10 +135,10 @@ def write_lines(filepath, lines):
 def apply_replacement(filepath, old_text, new_text, description=""):
     """Replace old_text with new_text in filepath. Returns True on success."""
     content = read_file(filepath)
+    if new_text in content:
+        print(f"  SKIP (already applied): {description}")
+        return True
     if old_text not in content:
-        if new_text in content:
-            print(f"  SKIP (already applied): {description}")
-            return True
         print(f"  FAIL: Could not find expected text for: {description}")
         print(f"    File: {filepath}")
         return False
@@ -231,7 +244,9 @@ def patch_serialhdl(klipper_dir):
     ok = True
 
     # Detect which __init__ signature we have
-    if 'def __init__(self, reactor, mcu_name=' in content:
+    if 'self.mcu = mcu' in content and 'mcu=None' in content:
+        print("  SKIP (already applied): serialhdl: add mcu parameter")
+    elif 'def __init__(self, reactor, mcu_name=' in content:
         # New-style: (reactor, mcu_name="")
         ok &= line_patch(filepath, [
             ('find_replace_line',
@@ -867,35 +882,186 @@ def patch_mcu_legacy(klipper_dir):
     """Patch the legacy-style mcu.py (single MCU class)."""
     filepath = os.path.join(klipper_dir, "klippy", "mcu.py")
     print(f"\nPatching {filepath} (legacy architecture)")
+    content = read_file(filepath)
+    if 'def _non_critical_recon_event(self, eventtime):' in content:
+        print("  SKIP (already applied): legacy MCU support")
+        return True
+
+    def replace(old, new):
+        nonlocal content
+        if content.count(old) != 1:
+            raise ValueError("Expected one occurrence of %r" % (old,))
+        content = content.replace(old, new, 1)
+
+    def prepend(method, body):
+        replace(method + '\n', method + '\n' + body)
+
+    try:
+        replace(
+            '        # Serial port\n',
+            "        self.is_non_critical = config.getboolean('is_non_critical', False)\n"
+            "        if self.is_non_critical and self._name == 'mcu':\n"
+            "            raise config.error('Primary MCU cannot be marked as non-critical!')\n"
+            "        self.non_critical_disconnected = False\n"
+            "        self._non_critical_reconnect_event_name = (\n"
+            "            'noncritical_mcu_%s:reconnected' % (self._name,))\n"
+            "        self._non_critical_disconnect_event_name = (\n"
+            "            'noncritical_mcu_%s:disconnected' % (self._name,))\n"
+            "        self._non_critical_recon_timer = None\n"
+            "        self._non_critical_stopped = False\n"
+            "        self._non_critical_reconnecting = False\n"
+            "        self._non_critical_initial_config = None\n"
+            "        self._reconnect_interval = 2.0\n"
+            "        # Serial port\n")
+        serial_call = re.search(r'serialhdl\.SerialReader\([^\n]+\)', content)
+        if serial_call is None:
+            raise ValueError('Could not find SerialReader construction')
+        if 'mcu=self' not in serial_call.group():
+            replace(serial_call.group(), serial_call.group()[:-1] + ', mcu=self)')
+        replace(
+            '        # Restarts\n',
+            "        if self.is_non_critical:\n"
+            "            if self._canbus_iface is not None or not self._baud:\n"
+            "                raise config.error('Non-critical MCUs require a UART/USB serial connection')\n"
+            "            self._reconnect_interval = config.getfloat(\n"
+            "                'reconnect_interval', 2.0, above=0.)\n"
+            "            self._non_critical_recon_timer = self._reactor.register_timer(\n"
+            "                self._non_critical_recon_event)\n"
+            "        # Restarts\n")
+        prepend('    def _handle_shutdown(self, params):',
+                "        if self.is_non_critical:\n"
+                "            self._reactor.register_async_callback(\n"
+                "                lambda eventtime: self.handle_non_critical_disconnect())\n"
+                "            return\n")
+        prepend('    def _handle_starting(self, params):',
+                "        if self.is_non_critical:\n"
+                "            if not self.non_critical_disconnected:\n"
+                "                self._reactor.register_async_callback(\n"
+                "                    lambda eventtime: self.handle_non_critical_disconnect())\n"
+                "            return\n")
+        prepend('    def _check_restart(self, reason):',
+                "        if self._non_critical_reconnecting:\n"
+                "            raise error(\n"
+                "                \"Non-critical MCU '%s' requires restart: %s\"\n"
+                "                % (self._name, reason))\n")
+        prepend('    def _send_config(self, prev_crc):',
+                "        if self.is_non_critical:\n"
+                "            if self._non_critical_initial_config is None:\n"
+                "                self._non_critical_initial_config = (\n"
+                "                    self._oid_count, self._reserved_move_slots,\n"
+                "                    list(self._config_cmds), list(self._restart_cmds),\n"
+                "                    list(self._init_cmds))\n"
+                "            else:\n"
+                "                self.reset_to_initial_state()\n")
+        prepend('    def _connect(self):',
+                "        if self.non_critical_disconnected:\n"
+                "            return\n")
+        replace("            if self._restart_method == 'rpi_usb':\n",
+                "            if (self._restart_method == 'rpi_usb'\n"
+                "                and not self._non_critical_reconnecting):\n")
+        replace("            if start_reason == 'firmware_restart':\n",
+                "            if (start_reason == 'firmware_restart'\n"
+                "                and not self._non_critical_reconnecting):\n")
+        prepend('    def _ready(self):',
+                "        if self.non_critical_disconnected:\n"
+                "            return\n")
+        prepend('    def _disconnect(self):',
+                "        self._non_critical_stopped = True\n"
+                "        if self._non_critical_recon_timer is not None:\n"
+                "            self._reactor.update_timer(\n"
+                "                self._non_critical_recon_timer, self._reactor.NEVER)\n")
+        prepend('    def _shutdown(self, force=False):',
+                "        self._non_critical_stopped = True\n"
+                "        if self._non_critical_recon_timer is not None:\n"
+                "            self._reactor.update_timer(\n"
+                "                self._non_critical_recon_timer, self._reactor.NEVER)\n"
+                "        if self.non_critical_disconnected:\n"
+                "            return\n")
+        prepend('    def _firmware_restart(self, force=False):',
+                "        if self.non_critical_disconnected:\n"
+                "            return\n")
+        replace('        self._is_timeout = True\n',
+                "        if self.is_non_critical:\n"
+                "            self.handle_non_critical_disconnect()\n"
+                "            return\n"
+                "        self._is_timeout = True\n")
+        prepend('    def get_status(self, eventtime=None):',
+                "        self._get_status_info['is_non_critical'] = self.is_non_critical\n"
+                "        self._get_status_info['non_critical_disconnected'] = (\n"
+                "            self.non_critical_disconnected)\n")
+        methods = '''    def get_non_critical_reconnect_event_name(self):
+        return self._non_critical_reconnect_event_name
+    def get_non_critical_disconnect_event_name(self):
+        return self._non_critical_disconnect_event_name
+    def reset_to_initial_state(self):
+        if self._non_critical_initial_config is None:
+            return
+        (self._oid_count, self._reserved_move_slots,
+         config_cmds, restart_cmds, init_cmds) = self._non_critical_initial_config
+        self._config_cmds = list(config_cmds)
+        self._restart_cmds = list(restart_cmds)
+        self._init_cmds = list(init_cmds)
+    def handle_non_critical_disconnect(self):
+        if self.non_critical_disconnected or self._non_critical_stopped:
+            return
+        self.non_critical_disconnected = True
+        self._clocksync.disconnect()
+        self._steppersync = None
+        self._serial.disconnect()
+        self._is_shutdown = self._is_timeout = False
+        self._printer.lookup_object('gcode').respond_info(
+            "mcu: '%s' disconnected!" % (self._name,), log=True)
+        self._printer.send_event(self._non_critical_disconnect_event_name)
+        if not self._non_critical_reconnecting:
+            self._reactor.update_timer(self._non_critical_recon_timer,
+                                       self._reactor.NOW)
+    def _non_critical_recon_event(self, eventtime):
+        if self._non_critical_stopped or not self.non_critical_disconnected:
+            return self._reactor.NEVER
+        if not os.path.exists(self._serialport):
+            return eventtime + self._reconnect_interval
+        self._non_critical_reconnecting = True
+        try:
+            self._mcu_identify()
+            if self._non_critical_stopped:
+                return self._reactor.NEVER
+            self.non_critical_disconnected = False
+            self._is_shutdown = self._is_timeout = False
+            self._connect()
+            if self.non_critical_disconnected:
+                raise error('Non-critical MCU disconnected during configuration')
+            if self._non_critical_stopped:
+                return self._reactor.NEVER
+            self._ready()
+        except Exception:
+            logging.exception("Non-critical MCU '%s' reconnect failed", self._name)
+            self.non_critical_disconnected = True
+        finally:
+            self._non_critical_reconnecting = False
+            if self.non_critical_disconnected or self._non_critical_stopped:
+                self._clocksync.disconnect()
+                self._steppersync = None
+                self._serial.disconnect()
+        if self._non_critical_stopped:
+            return self._reactor.NEVER
+        if self.non_critical_disconnected:
+            return self._reactor.monotonic() + self._reconnect_interval
+        self._printer.send_event(self._non_critical_reconnect_event_name)
+        self._printer.lookup_object('gcode').respond_info(
+            "mcu: '%s' reconnected!" % (self._name,), log=True)
+        return self._reactor.NEVER
+'''
+        replace('    # Config creation helpers\n',
+                methods + '    # Config creation helpers\n')
+        ast.parse(content)
+    except (ValueError, SyntaxError) as exc:
+        print("  FAIL: Legacy MCU layout is not supported: %s" % (exc,))
+        return False
     backup_file(filepath)
-    ok = True
-    content = read_file(filepath)
-
-    # Store config ref
-    ok &= apply_replacement(
-        filepath,
-        "    def __init__(self, config, clocksync):\n"
-        "        self._printer = printer = config.get_printer()\n",
-        "    def __init__(self, config, clocksync):\n"
-        "        self._config = config\n"
-        "        self._printer = printer = config.get_printer()\n",
-        "mcu: store config reference",
-    )
-
-    # Pass mcu to SerialReader
-    content = read_file(filepath)
-    if "warn_prefix=wp)" in content and "mcu=self" not in content:
-        ok &= apply_replacement(
-            filepath,
-            "serialhdl.SerialReader(self._reactor, warn_prefix=wp)",
-            "serialhdl.SerialReader(self._reactor, warn_prefix=wp, mcu=self)",
-            "mcu: pass self to SerialReader",
-        )
-
-    # The rest of the legacy patches follow the original Kalico patterns
-    # (These match the old single-class MCU structure)
-    print("  WARN: Legacy MCU architecture - some patches may need manual adjustment")
-    return ok
+    write_file(filepath, content)
+    print("  OK: legacy MCU disconnect/reconnect support")
+    print("  NOTE: Legacy non-critical MCUs must be connected at Klipper startup")
+    return True
 
 
 def patch_mcu(klipper_dir):
