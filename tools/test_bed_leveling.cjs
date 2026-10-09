@@ -239,7 +239,7 @@ test('shimstock serializes with other actions and waits for Z movement to comple
   assert.ok(page.points.every(point => !point.disabled));
 });
 
-test('start homes unhomed axes before moving to absolute Z 101.6 and waits for completion', async () => {
+test('start homes unhomed axes before moving to absolute Z 101.3 and waits for completion', async () => {
   const status = printerStatus();
   status.toolhead.homed_axes = '';
   const page = await mount({ status, onScript: script => {
@@ -253,12 +253,12 @@ test('start homes unhomed axes before moving to absolute Z 101.6 and waits for c
   assert.equal(commands.length, 2);
   assert.equal(commands[0].payload.script, 'G28\nM400');
   assert.equal(commands[1].payload.script, [
-    'SAVE_GCODE_STATE NAME=mconfig_bed_level', 'G90', 'G1 Z101.6 F600',
+    'SAVE_GCODE_STATE NAME=mconfig_bed_level', 'G90', 'G1 Z101.3 F600',
     'M400', 'RESTORE_GCODE_STATE NAME=mconfig_bed_level'
   ].join('\n'));
   assert.ok(page.points.every(point => !point.disabled));
   assert.equal(page.start.disabled, false);
-  assert.equal(page.out.textContent, 'Bed leveling ready at Z 101.6 mm. Select a square to move X/Y.');
+  assert.equal(page.out.textContent, 'Bed leveling ready at Z 101.3 mm. Select a square to move X/Y.');
   status.idle_timeout.state = 'Ready';
   await page.points[4].click();
   assert.match(page.requests.at(-1).payload.script, /G1 X295 Y305 F3000/);

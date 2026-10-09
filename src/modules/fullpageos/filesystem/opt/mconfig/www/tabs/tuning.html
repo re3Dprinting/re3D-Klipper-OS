@@ -192,7 +192,7 @@
       </div>
       <div class="bed-level-notes">
         <div class="hint">
-          Clear the bed before starting. Start homes all axes and moves to Z 101.6 mm.
+          Clear the bed before starting. Start homes all axes and moves to Z 101.3 mm.
           Select a square to move X/Y only.
         </div>
         <div class="bed-level-actions">
@@ -270,7 +270,7 @@
   const bedStart = document.getElementById('bed-level-start');
   const bedShimstock = document.getElementById('bed-level-shimstock');
   const pidGo = document.getElementById('pid-go');
-  const bedStartZ = 101.6;
+  const bedStartZ = 101.3;
   const bedMoonraker = (localStorage.getItem('moonrakerUrl') ||
     `http://${location.hostname || 'localhost'}:7125`).replace(/\/+$/, '');
   let bedBusy = false;
@@ -308,7 +308,7 @@
       throw new Error('Printer is busy or a print is paused. Finish or cancel it before leveling.');
     }
     if (requireHomed && !['x', 'y', 'z'].every(axis => status.toolhead?.homed_axes?.includes(axis))){
-      throw new Error('Select Start Bed Leveling to home all axes and move to Z 101.6 mm.');
+      throw new Error('Select Start Bed Leveling to home all axes and move to Z 101.3 mm.');
     }
     const toolhead = status.toolhead;
     const origin = status.gcode_move?.homing_origin;
@@ -378,7 +378,7 @@
         state = await bedStatus(true, true);
         if (!bedGrid.isConnected) return;
         await moveBedZ(state.status, bedStartZ);
-        preview('out-bed-level', 'Bed leveling ready at Z 101.6 mm. Select a square to move X/Y.');
+        preview('out-bed-level', 'Bed leveling ready at Z 101.3 mm. Select a square to move X/Y.');
       } else if (action === 'shimstock'){
         await moveBedZ(state.status, 0.3);
         preview('out-bed-level', 'Shimstock test ready at Z 0.3 mm. Raise Z before moving X/Y.');
