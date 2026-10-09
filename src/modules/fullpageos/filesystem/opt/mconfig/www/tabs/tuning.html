@@ -24,7 +24,6 @@
   .bed-level-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0;padding:8px;border:1px solid var(--border-2);border-radius:var(--radius);background:var(--surface-0)}
   .bed-level-point{min-height:76px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:var(--surface-2);color:var(--fg);border:1px solid var(--border-2);border-radius:var(--radius-sm);white-space:normal;font-size:12px}
   .bed-level-point:hover,.bed-level-point:focus-visible{background:var(--surface-3);border-color:var(--brand)}
-  .bed-level-point .mono{font-size:10px}
   .bed-level-point[aria-pressed="true"]{border-color:var(--brand);background:var(--surface-3);color:var(--fg)}
   .bed-level-point:disabled{opacity:0.5;cursor:not-allowed}
   .bed-level-notes{flex:1;min-width:200px}
@@ -179,15 +178,15 @@
       <div class="bed-level-map">
         <div class="hint bed-level-edge">Rear (+Y)</div>
         <div class="bed-level-grid" id="bed-level-grid" role="group" aria-label="Bed leveling positions">
-          <button type="button" class="bed-level-point" data-x="0" data-y="2" aria-pressed="false" disabled>Rear left<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="1" data-y="2" aria-pressed="false" disabled>Rear center<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="2" data-y="2" aria-pressed="false" disabled>Rear right<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="0" data-y="1" aria-pressed="false" disabled>Middle left<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="1" data-y="1" aria-pressed="false" disabled>Center<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="2" data-y="1" aria-pressed="false" disabled>Middle right<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="0" data-y="0" aria-pressed="false" disabled>Front left<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="1" data-y="0" aria-pressed="false" disabled>Front center<span class="mono"></span></button>
-          <button type="button" class="bed-level-point" data-x="2" data-y="0" aria-pressed="false" disabled>Front right<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="0" data-y="2" aria-pressed="false" disabled>Rear left</button>
+          <button type="button" class="bed-level-point" data-x="1" data-y="2" aria-pressed="false" disabled>Rear center</button>
+          <button type="button" class="bed-level-point" data-x="2" data-y="2" aria-pressed="false" disabled>Rear right</button>
+          <button type="button" class="bed-level-point" data-x="0" data-y="1" aria-pressed="false" disabled>Middle left</button>
+          <button type="button" class="bed-level-point" data-x="1" data-y="1" aria-pressed="false" disabled>Center</button>
+          <button type="button" class="bed-level-point" data-x="2" data-y="1" aria-pressed="false" disabled>Middle right</button>
+          <button type="button" class="bed-level-point" data-x="0" data-y="0" aria-pressed="false" disabled>Front left</button>
+          <button type="button" class="bed-level-point" data-x="1" data-y="0" aria-pressed="false" disabled>Front center</button>
+          <button type="button" class="bed-level-point" data-x="2" data-y="0" aria-pressed="false" disabled>Front right</button>
         </div>
         <div class="hint bed-level-edge">Front (-Y) &middot; Left (-X) / Right (+X)</div>
       </div>
@@ -323,11 +322,6 @@
       }
       // Convert machine limits into G-code coordinates for the active tool.
       return fractions.map(fraction => Number((min + (max - min) * fraction - origin[axis]).toFixed(3)));
-    });
-    bedPoints.forEach(point => {
-      const x = axes[0][Number(point.dataset.x)];
-      const y = axes[1][Number(point.dataset.y)];
-      point.querySelector('.mono').textContent = `X ${x} / Y ${y}`;
     });
     return { axes, status };
   }

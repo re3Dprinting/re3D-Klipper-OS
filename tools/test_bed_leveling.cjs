@@ -30,12 +30,11 @@ function element(){
 }
 
 async function mount({ status = printerStatus(), queryResponse, moveResponse, moveWait, onScript } = {}){
-  const points = [...html.matchAll(/class="bed-level-point" data-x="(\d)" data-y="(\d)"/g)]
+  const points = [...html.matchAll(/class="bed-level-point" data-x="(\d)" data-y="(\d)"[^>]*>(.*?)<\/button>/g)]
     .map((match) => {
       const point = element();
       point.dataset = { x: match[1], y: match[2] };
-      point.label = element();
-      point.querySelector = () => point.label;
+      point.textContent = match[3];
       return point;
     });
   const grid = element();
@@ -80,12 +79,14 @@ test('bed leveling is in Tuning only and PID tuning remains present', () => {
   }
 });
 
-test('renders nine front/rear-oriented points and configured coordinates', async () => {
+test('renders nine front/rear-oriented points with position names only', async () => {
   const page = await mount();
   assert.equal(page.points.length, 9);
-  assert.equal(page.points[0].label.textContent, 'X 59 / Y 549');
-  assert.equal(page.points[4].label.textContent, 'X 295 / Y 305');
-  assert.equal(page.points[8].label.textContent, 'X 531 / Y 61');
+  assert.deepEqual(page.points.map(point => point.textContent), [
+    'Rear left', 'Rear center', 'Rear right',
+    'Middle left', 'Center', 'Middle right',
+    'Front left', 'Front center', 'Front right'
+  ]);
   assert.ok(page.points.every(point => !point.disabled));
   assert.equal(page.requests[0].url, 'http://configured-printer:7125/printer/objects/query');
   assert.equal(page.requests.length, 1, 'loading must not move or home');
