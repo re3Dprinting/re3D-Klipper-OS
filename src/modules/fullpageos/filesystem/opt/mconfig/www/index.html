@@ -13,16 +13,16 @@
 <style>
   /* ── Design Tokens ──────────────────────────────────────────────────────── */
   :root {
-    /* Yellow selection accents and amber primary actions. */
+    /* Shared yellow palette for selection accents and primary actions. */
     --brand: #E7C547;
     --brand-600: #EFD56D;
     --brand-700: #CEB147;
     --brand-800: #B59839;
     --brand-dim: rgba(231,197,71,.08);
     --accent: var(--brand);
-    --action: #E9AE48;
-    --action-hover: #F4BF61;
-    --action-pressed: #D49A36;
+    --action: var(--brand);
+    --action-hover: var(--brand-600);
+    --action-pressed: var(--brand-700);
     --on-action: #21190C;
 
     /* Neutral charcoal layers */
