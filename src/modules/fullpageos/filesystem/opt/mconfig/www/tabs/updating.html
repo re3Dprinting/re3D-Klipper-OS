@@ -4,20 +4,23 @@
   <meta charset="utf-8" />
   <title>System Update</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <style>
-    /* Standalone maintenance theme mirrors the configurator. */
+    /* Keep maintenance surfaces and text neutral; reserve color for accents and status. */
     :root{
       color-scheme: dark;
-      --bg: #121314;
-      --card: #1F2023;
-      --surface-0: #17181A;
-      --surface-2: #292B2F;
-      --border: #32353A;
+      --bg: #121212;
+      --card: #202020;
+      --surface-0: #181818;
+      --surface-2: #2B2B2B;
+      --border: #353535;
       --accent: #E7C547;
       --accent-soft:#CEB147;
-      --text: #EEF0F3;
-      --muted: #ACAFB8;
-      --dim: #999DA6;
+      --text: #F0F0F0;
+      --muted: #B0B0B0;
+      --dim: #9E9E9E;
       --warn:#f97316;
     }
     *{box-sizing:border-box;margin:0;padding:0}
@@ -191,7 +194,7 @@
       flex-shrink:0;
       transition:background-color 0.25s ease;
     }
-    .dot.idle{background:#6b7280;}
+    .dot.idle{background:var(--dim);}
     .dot.warn{background:var(--warn);}
 
     /* Reboot pulse on the status dot */
@@ -355,7 +358,7 @@ The printer will reboot automatically when updates are complete. This page will 
       document.body.classList.remove('rebooting');
       dot.classList.add('idle');
       dot.classList.remove('warn');
-      dot.style.background = '#6b7280';
+      dot.style.background = 'var(--dim)';
     }
 
     function appendLog(line){

@@ -621,7 +621,7 @@
       const reflashWrap = document.getElementById('reflash-checkbox-wrap');
       const doReflash   = (reflashWrap && reflashWrap.style.display !== 'none' && reflashCb)
                           ? (reflashCb.checked ? '1' : '0') : '1';
-      window.location.href = '/tabs/updating.html?start=1&reflash=' + doReflash;
+      window.location.href = '/tabs/updating.html?start=1&reflash=' + doReflash + '&cachebust=' + Date.now();
     });
   }
 
