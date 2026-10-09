@@ -1,4 +1,4 @@
-<!-- Tuning (PID) — overlay + smoothed temp graph + standalone.cfg write + fw restart + fan option -->
+<!-- Tuning: PID and manual bed leveling -->
 <style>
   .out{
     margin-top:8px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);
@@ -21,6 +21,17 @@
   .ok{background:var(--success-bg);border-color:var(--success-border)}
   .warn{background:var(--warn-bg);border-color:var(--warn-border)}
   .copy-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .bed-level-layout{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap}
+  .bed-level-map{width:300px;max-width:100%;flex-shrink:0}
+  .bed-level-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 0;padding:6px;border:2px solid var(--gray-400);border-radius:var(--radius-sm);background:var(--surface-0)}
+  .bed-level-point{min-height:76px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:var(--surface-2);color:var(--fg);border:2px solid var(--gray-300);border-radius:var(--radius-sm)}
+  .bed-level-point:hover,.bed-level-point:focus-visible{background:var(--surface-3);border-color:var(--brand)}
+  .bed-level-point .mono{font-size:10px}
+  .bed-level-point[aria-pressed="true"]{border-color:var(--brand);background:var(--brand);color:#111}
+  .bed-level-point:disabled{opacity:0.5;cursor:not-allowed}
+  .bed-level-notes{flex:1;min-width:200px}
+  .bed-level-edge{text-align:center}
+  .bed-level-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 
   /* Fan checkbox styling */
   .check-row{
@@ -164,6 +175,38 @@
       </div>
     </div>
   </form>
+  <section class="card grid" aria-labelledby="bed-level-title">
+    <div style="font-weight:800" id="bed-level-title">Bed Leveling</div>
+    <div class="bed-level-layout">
+      <div class="bed-level-map">
+        <div class="hint bed-level-edge">Rear (+Y)</div>
+        <div class="bed-level-grid" id="bed-level-grid" role="group" aria-label="Bed leveling positions">
+          <button type="button" class="bed-level-point" data-x="0" data-y="2" aria-pressed="false" disabled>Rear left<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="1" data-y="2" aria-pressed="false" disabled>Rear center<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="2" data-y="2" aria-pressed="false" disabled>Rear right<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="0" data-y="1" aria-pressed="false" disabled>Middle left<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="1" data-y="1" aria-pressed="false" disabled>Center<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="2" data-y="1" aria-pressed="false" disabled>Middle right<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="0" data-y="0" aria-pressed="false" disabled>Front left<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="1" data-y="0" aria-pressed="false" disabled>Front center<span class="mono"></span></button>
+          <button type="button" class="bed-level-point" data-x="2" data-y="0" aria-pressed="false" disabled>Front right<span class="mono"></span></button>
+        </div>
+        <div class="hint bed-level-edge">Front (-Y) &middot; Left (-X) / Right (+X)</div>
+      </div>
+      <div class="bed-level-notes">
+        <div class="hint">
+          Clear the bed before starting. Start homes all axes and moves to Z 101.6 mm.
+          Select a square to move X/Y only.
+        </div>
+        <div class="bed-level-actions">
+          <button type="button" id="bed-level-start">Start Bed Leveling</button>
+          <button type="button" id="bed-level-shimstock" disabled>Shimstock Test (Z 0.3)</button>
+          <button type="button" id="bed-level-refresh">Refresh Printer Status</button>
+        </div>
+      </div>
+    </div>
+    <div class="out mono" id="out-bed-level" role="status" aria-live="polite">Loading printer status...</div>
+  </section>
 </div>
 
 <!-- Fullscreen PID overlay -->
@@ -216,6 +259,175 @@
     </div>
   </div>
 </div>
+
+<script>
+(() => {
+  function preview(outId, msg){
+    const el = document.getElementById(outId);
+    if (el) el.textContent = msg;
+  }
+
+  const bedGrid = document.getElementById('bed-level-grid');
+  const bedPoints = Array.from(bedGrid.querySelectorAll('.bed-level-point'));
+  const bedRefresh = document.getElementById('bed-level-refresh');
+  const bedStart = document.getElementById('bed-level-start');
+  const bedShimstock = document.getElementById('bed-level-shimstock');
+  const pidGo = document.getElementById('pid-go');
+  const bedStartZ = 101.6;
+  const bedMoonraker = (localStorage.getItem('moonrakerUrl') ||
+    `http://${location.hostname || 'localhost'}:7125`).replace(/\/+$/, '');
+  let bedBusy = false;
+
+  async function bedRequest(endpoint, payload){
+    const response = await fetch(bedMoonraker + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok || data.error){
+      throw new Error(data.error?.message || `Moonraker HTTP ${response.status}`);
+    }
+    if (!Object.prototype.hasOwnProperty.call(data, 'result')){
+      throw new Error('Invalid Moonraker response.');
+    }
+    return data.result;
+  }
+
+  async function bedStatus(requireHomed = true, allowMotion = false){
+    const result = await bedRequest('/printer/objects/query', { objects: {
+      toolhead: ['homed_axes', 'axis_minimum', 'axis_maximum'],
+      gcode_move: ['homing_origin'],
+      webhooks: ['state', 'state_message'],
+      print_stats: ['state'],
+      idle_timeout: ['state']
+    } });
+    const status = result.status;
+    if (status?.webhooks?.state !== 'ready'){
+      throw new Error(status?.webhooks?.state_message || 'Printer is not ready.');
+    }
+    if (!['standby', 'complete', 'cancelled', 'error'].includes(status.print_stats?.state) ||
+        !(allowMotion ? ['Idle', 'Ready', 'Printing'] : ['Idle', 'Ready']).includes(status.idle_timeout?.state)){
+      throw new Error('Printer is busy or a print is paused. Finish or cancel it before leveling.');
+    }
+    if (requireHomed && !['x', 'y', 'z'].every(axis => status.toolhead?.homed_axes?.includes(axis))){
+      throw new Error('Select Start Bed Leveling to home all axes and move to Z 101.6 mm.');
+    }
+    const toolhead = status.toolhead;
+    const origin = status.gcode_move?.homing_origin;
+    const fractions = [0.1, 0.5, 0.9];
+    const axes = [0, 1].map(axis => {
+      const min = toolhead?.axis_minimum?.[axis];
+      const max = toolhead?.axis_maximum?.[axis];
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min ||
+          !Number.isFinite(origin?.[axis])){
+        throw new Error('Printer X/Y limits or tool offsets are unavailable.');
+      }
+      // Convert machine limits into G-code coordinates for the active tool.
+      return fractions.map(fraction => Number((min + (max - min) * fraction - origin[axis]).toFixed(3)));
+    });
+    bedPoints.forEach(point => {
+      const x = axes[0][Number(point.dataset.x)];
+      const y = axes[1][Number(point.dataset.y)];
+      point.querySelector('.mono').textContent = `X ${x} / Y ${y}`;
+    });
+    return { axes, status };
+  }
+
+  function validateBedZ(status, target){
+    const min = status.toolhead?.axis_minimum?.[2];
+    const max = status.toolhead?.axis_maximum?.[2];
+    const offset = status.gcode_move?.homing_origin?.[2];
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min || !Number.isFinite(offset)){
+      throw new Error('Printer Z limits or offset are unavailable.');
+    }
+    if (target + offset < min || target + offset > max){
+      throw new Error(`Z ${target} mm is outside the configured Z travel with the current offset.`);
+    }
+  }
+
+  async function moveBedZ(status, target){
+    validateBedZ(status, target);
+    preview('out-bed-level', `Moving to Z ${target} mm...`);
+    await bedRequest('/printer/gcode/script', { script: [
+      'SAVE_GCODE_STATE NAME=mconfig_bed_level',
+      'G90',
+      `G1 Z${target} F600`,
+      'M400',
+      'RESTORE_GCODE_STATE NAME=mconfig_bed_level'
+    ].join('\n') });
+  }
+
+  async function runBedAction(point, action = 'refresh'){
+    if (bedBusy) return;
+    const start = action === 'start';
+    const pidDisabled = pidGo.disabled;
+    bedBusy = true;
+    pidGo.disabled = true;
+    bedRefresh.disabled = true;
+    bedStart.disabled = true;
+    bedShimstock.disabled = true;
+    bedGrid.setAttribute('aria-busy', 'true');
+    bedPoints.forEach(button => {
+      button.disabled = true;
+      if (action !== 'shimstock') button.setAttribute('aria-pressed', 'false');
+    });
+    let ready = false;
+    try {
+      preview('out-bed-level', 'Checking printer status...');
+      let state = await bedStatus(!start);
+      // The tab may have been unmounted while the status request was pending.
+      if (!bedGrid.isConnected) return;
+      if (start){
+        validateBedZ(state.status, bedStartZ);
+        preview('out-bed-level', 'Homing all axes...');
+        await bedRequest('/printer/gcode/script', { script: 'G28\nM400' });
+        // Homing itself can leave idle_timeout in Printing while no print is active.
+        state = await bedStatus(true, true);
+        if (!bedGrid.isConnected) return;
+        await moveBedZ(state.status, bedStartZ);
+        preview('out-bed-level', 'Bed leveling ready at Z 101.6 mm. Select a square to move X/Y.');
+      } else if (action === 'shimstock'){
+        await moveBedZ(state.status, 0.3);
+        preview('out-bed-level', 'Shimstock test ready at Z 0.3 mm. Raise Z before moving X/Y.');
+      } else if (point){
+        const axes = state.axes;
+        const x = axes[0][Number(point.dataset.x)];
+        const y = axes[1][Number(point.dataset.y)];
+        preview('out-bed-level', `Moving to X ${x}, Y ${y}; Z is unchanged...`);
+        await bedRequest('/printer/gcode/script', { script: [
+          'SAVE_GCODE_STATE NAME=mconfig_bed_level',
+          'G90',
+          `G1 X${x} Y${y} F3000`,
+          'M400',
+          'RESTORE_GCODE_STATE NAME=mconfig_bed_level'
+        ].join('\n') });
+        point.setAttribute('aria-pressed', 'true');
+        preview('out-bed-level', `Move complete: X ${x}, Y ${y}. Z is unchanged.`);
+      } else {
+        preview('out-bed-level', 'Ready. Ensure the nozzle clears the bed before selecting a square.');
+      }
+      ready = true;
+    } catch (err){
+      preview('out-bed-level', 'Error: ' + err.message);
+    } finally {
+      bedBusy = false;
+      pidGo.disabled = pidDisabled;
+      bedRefresh.disabled = false;
+      bedStart.disabled = false;
+      bedShimstock.disabled = !ready;
+      bedGrid.setAttribute('aria-busy', 'false');
+      bedPoints.forEach(button => { button.disabled = !ready; });
+    }
+  }
+
+  bedRefresh.addEventListener('click', () => runBedAction());
+  bedStart.addEventListener('click', () => runBedAction(null, 'start'));
+  bedShimstock.addEventListener('click', () => runBedAction(null, 'shimstock'));
+  bedPoints.forEach(point => point.addEventListener('click', () => runBedAction(point)));
+  runBedAction();
+})();
+</script>
 
 <script>
 (() => {

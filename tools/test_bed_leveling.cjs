@@ -4,9 +4,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-const html = fs.readFileSync(path.join(__dirname,
+const tabs = path.join(__dirname,
   '..', 'src', 'modules', 'fullpageos', 'filesystem', 'opt', 'mconfig', 'www',
-  'tabs', 'calibration.html'), 'utf8');
+  'tabs');
+const html = fs.readFileSync(path.join(tabs, 'tuning.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
 function printerStatus(){
@@ -42,10 +43,12 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
   const refresh = element();
   const start = element();
   const shimstock = element();
+  const pidGo = element();
+  pidGo.disabled = false;
   const out = element();
   const elements = {
     'bed-level-grid': grid, 'bed-level-refresh': refresh, 'bed-level-start': start,
-    'bed-level-shimstock': shimstock, 'out-bed-level': out
+    'bed-level-shimstock': shimstock, 'out-bed-level': out, 'pid-go': pidGo
   };
   const requests = [];
   const context = {
@@ -53,9 +56,6 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
     location: { hostname: 'printer.local' },
     localStorage: { getItem: () => 'http://configured-printer:7125/' },
     fetch: async (url, options) => {
-      if (url === 'cgi-bin/get_global_calibration_params.sh'){
-        return { text: async () => '' };
-      }
       requests.push({ url, payload: JSON.parse(options.body) });
       if (url.endsWith('/printer/objects/query')){
         return { ok: true, status: 200, json: async () => queryResponse || { result: { status } } };
@@ -67,8 +67,18 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
   };
   vm.runInNewContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
-  return { points, grid, refresh, start, shimstock, out, requests, status };
+  return { points, grid, refresh, start, shimstock, pidGo, out, requests, status };
 }
+
+test('bed leveling is in Tuning only and PID tuning remains present', () => {
+  assert.match(html, /id="bed-level-grid"/);
+  assert.match(html, /id="pid-form"/);
+  assert.match(html, /id="pid-go"/);
+  assert.doesNotMatch(fs.readFileSync(path.join(tabs, 'calibration.html'), 'utf8'), /bed-level/);
+  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)){
+    assert.doesNotThrow(() => new vm.Script(match[1]));
+  }
+});
 
 test('renders nine front/rear-oriented points and configured coordinates', async () => {
   const page = await mount();
@@ -152,11 +162,13 @@ test('serializes movement and waits for completion before enabling buttons', asy
   assert.equal(page.refresh.disabled, true);
   assert.equal(page.start.disabled, true);
   assert.equal(page.shimstock.disabled, true);
+  assert.equal(page.pidGo.disabled, true);
   await page.points[8].click();
   assert.equal(page.requests.filter(request => request.url.endsWith('/printer/gcode/script')).length, 1);
   finishMove();
   await moving;
   assert.ok(page.points.every(point => !point.disabled));
+  assert.equal(page.pidGo.disabled, false);
 });
 
 test('does not send movement after navigating away during a status request', async () => {

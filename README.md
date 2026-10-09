@@ -28,6 +28,17 @@ Every new commit an image is created, streamlining development and removing the 
 * [Multi-machine configuration](https://github.com/re3Dprinting/re3D-Klipper-OS/blob/devel/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/reload.py): Checks for printer type and uses the appropriate configuration files.
 * re:3D Configurator
 
+### Manual bed leveling
+
+The Configurator's **Tuning** tab includes a 3x3 **Bed Leveling** grid below
+PID tuning. **Start Bed Leveling** homes all axes and moves to **Z 101.6 mm**.
+Select a square to move X/Y only, or **Shimstock Test (Z 0.3)** to move only Z
+at the current X/Y position. Clear the bed before starting and restore Z
+clearance before moving between squares after a shimstock check.
+Points use 10%, 50%, and 90% of configured X/Y travel with active tool offsets.
+Movement requires a ready, idle printer and homed axes; Z targets are checked
+against configured travel limits. Errors appear below the grid.
+
 
 ## Installation
 
@@ -70,7 +81,6 @@ https://github.com/user-attachments/assets/7c31e5cf-c50b-4039-a07f-7ec4125e9f1a
 
 
    
-
 
 
 
