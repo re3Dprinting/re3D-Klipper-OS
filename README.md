@@ -29,6 +29,7 @@ Every new commit an image is created, streamlining development and removing the 
 * re:3D Configurator
 
 
+
 ## Installation
 
 1. Download the latest re3D-Klipper-OS-x.x.x.img.gz file from the releases page.
@@ -70,7 +71,6 @@ https://github.com/user-attachments/assets/7c31e5cf-c50b-4039-a07f-7ec4125e9f1a
 
 
    
-
 
 
 
