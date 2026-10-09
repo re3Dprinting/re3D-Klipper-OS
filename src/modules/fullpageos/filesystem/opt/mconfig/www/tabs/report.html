@@ -8,10 +8,11 @@
 <style>
   /* ── Local style-guide tokens (mirrors Configurator theme) ─────────────── */
   :root{
-    --brand:#FFD400;
-    --brand-600:#FFC800;
-    --brand-700:#FFBD00;
-    --brand-800:#FFB300;
+    --brand:#DFE6F0;
+    --brand-600:#F3F6FB;
+    --brand-700:#BBC7D8;
+    --brand-800:#9AAAC0;
+    color-scheme:dark;
 
     --white:#FFFFFF;
     --gray-050:#F2F2F2;
@@ -25,10 +26,10 @@
     --gray-800:#4D4D4D;
     --gray-900:#333333;
 
-    --bg:#050609;
-    --bg-card:#0C0E12;
-    --border:#20242F;
-    --fg:#F5F5F5;
+    --bg:#0D1117;
+    --bg-card:#151C26;
+    --border:#293342;
+    --fg:#E8EDF5;
   }
 
   * ,*::before,*::after{box-sizing:border-box;}
@@ -37,12 +38,17 @@
     margin:0;
     padding:16px 20px 24px;
     font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    background:radial-gradient(circle at top,#141824 0,#050609 40%,#050609 100%);
+    background:var(--bg);
     color:var(--gray-050);
   }
 
   /* ── Light mode overrides via CSS vars & base colors ──────────────────── */
   body.theme-light{
+    color-scheme:light;
+    --brand:#34445B;
+    --brand-600:#263446;
+    --brand-700:#586B85;
+    --brand-800:#70829A;
     --bg:#F5F5F5;
     --bg-card:#FFFFFF;
     --border:#DDDDDD;
@@ -68,18 +74,18 @@
     max-width:960px;
     margin:0 auto;
     display:grid;
-    gap:12px;
+    gap:24px;
   }
 
   .report-card{
     background:var(--bg-card);
-    border-radius:10px;
+    border-radius:16px;
     border:1px solid var(--border);
-    padding:10px 12px;
+    padding:24px;
     display:flex;
     flex-direction:column;
     gap:8px;
-    box-shadow:0 8px 20px rgba(0,0,0,0.35);
+    box-shadow:0 4px 20px rgba(0,0,0,.08);
   }
 
   body.theme-light .report-card{
@@ -95,8 +101,9 @@
   }
 
   .report-title{
-    font-weight:800;
-    font-size:18px;
+    font-weight:650;
+    font-size:28px;
+    letter-spacing:-.6px;
   }
 
   .report-subtitle{
@@ -146,10 +153,10 @@
   }
   .pill-material{
     border-color:var(--brand-600);
-    background:linear-gradient(135deg, #1b1505, #050609);
+    background:var(--bg);
   }
   body.theme-light .pill-material{
-    background:linear-gradient(135deg,#FFF3C5,#FFE89A);
+    background:#EDF1F6;
   }
 
   .section-title{
@@ -178,7 +185,7 @@
   }
 
   .profile-card{
-    background:radial-gradient(circle at top left, #171924, #050609);
+    background:var(--bg);
     border-radius:10px;
     border:1px solid var(--border);
     padding:10px 12px;
