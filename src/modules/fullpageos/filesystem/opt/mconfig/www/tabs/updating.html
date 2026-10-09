@@ -4,16 +4,23 @@
   <meta charset="utf-8" />
   <title>System Update</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <style>
+    /* Keep maintenance surfaces and text neutral; reserve color for accents and status. */
     :root{
       color-scheme: dark;
-      --bg: #080B12;
-      --card: #111520;
-      --border: #1F2535;
-      --accent: #FFD400;
-      --accent-soft:#FFC800;
-      --text: #E8ECF6;
-      --muted: #6B7590;
+      --bg: #121212;
+      --card: #202020;
+      --surface-0: #181818;
+      --surface-2: #2B2B2B;
+      --border: #353535;
+      --accent: #E7C547;
+      --accent-soft:#CEB147;
+      --text: #F0F0F0;
+      --muted: #B0B0B0;
+      --dim: #9E9E9E;
       --warn:#f97316;
     }
     *{box-sizing:border-box;margin:0;padding:0}
@@ -27,63 +34,76 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      background:radial-gradient(circle at top, #13161D 0, #080B12 55%, #050810 100%);
+      background:var(--bg);
       color:var(--text);
       font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
       padding:24px 32px;
       overflow:hidden;
-      transition:background 0.4s ease;
     }
 
     .shell{
       width:100%;
-      max-width:760px;
+      max-width:880px;
+      max-height:calc(100dvh - 48px);
+      overflow:auto;
       background:var(--card);
-      border-radius:12px;
+      border-radius:16px;
       border:1px solid var(--border);
-      padding:26px 28px 22px 28px;
-      box-shadow:0 24px 48px rgba(0,0,0,.8);
+      padding:32px;
+      box-shadow:0 4px 20px rgba(0,0,0,.08);
       display:flex;
       flex-direction:column;
-      gap:14px;
+      gap:24px;
     }
+    .maintenance-brand{display:flex;align-items:center;gap:12px}
+    .brand-copy{display:grid;gap:2px}
+    .brand-name{font-size:14px;font-weight:650;letter-spacing:-.2px}
+    .brand-caption{font-size:11px;color:var(--dim)}
+    .page-header{display:grid;gap:12px}
+    .eyebrow{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+    .eyebrow::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent)}
+    .notice{padding:14px 16px;background:rgba(231,197,71,.05);border:1px solid var(--border);border-left:2px solid var(--accent);border-radius:10px}
+    .notice strong{color:var(--text)}
+    .progress-panel{padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface-0);display:grid;gap:16px}
+    .log-heading{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:12px}
 
     .title-row{
       display:flex;
       align-items:flex-start;
       justify-content:space-between;
       gap:10px;
-      margin-bottom:2px;
     }
 
     .title-left{
       display:flex;
       align-items:center;
       gap:10px;
+      min-width:0;
     }
 
     .logo{
-      height:46px; /* your chosen size */
+      height:34px;
       width:auto;
-      opacity:0.95;
       object-fit:contain;
     }
 
     h1{
-      font-size:20px;
-      font-weight:700;
+      font-size:28px;
+      font-weight:650;
+      letter-spacing:-.6px;
+      line-height:1.25;
+      overflow-wrap:anywhere;
     }
 
     p{
       font-size:14px;
       color:var(--muted);
-      line-height:1.4;
+      line-height:1.65;
     }
 
     .status{
-      font-size:15px;
+      font-size:14px;
       font-weight:600;
-      margin-bottom:2px;
     }
 
     .row{
@@ -91,14 +111,13 @@
       align-items:center;
       justify-content:space-between;
       gap:12px;
-      margin-top:4px;
     }
 
     .spinner{
       width:20px;
       height:20px;
       border-radius:999px;
-      border:2px solid rgba(148,163,184,.35);
+      border:2px solid var(--border);
       border-top-color:var(--accent);
       animation:spin .8s linear infinite;
       flex-shrink:0;
@@ -110,7 +129,6 @@
     }
 
     .progress-block{
-      margin-top:8px;
       display:flex;
       align-items:center;
       gap:10px;
@@ -118,12 +136,11 @@
 
     .bar{
       flex:1;
-      height:10px;
+      min-width:0;
+      height:8px;
       border-radius:999px;
-      background:rgba(15,23,42,.9);
-      border:1px solid rgba(15,23,42,1);
+      background:var(--surface-2);
       overflow:hidden;
-      box-shadow:0 0 0 1px rgba(0,0,0,.4) inset;
       position:relative;
     }
     .bar > div{
@@ -149,22 +166,24 @@
       min-width:42px;
       text-align:right;
       font-size:13px;
-      color:var(--muted);
+      color:var(--text);
+      font-weight:600;
       font-variant-numeric:tabular-nums;
     }
 
     .mono{
       font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size:13px;
-      padding:10px 12px;
-      border-radius:10px;
+      padding:16px;
+      border-radius:12px;
       border:1px solid var(--border);
-      background:var(--bg);
-      color:#e5e7eb;
-      max-height:260px;
+      background:var(--surface-0);
+      color:var(--text);
+      line-height:1.65;
+      max-height:220px;
       overflow:auto;
-      margin-top:8px;
       white-space:pre-wrap;
+      overflow-wrap:anywhere;
     }
 
     .dot{
@@ -175,7 +194,7 @@
       flex-shrink:0;
       transition:background-color 0.25s ease;
     }
-    .dot.idle{background:#6b7280;}
+    .dot.idle{background:var(--dim);}
     .dot.warn{background:var(--warn);}
 
     /* Reboot pulse on the status dot */
@@ -198,38 +217,72 @@
         box-shadow:0 0 0 0 rgba(249,115,22,0);
       }
     }
+    @media(max-height:650px) and (min-width:601px){
+      .shell{padding:24px;gap:16px}
+      .logo{height:30px}
+      .page-header{gap:10px}
+      h1{font-size:24px}
+      .progress-panel{padding:16px;gap:12px}
+      .mono{max-height:140px}
+    }
+    @media(max-width:600px){
+      body{padding:16px}
+      .shell{padding:20px;gap:20px;max-height:calc(100dvh - 32px)}
+      .logo{height:30px}
+      .progress-panel{padding:16px}
+      h1{font-size:24px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation:none !important;transition:none !important}
+    }
   </style>
 </head>
 <body>
   <div class="shell">
-    <div class="title-row">
-      <div class="title-left">
-        <div class="dot idle" id="dot"></div>
-        <div>
-          <h1 id="status-label">Preparing update…</h1>
+    <div class="maintenance-brand">
+      <img src="../img/re3d-logo.png" alt="re:3D logo" class="logo">
+      <div class="brand-copy">
+        <span class="brand-name">Configurator</span>
+        <span class="brand-caption">re:3D Klipper OS</span>
+      </div>
+    </div>
+    <header class="page-header">
+      <div class="eyebrow">System maintenance</div>
+      <div class="title-row">
+        <div class="title-left">
+          <div class="dot idle" id="dot"></div>
+          <div>
+            <h1 id="status-label">Preparing update…</h1>
+          </div>
         </div>
       </div>
-      <img src="../img/re3d-logo.png" alt="re:3D logo" class="logo">
+    </header>
+
+    <div class="notice">
+      <p id="status-detail">
+        <strong>Do not power off this printer.</strong> It will automatically reboot when the update is complete, and this page will automatically return to the Configurator after the printer comes back online.
+      </p>
     </div>
 
-    <p id="status-detail">
-      <strong>Do not power off this printer.</strong> It will automatically reboot when the update is complete, and this page will automatically return to the Configurator after the printer comes back online.
-    </p>
+    <div class="progress-panel">
+      <div class="row">
+        <div class="status" id="status-short" role="status">Waiting for updater to start…</div>
+        <div class="spinner" id="spinner" aria-hidden="true"></div>
+      </div>
 
-    <div class="row">
-      <div class="status" id="status-short">Waiting for updater to start…</div>
-      <div class="spinner" id="spinner"></div>
+      <div class="progress-block">
+        <div class="bar"><div id="pbar"></div></div>
+        <div id="pnum">0%</div>
+      </div>
     </div>
 
-    <div class="progress-block">
-      <div class="bar"><div id="pbar"></div></div>
-      <div id="pnum">0%</div>
-    </div>
-
-    <div class="mono" id="log">
+    <section aria-labelledby="log-heading">
+      <h2 class="log-heading" id="log-heading">Update log</h2>
+      <div class="mono" id="log">
 Starting update process…
 The printer will reboot automatically when updates are complete. This page will stay open and then return to the Configurator once the printer is back online.
-    </div>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -305,7 +358,7 @@ The printer will reboot automatically when updates are complete. This page will 
       document.body.classList.remove('rebooting');
       dot.classList.add('idle');
       dot.classList.remove('warn');
-      dot.style.background = '#6b7280';
+      dot.style.background = 'var(--dim)';
     }
 
     function appendLog(line){

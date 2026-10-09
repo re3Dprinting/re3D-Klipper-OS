@@ -3,54 +3,64 @@
   /* Scoped to this tab only; uses your global tokens */
   .sys-content{
     display:grid;
-    grid-template-columns:minmax(0,1.05fr) minmax(0,1.05fr);
-    gap:12px;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);
+    gap:24px;
     align-items:flex-start;
   }
-  @media (max-width: 980px){
+  @media (max-width: 1200px){
     .sys-content{
       grid-template-columns:1fr;
     }
   }
 
   .sys-section-label{
-    font-size:10.5px;
-    font-weight:700;
-    letter-spacing:0.1em;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.08em;
     text-transform:uppercase;
-    color:var(--dim);
+    color:var(--muted);
     margin:0 0 4px 2px;
   }
+  .sys-version{font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--dim)}
 
   .sys-col{
     display:flex;
     flex-direction:column;
-    gap:10px;
+    gap:20px;
   }
 
   /* Let .card provide background, border, radius, etc. */
   .sys-card{
     display:flex;
     flex-direction:column;
-    gap:8px;
+    gap:16px;
   }
 
   /* Disabled / no-update-connectivity state for update card */
   .sys-card.sys-disabled{
-    opacity:0.45;
     pointer-events:none;
   }
 
   .sys-title{
-    font-weight:800;
-    margin-bottom:4px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:16px;
+    font-weight:600;
+    margin-bottom:0;
     color:var(--gray-050);
   }
+  .sys-title .icon{color:var(--dim)}
 
   .sys-subtitle{
-    font-size:11px;
-    color:var(--gray-400);
+    font-size:12px;
+    line-height:1.6;
+    color:var(--muted);
     display:flex;
+    flex-wrap:wrap;
     align-items:center;
     justify-content:space-between;
     gap:8px;
@@ -60,13 +70,14 @@
     margin-top:4px;
     padding:10px 12px;
     border-radius:var(--radius-sm);
-    background:var(--surface-1);
+    background:var(--surface-0);
     border:1px solid var(--border);
     max-height:220px;
     overflow:auto;
     font-size:12px;
     color:var(--gray-200);
   }
+  .sys-out:empty{display:none}
 
   .mono{
     font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -74,15 +85,16 @@
 
   .kv{
     display:grid;
-    grid-template-columns:max-content 1fr;
+    grid-template-columns:max-content minmax(0,1fr);
     gap:6px 10px;
+    overflow-wrap:anywhere;
   }
 
   .chip{
     display:inline-block;
-    padding:2px 8px;
+    padding:4px 10px;
     border:1px solid var(--border-2);
-    border-radius:8px;
+    border-radius:999px;
     margin:2px 4px 2px 0;
     font-size:11px;
     line-height:1.3;
@@ -102,29 +114,33 @@
   /* Print history sub-panels */
   .ph-grid{
     display:grid;
-    gap:8px;
-    margin-top:6px;
+    gap:0;
+    margin-top:0;
   }
 
   .ph-panel{
-    border-radius:var(--radius-sm);
-    border:1px solid var(--border);
-    padding:12px;
-    background:var(--surface-0);
+    border-top:1px solid var(--border);
+    padding:20px 0;
     display:flex;
     flex-direction:column;
-    gap:6px;
+    gap:10px;
   }
+  .ph-panel:first-child{border-top:0;padding-top:4px}
+  .ph-panel:last-child{padding-bottom:0}
+  .ph-divider{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border-top:1px solid var(--border);padding-top:20px;margin-bottom:8px}
+  .ph-divider + .ph-panel{border-top:0;padding-top:8px}
 
   .ph-title{
+    font-size:14px;
     font-weight:600;
     color:var(--gray-050);
     margin-bottom:2px;
   }
 
   .hint{
-    font-size:11px;
-    color:var(--gray-400);
+    font-size:12px;
+    color:var(--muted);
+    overflow-wrap:anywhere;
   }
 
   /* Match the network tab's button row behavior */
@@ -132,6 +148,7 @@
     display:flex;
     align-items:center;
     justify-content:flex-end;
+    flex-wrap:wrap;
     gap:8px;
   }
 
@@ -151,18 +168,22 @@
   .modal h3{margin:0; font-size:16px; font-weight:800; color:var(--fg);}
   .modal p{margin:0; color:var(--muted); font-size:13px; line-height:1.5;}
   .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:4px;}
-  .btn-ghost{background:var(--surface-3); color:var(--fg); border:1px solid var(--border-2);box-shadow:none}
-  .btn-ghost:hover{filter:brightness(1.25)}
+  .sys-display-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
+  .sys-display-options button{white-space:normal}
+  .sys-upload-picker:focus-within{box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+  @media(max-width:650px){
+    .sys-display-options{grid-template-columns:1fr}
+  }
 </style>
 
 <div class="content sys-content">
   <!-- Left column: system actions / network -->
   <div class="sys-col">
-    <div class="sys-section-label">System v1.4.2</div>
+    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.2</span></div>
 
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
-      <div class="sys-title">System Update</div>
+      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4 M4 16v5h16v-5"/></svg>System Update</div>
       <div class="sys-subtitle">
         <span>
           Pulls the latest Configurator UI, machine configs, Klipper, Moonraker, and Mainsail
@@ -180,15 +201,15 @@
         The Archimajor board will need to be re-flashed after this update.
       </div>
       <div class="btn-row">
-        <button type="button" id="btn-check-update" disabled>Check for Updates</button>
-        <button type="button" id="btn-update" disabled>Run Update</button>
+        <button type="button" class="btn-ghost" id="btn-check-update" disabled>Check for Updates</button>
+        <button type="button" class="btn-primary" id="btn-update" disabled>Run Update</button>
       </div>
       <div class="sys-out mono" id="out-update"></div>
     </div>
 
     <!-- Network Info -->
     <div class="card sys-card">
-      <div class="sys-title">Network Info</div>
+      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="6" rx="1"/><path d="M12 9v5 M4 18v-4h16v4 M4 18h.1 M12 14v4m0 0h.1 M20 18h.1"/></svg>Network Info</div>
       <div class="sys-subtitle">
         Hostname, IPv4 addresses, and MAC per interface.
       </div>
@@ -202,27 +223,27 @@
 
     <!-- Display Mode -->
     <div class="card sys-card">
-      <div class="sys-title">Display Mode</div>
+      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 17v4 M8 21h8"/></svg>Display Mode</div>
       <div class="sys-subtitle">
         <span>Choose the touchscreen interface. A reboot is required to switch.</span>
         <span class="chip dim" id="display-mode-pill">Loading…</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
-        <button type="button" id="btn-use-mainsail" disabled>Mainsail (Chromium)</button>
-        <button type="button" id="btn-use-klipperscreen" disabled>KlipperScreen</button>
+      <div class="sys-display-options">
+        <button type="button" class="btn-ghost" id="btn-use-mainsail" disabled>Mainsail (Chromium)</button>
+        <button type="button" class="btn-ghost" id="btn-use-klipperscreen" disabled>KlipperScreen</button>
       </div>
       <div class="hint" id="display-mode-hint" style="display:none;margin-top:4px;"></div>
     </div>
 
     <!-- Mainboard Firmware -->
     <div class="card sys-card">
-      <div class="sys-title">Mainboard Firmware</div>
+      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4 M9 18v4m6-4v4 M2 9h4m-4 6h4 M18 9h4m-4 6h4"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Mainboard Firmware</div>
       <div class="sys-subtitle">
         Manually trigger a firmware re-flash on the Archimajor board. The printer will reboot
         and show the flash screen — keep the USB cable connected throughout.
       </div>
       <div class="btn-row">
-        <button type="button" id="btn-reflash-board">Reflash Board</button>
+        <button type="button" class="btn-ghost" id="btn-reflash-board">Reflash Board</button>
       </div>
     </div>
   </div>
@@ -233,18 +254,18 @@
 
     <!-- Calibration & Print Report -->
     <div class="card sys-card">
-      <div class="sys-title">Calibration &amp; Print Report</div>
+      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5V3Z M14 3v5h5 M9 16v-3m3 3v-6m3 6v-4"/></svg>Calibration &amp; Print Report</div>
       <div class="sys-subtitle">
         Open a summary page showing calibration profiles and print history metrics for this machine.
       </div>
       <div class="btn-row">
-        <button type="button" id="btn-report">Open Report</button>
+        <button type="button" class="btn-ghost" id="btn-report">Open Report</button>
       </div>
     </div>
 
     <!-- Print History -->
     <div class="card sys-card">
-      <div class="sys-title">Print History</div>
+      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 3 8 M3 5v6h6 M12 7v5l3 2"/></svg>Print History</div>
       <div class="sys-subtitle">
         Save/restore Moonraker’s print-history database and gcode files.
       </div>
@@ -257,7 +278,7 @@
             <div class="hint">Saves file bundle to USB drive.</div>
           </div>
           <div class="btn-row">
-            <button type="submit">Save to USB</button>
+            <button type="submit" class="btn-ghost">Save to USB</button>
           </div>
           <div class="sys-out mono" id="out-save"></div>
         </form>
@@ -272,15 +293,13 @@
             </div>
           </div>
           <div class="btn-row">
-            <button type="submit">Restore from USB</button>
+            <button type="submit" class="btn-ghost">Restore from USB</button>
           </div>
           <div class="sys-out mono" id="out-restore"></div>
         </form>
 
         <!-- Web divider -->
-        <div style="border-top:1px solid var(--border);margin:4px 0 0;padding-top:8px;">
-          <div style="font-size:10.5px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim);margin-bottom:4px;">Via browser</div>
-        </div>
+        <div class="ph-divider">Via browser</div>
 
         <!-- Download bundle to browser -->
         <div class="ph-panel">
@@ -289,7 +308,7 @@
             <div class="hint">Download the current history bundle directly to your computer.</div>
           </div>
           <div class="btn-row">
-            <button type="button" id="btn-download-bundle">Download Bundle</button>
+            <button type="button" class="btn-ghost" id="btn-download-bundle">Download Bundle</button>
           </div>
           <div class="sys-out mono" id="out-download" style="display:none"></div>
         </div>
@@ -300,14 +319,14 @@
             <div class="ph-title">Restore from uploaded bundle</div>
             <div class="hint">Upload a <code>.tgz</code> bundle to restore history from your computer.</div>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+          <div class="sys-upload-picker" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
             <label class="btn btn-ghost" style="cursor:pointer;margin:0;" for="input-upload-bundle">Choose file…</label>
             <input type="file" id="input-upload-bundle" accept=".tgz,application/gzip"
               style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;">
             <span id="upload-filename" class="dim" style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;"></span>
           </div>
           <div class="btn-row">
-            <button type="button" id="btn-upload-restore" disabled>Upload &amp; Restore</button>
+            <button type="button" class="btn-ghost" id="btn-upload-restore" disabled>Upload &amp; Restore</button>
           </div>
           <div class="sys-out mono" id="out-upload" style="display:none"></div>
         </div>
@@ -602,7 +621,7 @@
       const reflashWrap = document.getElementById('reflash-checkbox-wrap');
       const doReflash   = (reflashWrap && reflashWrap.style.display !== 'none' && reflashCb)
                           ? (reflashCb.checked ? '1' : '0') : '1';
-      window.location.href = '/tabs/updating.html?start=1&reflash=' + doReflash;
+      window.location.href = '/tabs/updating.html?start=1&reflash=' + doReflash + '&cachebust=' + Date.now();
     });
   }
 

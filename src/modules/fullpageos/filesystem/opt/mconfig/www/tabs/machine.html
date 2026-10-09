@@ -1,9 +1,9 @@
 <!-- Machine tab: self-contained HTML + CSS + JS -->
 <style>
-  .machine-grid{display:grid;gap:8px;grid-template-columns:repeat(3,1fr)}
+  .machine-grid{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
   .machine-card{
-    position:relative;border:2px solid transparent;border-radius:var(--radius);background:var(--surface-2);
-    overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;
+    position:relative;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);
+    overflow:hidden;cursor:pointer;user-select:none;display:grid;grid-template-rows:1fr auto;margin-bottom:0;
     transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
     box-shadow:var(--shadow-sm);
   }
@@ -12,12 +12,18 @@
   .machine-card:has(input[type="radio"]:checked),
   .machine-card.selected{
     border-color:var(--brand-700);
-    box-shadow:0 0 0 2px rgba(255,212,0,.3), var(--shadow-md);
+    box-shadow:0 0 0 1px var(--brand-700);background:var(--surface-3);
   }
+  .machine-card:has(input:checked)::after{
+    content:'\2713';position:absolute;top:10px;right:10px;width:22px;height:22px;
+    display:grid;place-items:center;border-radius:50%;background:var(--surface-3);color:var(--fg);font-size:12px;
+  }
+  .machine-card:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:3px}
 
-  .machine-card img{display:block;width:100%;height:100px;object-fit:cover;background:var(--surface-0)}
+  /* Match the white background embedded in the printer artwork. */
+  .machine-card img{display:block;width:100%;height:160px;object-fit:contain;padding:12px;background:var(--white)}
   .machine-card .title{
-    padding:7px 10px;font-weight:700;font-size:12px;text-align:center;
+    padding:14px 12px;font-weight:600;font-size:13px;text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)
   }
 
@@ -46,19 +52,17 @@
   .modal h3{margin:0;font-size:16px;font-weight:800;color:var(--fg);}
   .modal p{margin:0;color:var(--muted);font-size:13px;line-height:1.5;}
   .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
-  .btn-ghost{background:var(--surface-3);color:var(--fg);border:1px solid var(--border-2);box-shadow:none}
-  .btn-ghost:hover{filter:brightness(1.25)}
 
   /* Machine option toggles */
   .opt-section{
-    border-top:1px solid var(--border);margin-top:12px;padding-top:10px;
-    display:grid;gap:6px;
+    border-top:1px solid var(--border);margin-top:24px;padding-top:20px;
+    display:grid;gap:0;
   }
   .opt-section-title{font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
   .opt-row{
     display:flex;align-items:center;justify-content:space-between;
-    padding:6px 10px;border-radius:var(--radius-sm);
-    background:var(--surface-2);border:1px solid var(--border);
+    padding:14px 0;gap:12px;
+    border-bottom:1px solid var(--border);
   }
   .opt-label{font-size:13px;font-weight:600;color:var(--fg)}
   .opt-row[hidden]{display:none}
@@ -77,12 +81,16 @@
     width:14px;height:14px;background:#fff;border-radius:50%;
     transition:transform .18s;box-shadow:0 1px 3px rgba(0,0,0,.25);
   }
-  .tog input:checked ~ .tog-track::after{transform:translateX(16px)}
+  .tog input:checked ~ .tog-track::after{transform:translateX(16px);background:var(--surface-0)}
+  .tog input:focus-visible ~ .tog-track{box-shadow:var(--focus-ring)}
+  @media(max-width:1000px){.machine-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:1100px){.machine-card img{height:130px}}
+  @media(max-width:650px){.machine-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.machine-card .title{font-size:12px;padding:12px 8px}}
 </style>
 
 <div class="content single">
   <form class="card" action="/cgi-bin/set_machine_type.sh" method="post" id="form-machine">
-    <div style="font-weight:800;margin-bottom:6px">Select your machine</div>
+    <div class="card-title">Select your machine</div>
     <input type="hidden" name="type" id="machine-type-hidden" value="Gigabot 4">
     <div class="machine-grid" id="machine-grid">
       <label class="machine-card" data-type="Gigabot 4">

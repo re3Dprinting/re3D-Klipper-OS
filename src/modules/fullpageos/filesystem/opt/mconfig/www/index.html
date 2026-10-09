@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=1024, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Machine Configurator (Modular Tabs)</title>
 
 <!-- Kill caching while testing -->
@@ -13,28 +13,33 @@
 <style>
   /* ── Design Tokens ──────────────────────────────────────────────────────── */
   :root {
-    /* Brand */
-    --brand: #FFD400;
-    --brand-600: #FFC800;
-    --brand-700: #F0BD00;
-    --brand-800: #E6B400;
-    --brand-dim: rgba(255,212,0,.12);
+    /* Shared yellow palette for selection accents and primary actions. */
+    --brand: #E7C547;
+    --brand-600: #EFD56D;
+    --brand-700: #CEB147;
+    --brand-800: #B59839;
+    --brand-dim: rgba(231,197,71,.08);
+    --accent: var(--brand);
+    --action: var(--brand);
+    --action-hover: var(--brand-600);
+    --action-pressed: var(--brand-700);
+    --on-action: #21190C;
 
-    /* Surfaces — navy-dark but with enough lift to separate layers clearly */
-    --bg:        #0E1014;
-    --surface-0: #151719;
-    --surface-1: #1C1F26;
-    --surface-2: #232730;
-    --surface-3: #2A2F3C;
+    /* Neutral charcoal layers */
+    --bg:        #121314;
+    --surface-0: #17181A;
+    --surface-1: #1F2023;
+    --surface-2: #292B2F;
+    --surface-3: #383B40;
 
     /* Borders — visible but not glaring */
-    --border:   #2C3040;
-    --border-2: #363C52;
+    --border:   #32353A;
+    --border-2: #494D54;
 
     /* Text */
-    --fg:    #EDF0F8;
-    --muted: #8A919E;
-    --dim:   #525866;
+    --fg:    #EEF0F3;
+    --muted: #ACAFB8;
+    --dim:   #999DA6;
 
     /* Status */
     --success: #22c55e;  --success-bg: rgba(34,197,94,.1);   --success-border: rgba(34,197,94,.3);
@@ -42,18 +47,18 @@
     --error:   #ef4444;  --error-bg:   rgba(239,68,68,.08);   --error-border:   rgba(239,68,68,.3);
 
     /* Geometry */
-    --radius:    12px;
-    --radius-sm: 8px;
+    --radius:    16px;
+    --radius-sm: 10px;
     --radius-xs: 6px;
-    --pad:       18px;
+    --pad:       24px;
 
     /* Shadows */
-    --shadow-sm: 0 1px 3px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.03);
-    --shadow-md: 0 4px 16px rgba(0,0,0,.5);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.5);
+    --shadow-sm: 0 4px 20px rgba(0,0,0,.08);
+    --shadow-md: 0 8px 24px rgba(0,0,0,.25);
+    --shadow-lg: 0 24px 64px rgba(0,0,0,.55);
 
     /* Focus */
-    --focus-ring: 0 0 0 2.5px rgba(255,212,0,.45);
+    --focus-ring: 0 0 0 3px rgba(231,197,71,.4);
 
     /* Legacy aliases — used by tabs */
     --panel:       var(--surface-2);
@@ -61,16 +66,17 @@
     --card-shadow: var(--shadow-sm);
     --white:      #FFFFFF;
     --black:      #000000;
-    --near-black: #0E1014;
-    --gray-050:   #EDF0F8;
-    --gray-100:   #C8D0E4;
-    --gray-200:   #A0ABCA;
-    --gray-300:   #8A919E;
-    --gray-400:   #636A7E;
-    --gray-800:   #2A2F3C;
-    --gray-850:   #232730;
-    --gray-900:   #1C1F26;
-    --gray-950:   #0E1014;
+    --near-black: var(--bg);
+    --gray-050:   var(--fg);
+    --gray-100:   #D7DAE0;
+    --gray-200:   #BFC4CD;
+    --gray-300:   var(--muted);
+    --gray-400:   var(--dim);
+    --gray-800:   var(--surface-3);
+    --gray-850:   var(--surface-2);
+    --gray-900:   var(--surface-1);
+    --gray-950:   var(--bg);
+    color-scheme: dark;
   }
 
   /* ── Reset / Base ────────────────────────────────────────────────────────── */
@@ -78,7 +84,6 @@
   html, body { height: 100%; margin: 0 }
   body {
     background: var(--bg);
-    background-image: radial-gradient(ellipse 100% 40% at 50% 0%, rgba(255,212,0,.04) 0%, transparent 70%);
     color: var(--fg);
     font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
     text-rendering: optimizeLegibility;
@@ -89,48 +94,57 @@
   /* ── Layout ──────────────────────────────────────────────────────────────── */
   .wrap {
     width: 100%;
-    max-width: 1080px;
+    max-width: 1600px;
     margin: 0 auto;
-    padding: 0 16px 12px;
   }
   .app {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 224px minmax(0,1fr);
+    align-items: start;
     min-height: 100dvh;
   }
 
-  /* ── App top-bar (brand + nav + cta) ─────────────────────────────────────── */
+  /* ── Workspace navigation ──────────────────────────────────────────────── */
   .app-topbar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
+    flex-direction: column;
+    padding: 30px 16px 20px;
+    background: var(--surface-0);
+    border-right: 1px solid var(--border);
   }
   .app-brand {
     display: flex;
     align-items: center;
+    gap: 12px;
     flex-shrink: 0;
+    padding: 0 8px;
+    margin-bottom: 42px;
   }
   .brand-logo {
-    height: 36px;
+    height: 34px;
     width: auto;
   }
-  .brand-sep { display: none }
-  .brand-name { display: none }
+  .brand-copy { display: grid; gap: 2px }
+  .brand-name { font-size: 14px; font-weight: 650; letter-spacing: -.2px }
+  .brand-caption { font-size: 11px; color: var(--dim) }
+  .nav-caption { padding: 0 12px; margin-bottom: 14px; font-size: 10px; letter-spacing: .14em; color: var(--dim) }
+  .icon { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round }
 
   /* ── Navigation tabs ─────────────────────────────────────────────────────── */
   .tabs {
     display: flex;
-    align-items: center;
-    gap: 2px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
     flex: 1;
-    padding: 3px;
-    background: var(--surface-0);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow-x: auto;
-    overflow-y: hidden;
+    min-width: 0;
+    min-height: 0;
+    padding: 2px;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
     scrollbar-width: none;
@@ -143,8 +157,11 @@
     border: 1px solid transparent;
     background: transparent;
     color: var(--muted);
-    padding: 7px 12px;
-    border-radius: var(--radius-xs);
+    padding: 12px;
+    min-height: 44px;
+    gap: 12px;
+    justify-content: flex-start;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     user-select: none;
     font-size: 13px;
@@ -158,41 +175,43 @@
   }
   .tab:hover { background: var(--surface-2); color: var(--fg) }
   .tab:focus-visible { outline: none; box-shadow: inset var(--focus-ring) }
-  .tab.active { background: var(--brand); color: #000; font-weight: 600; border-color: transparent }
+  .tab.active {
+    background: var(--surface-2);
+    color: var(--fg);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--brand);
+  }
+  .tab.active:focus-visible { box-shadow: inset var(--focus-ring) }
+  .tab .icon { color: var(--dim) }
+  .tab.active .icon { color: var(--brand) }
 
-  .tabs .spacer { flex: 1 }
-  .tabs .divider { display: none }
-
-  /* CTA — lives outside .tabs, always visible */
+  .sidebar-footer { display: grid; gap: 14px; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 20px; flex-shrink: 0 }
+  .sidebar-note { font-size: 11px; color: var(--dim); padding: 0 12px }
   .tab.cta {
-    background: var(--brand);
-    color: #000;
+    background: transparent;
+    color: var(--fg);
     font-size: 13px;
-    font-weight: 700;
-    padding: 8px 14px;
+    font-weight: 500;
+    justify-content: space-between;
     border-radius: var(--radius-sm);
-    border: none;
+    border: 1px solid var(--border-2);
     flex-shrink: 0;
     letter-spacing: 0.1px;
     transition: background .15s, transform .1s;
   }
-  .tab.cta:hover { background: var(--brand-600) }
-  .tab.cta:active { background: var(--brand-700); transform: translateY(1px) }
+  .tab.cta:hover { background: var(--surface-2); border-color: var(--muted) }
+  .tab.cta:active { background: var(--surface-3); transform: translateY(1px) }
   .tab.cta:focus-visible { outline: none; box-shadow: var(--focus-ring) }
 
   /* ── Content area ────────────────────────────────────────────────────────── */
   .pages {
-    flex: 1;
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px;
-    margin-top: 8px;
-    display: grid;
-    grid-template-rows: auto 1fr;
-    align-content: start;
-    overflow-y: auto;
+    min-width: 0;
+    padding: 44px 40px 48px;
   }
+  .page-header { display: grid; gap: 12px; margin-bottom: 30px }
+  .page-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase }
+  .page-eyebrow::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent) }
+  .page-description { margin: 0; max-width: 640px; color: var(--muted); font-size: 14px; line-height: 1.65 }
   .beta-tag {
     display: inline-block;
     font-size: 9px;
@@ -200,57 +219,52 @@
     letter-spacing: 0.08em;
     padding: 2px 6px;
     border-radius: 4px;
-    background: var(--warn-bg);
-    border: 1px solid var(--warn-border);
-    color: var(--warn);
+    background: var(--surface-2);
+    border: 1px solid var(--border-2);
+    color: var(--muted);
     vertical-align: middle;
     line-height: 1.6;
   }
 
   .page-title {
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 34px;
+    font-weight: 650;
+    line-height: 1.2;
     color: var(--fg);
     display: flex;
     align-items: center;
     gap: 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 12px;
-    letter-spacing: -0.1px;
+    margin: 0;
+    letter-spacing: -1px;
   }
-  .page-title::before {
-    content: '';
-    width: 3px;
-    height: 17px;
-    background: var(--brand);
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
-  .page-host { margin-top: 0 }
+  .page-host { min-width: 0; margin-top: 0 }
 
   /* ── Shared global utilities ─────────────────────────────────────────────── */
+  .content.single { display: grid; gap: 24px }
+  .out:empty { display: none }
   .card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface-2);
-    padding: 14px;
+    min-width: 0;
+    background: var(--surface-1);
+    padding: var(--pad);
     box-shadow: var(--shadow-sm);
   }
-  .row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr }
-  @media (max-width: 980px) { .row { grid-template-columns: 1fr } }
+  .card-title { font-size: 16px; font-weight: 600; letter-spacing: -.2px; margin-bottom: 8px }
+  .row { display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) minmax(0,1fr) }
+  @media (max-width: 1100px) { .row { grid-template-columns: 1fr } }
 
   label {
     display: block;
     color: var(--muted);
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 500;
-    margin-bottom: 5px;
-    letter-spacing: 0.25px;
+    margin-bottom: 6px;
+    letter-spacing: 0.1px;
   }
   input, select {
     width: 100%;
-    padding: 9px 12px;
+    padding: 12px 14px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-2);
     background: var(--surface-0);
@@ -261,6 +275,7 @@
     transition: border-color .15s, box-shadow .15s;
   }
   input::placeholder { color: var(--dim) }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--brand) }
   input:hover, select:hover { border-color: var(--muted) }
   input:focus, select:focus,
   input:focus-visible, select:focus-visible {
@@ -268,35 +283,44 @@
     box-shadow: var(--focus-ring);
     outline: none;
   }
-  button {
-    border: none;
-    padding: 9px 16px;
+  button, .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    padding: 10px 16px;
     border-radius: var(--radius-sm);
-    background: var(--brand);
-    color: #000;
+    background: var(--surface-3);
+    color: var(--fg);
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
+    line-height: 1.4;
     font-family: inherit;
     cursor: pointer;
+    text-decoration: none;
     letter-spacing: 0.1px;
     transition: background .15s, transform .1s;
     white-space: nowrap;
   }
-  button:hover { background: var(--brand-600) }
-  button:active { background: var(--brand-700); transform: translateY(1px) }
-  button:focus-visible { outline: none; box-shadow: var(--focus-ring) }
-  button:disabled { opacity: .35; cursor: not-allowed; transform: none; pointer-events: none }
+  button:hover, .btn:hover { background: #45494F }
+  button:active, .btn:active { background: var(--surface-2); transform: translateY(1px) }
+  button:focus-visible, .btn:focus-visible { outline: none; box-shadow: var(--focus-ring) }
+  button:disabled { opacity: .45; cursor: not-allowed; transform: none; pointer-events: none }
+  .btn-primary, button[type="submit"]:not(.btn-ghost) { background: var(--action); color: var(--on-action) }
+  .btn-primary:hover, button[type="submit"]:not(.btn-ghost):hover { background: var(--action-hover) }
+  .btn-primary:active, button[type="submit"]:not(.btn-ghost):active { background: var(--action-pressed) }
 
   .btn-ghost {
-    background: var(--surface-3);
+    background: transparent;
     color: var(--fg);
     border: 1px solid var(--border-2);
     box-shadow: none;
   }
-  .btn-ghost:hover { background: var(--surface-3); filter: brightness(1.25) }
+  .btn-ghost:hover { background: var(--surface-2); border-color: var(--muted) }
   .btn-ghost:active { transform: translateY(1px) }
 
-  .btn-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px }
+  .btn-row { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px }
   .hint { color: var(--muted); font-size: 12px; line-height: 1.55 }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
 
@@ -310,6 +334,43 @@
     animation: spin .85s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg) } }
+  @media (max-width: 1100px) {
+    .app { grid-template-columns: 208px minmax(0,1fr) }
+    .pages { padding: 32px 28px }
+    .app-topbar { padding-inline: 12px }
+  }
+  @media (max-width: 820px) {
+    .app { display: block }
+    .app-topbar { position: static; height: auto; display: grid; grid-template-columns: 1fr auto; gap: 20px 12px; padding: 20px 24px 0; border-right: none; border-bottom: 1px solid var(--border) }
+    .app-brand { padding: 0; margin: 0 }
+    .brand-logo { height: 30px }
+    .brand-caption, .nav-caption, .sidebar-note { display: none }
+    .sidebar-footer { padding: 0; margin: 0; border: none; grid-column: 2; grid-row: 1 }
+    .tab.cta { min-height: 40px; font-size: 12px; padding: 8px 12px }
+    .tabs { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 0 0 12px }
+    .tabs .tab { padding: 10px 12px; min-height: 40px; gap: 8px }
+    .tab.active { box-shadow: inset 0 -2px 0 var(--brand) }
+    .tab.active:focus-visible { box-shadow: inset var(--focus-ring) }
+    .pages { padding: 28px 24px }
+    .page-title { font-size: 30px }
+    .card { --pad: 20px }
+  }
+  @media (max-width: 480px) {
+    .app-topbar { padding: 16px 16px 0 }
+    .brand-name { font-size: 13px }
+    .brand-logo { height: 26px }
+    .app-brand { gap: 8px }
+    .tab.cta .icon { display: none }
+    .pages { padding: 26px 16px }
+    .page-title { font-size: 28px }
+    .page-description { font-size: 13px }
+    .page-header { gap: 10px; margin-bottom: 24px }
+    .card { --pad: 16px }
+    .content.single { gap: 18px }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; scroll-behavior: auto !important }
+  }
 </style>
 </head>
 <body>
@@ -317,26 +378,35 @@
   <div class="app-topbar">
     <div class="app-brand">
       <img src="/img/re3d-logo.png" alt="re3D" class="brand-logo">
-      <span class="brand-sep" aria-hidden="true"></span>
-      <span class="brand-name">Configurator</span>
+      <div class="brand-copy">
+        <span class="brand-name">Configurator</span>
+        <span class="brand-caption">Machine workspace</span>
+      </div>
     </div>
-    <nav class="tabs" id="tabbar">
-      <button class="tab" data-page="machine">Machine</button>
-      <button class="tab" data-page="network">Network</button>
-      <button class="tab" data-page="tuning">Tuning</button>
-      <button class="tab" data-page="shaper">Input Shaper</button>
-      <button class="tab" data-page="calibration">Calibration</button>
-      <button class="tab" data-page="troubleshoot">Troubleshooting</button>
-      <button class="tab" data-page="recovery">Print Recovery</button>
-      <button class="tab" data-page="system">System</button>
-      <span class="spacer"></span>
+    <div class="nav-caption">WORKSPACE</div>
+    <nav class="tabs" id="tabbar" aria-label="Configurator sections">
+      <button class="tab" data-page="machine"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z M3 8l9 5 9-5 M12 13v8"/></svg>Machine</button>
+      <button class="tab" data-page="network"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a14 14 0 0 1 18 0 M6 12a9 9 0 0 1 12 0 M9 16a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r=".7"/></svg>Network</button>
+      <button class="tab" data-page="tuning"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v5m0 4v9 M12 3v10m0 4v4 M19 3v2m0 4v12 M2 8h6 M9 17h6 M16 5h6"/></svg>Tuning</button>
+      <button class="tab" data-page="shaper"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h3l3-8 4 16 4-12 3 4h3"/></svg>Input Shaper</button>
+      <button class="tab" data-page="calibration"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3m0 14v3 M2 12h3m14 0h3"/></svg>Calibration</button>
+      <button class="tab" data-page="troubleshoot"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6 M10 7v4m0 2v.1"/></svg>Troubleshooting</button>
+      <button class="tab" data-page="recovery"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 3 8 M3 5v6h6 M12 7v5l3 2"/></svg>Print Recovery</button>
+      <button class="tab" data-page="system"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.1 M7 17h.1 M11 7h6 M11 17h6"/></svg>System</button>
     </nav>
-    <!-- Default to localhost; JS will swap to LAN IP when possible -->
-    <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Printer Control ↗</a>
+    <div class="sidebar-footer">
+      <!-- Default to localhost; JS will swap to LAN IP when possible -->
+      <a id="dash-link" class="tab cta" href="http://localhost/" title="Open Dashboard">Printer Control<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5v14h14v-3 M13 3h8v8 M21 3l-11 11"/></svg></a>
+      <div class="sidebar-note">re:3D Klipper OS</div>
+    </div>
   </div>
 
   <section class="pages">
-    <div class="page-title" id="page-title">Machine</div>
+    <header class="page-header">
+      <div class="page-eyebrow">Machine configuration</div>
+      <h1 class="page-title" id="page-title">Machine</h1>
+      <p class="page-description" id="page-description">Choose your printer and configure its hardware.</p>
+    </header>
     <div id="page" class="page-host"><!-- tab content mounts here --></div>
   </section>
 </div>
@@ -354,16 +424,36 @@
 
 const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','recovery','system'];
 const titleEl = document.getElementById('page-title');
+const descriptionEl = document.getElementById('page-description');
 const hostEl  = document.getElementById('page');
 const tabbar  = document.getElementById('tabbar');
 let currentTab = null;
 
 function setActiveTab(name){
   document.querySelectorAll('.tab[data-page]').forEach(b=>{
-    b.classList.toggle('active', b.dataset.page === name);
+    const active = b.dataset.page === name;
+    b.classList.toggle('active', active);
+    if (active) {
+      b.setAttribute('aria-current', 'page');
+      tabbar.scrollLeft = b.offsetLeft - tabbar.offsetLeft - (tabbar.clientWidth - b.offsetWidth) / 2;
+      tabbar.scrollTop = b.offsetTop - tabbar.offsetTop - (tabbar.clientHeight - b.offsetHeight) / 2;
+    } else {
+      b.removeAttribute('aria-current');
+    }
   });
   const label = prettyName(name);
   titleEl.innerHTML = label.html ?? label.text;
+  const descriptions = {
+    machine: 'Choose your printer and configure its hardware.',
+    network: 'Connect your printer and manage its network identity.',
+    tuning: 'Fine-tune temperature control and level your print bed.',
+    shaper: 'Measure resonance and reduce vibration for smoother prints.',
+    calibration: 'Build material profiles and dial in print quality.',
+    troubleshoot: 'Inspect printer logs and diagnose issues.',
+    recovery: 'Resume interrupted prints and manage recovery settings.',
+    system: 'Manage software, device settings, and your print history.'
+  };
+  descriptionEl.textContent = descriptions[name];
 }
 
 function prettyName(pg){
@@ -457,6 +547,7 @@ async function loadTab(name){
   setActiveTab(name);
   history.replaceState(null,'',`#${name}`);
   currentTab = name;
+  window.scrollTo({top:0, behavior:'auto'});
 }
 
 // nav binding
@@ -469,6 +560,9 @@ loadTab((location.hash || '#machine').slice(1));
 
 // back/forward support
 window.addEventListener('hashchange', ()=>loadTab((location.hash||'#machine').slice(1)));
+window.addEventListener('resize', () => {
+  if (currentTab) setActiveTab(currentTab);
+});
 
 /* ── LAN IP-aware Dashboard link (global) ───────────────────────────────── */
 (async () => {
