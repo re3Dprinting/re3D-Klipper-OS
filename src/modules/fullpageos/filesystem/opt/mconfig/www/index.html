@@ -13,29 +13,33 @@
 <style>
   /* ── Design Tokens ──────────────────────────────────────────────────────── */
   :root {
-    /* Neutral interaction colors; yellow is reserved for small brand details. */
-    --brand: #DFE6F0;
-    --brand-600: #F3F6FB;
-    --brand-700: #BBC7D8;
-    --brand-800: #9AAAC0;
-    --brand-dim: rgba(187,199,216,.08);
-    --accent: #C8A75E;
+    /* Yellow selection accents and amber primary actions. */
+    --brand: #E7C547;
+    --brand-600: #EFD56D;
+    --brand-700: #CEB147;
+    --brand-800: #B59839;
+    --brand-dim: rgba(231,197,71,.08);
+    --accent: var(--brand);
+    --action: #E9AE48;
+    --action-hover: #F4BF61;
+    --action-pressed: #D49A36;
+    --on-action: #21190C;
 
-    /* Graphite layers */
-    --bg:        #0D1117;
-    --surface-0: #111720;
-    --surface-1: #151C26;
-    --surface-2: #1C2532;
-    --surface-3: #273446;
+    /* Neutral charcoal layers */
+    --bg:        #121314;
+    --surface-0: #17181A;
+    --surface-1: #1F2023;
+    --surface-2: #292B2F;
+    --surface-3: #383B40;
 
     /* Borders — visible but not glaring */
-    --border:   #293342;
-    --border-2: #3C4B60;
+    --border:   #32353A;
+    --border-2: #494D54;
 
     /* Text */
-    --fg:    #E8EDF5;
-    --muted: #A2AEC0;
-    --dim:   #8B99AE;
+    --fg:    #EEF0F3;
+    --muted: #ACAFB8;
+    --dim:   #999DA6;
 
     /* Status */
     --success: #22c55e;  --success-bg: rgba(34,197,94,.1);   --success-border: rgba(34,197,94,.3);
@@ -54,7 +58,7 @@
     --shadow-lg: 0 24px 64px rgba(0,0,0,.55);
 
     /* Focus */
-    --focus-ring: 0 0 0 3px rgba(187,199,216,.5);
+    --focus-ring: 0 0 0 3px rgba(231,197,71,.4);
 
     /* Legacy aliases — used by tabs */
     --panel:       var(--surface-2);
@@ -64,8 +68,8 @@
     --black:      #000000;
     --near-black: var(--bg);
     --gray-050:   var(--fg);
-    --gray-100:   #D0DAE8;
-    --gray-200:   #B9C5D6;
+    --gray-100:   #D7DAE0;
+    --gray-200:   #BFC4CD;
     --gray-300:   var(--muted);
     --gray-400:   var(--dim);
     --gray-800:   var(--surface-3);
@@ -172,13 +176,14 @@
   .tab:hover { background: var(--surface-2); color: var(--fg) }
   .tab:focus-visible { outline: none; box-shadow: inset var(--focus-ring) }
   .tab.active {
-    background: var(--surface-3);
+    background: var(--surface-2);
     color: var(--fg);
     font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--brand);
   }
-  .tab.active::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-left: auto }
+  .tab.active:focus-visible { box-shadow: inset var(--focus-ring) }
   .tab .icon { color: var(--dim) }
-  .tab.active .icon { color: var(--fg) }
+  .tab.active .icon { color: var(--brand) }
 
   .sidebar-footer { display: grid; gap: 14px; border-top: 1px solid var(--border); padding-top: 18px; margin-top: 20px; flex-shrink: 0 }
   .sidebar-note { font-size: 11px; color: var(--dim); padding: 0 12px }
@@ -298,13 +303,13 @@
     transition: background .15s, transform .1s;
     white-space: nowrap;
   }
-  button:hover, .btn:hover { background: #34445B }
+  button:hover, .btn:hover { background: #45494F }
   button:active, .btn:active { background: var(--surface-2); transform: translateY(1px) }
   button:focus-visible, .btn:focus-visible { outline: none; box-shadow: var(--focus-ring) }
   button:disabled { opacity: .45; cursor: not-allowed; transform: none; pointer-events: none }
-  .btn-primary, button[type="submit"]:not(.btn-ghost) { background: var(--brand); color: #142030 }
-  .btn-primary:hover, button[type="submit"]:not(.btn-ghost):hover { background: var(--brand-600) }
-  .btn-primary:active, button[type="submit"]:not(.btn-ghost):active { background: var(--brand-700) }
+  .btn-primary, button[type="submit"]:not(.btn-ghost) { background: var(--action); color: var(--on-action) }
+  .btn-primary:hover, button[type="submit"]:not(.btn-ghost):hover { background: var(--action-hover) }
+  .btn-primary:active, button[type="submit"]:not(.btn-ghost):active { background: var(--action-pressed) }
 
   .btn-ghost {
     background: transparent;
@@ -344,7 +349,8 @@
     .tab.cta { min-height: 40px; font-size: 12px; padding: 8px 12px }
     .tabs { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 0 0 12px }
     .tabs .tab { padding: 10px 12px; min-height: 40px; gap: 8px }
-    .tab.active::after { display: none }
+    .tab.active { box-shadow: inset 0 -2px 0 var(--brand) }
+    .tab.active:focus-visible { box-shadow: inset var(--focus-ring) }
     .pages { padding: 28px 24px }
     .page-title { font-size: 30px }
     .card { --pad: 20px }
