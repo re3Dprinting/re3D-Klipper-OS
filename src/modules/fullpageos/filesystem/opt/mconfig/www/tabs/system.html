@@ -83,13 +83,6 @@
     font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   }
 
-  .kv{
-    display:grid;
-    grid-template-columns:max-content minmax(0,1fr);
-    gap:6px 10px;
-    overflow-wrap:anywhere;
-  }
-
   .chip{
     display:inline-block;
     padding:4px 10px;
@@ -100,11 +93,6 @@
     line-height:1.3;
     white-space:nowrap;
     background:var(--surface-2);
-  }
-
-  .iface{
-    font-weight:600;
-    color:var(--gray-100);
   }
 
   .dim{
@@ -177,7 +165,7 @@
 </style>
 
 <div class="content sys-content">
-  <!-- Left column: system actions / network -->
+  <!-- Left column: system actions -->
   <div class="sys-col">
     <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.2</span></div>
 
@@ -205,20 +193,6 @@
         <button type="button" class="btn-primary" id="btn-update" disabled>Run Update</button>
       </div>
       <div class="sys-out mono" id="out-update"></div>
-    </div>
-
-    <!-- Network Info -->
-    <div class="card sys-card">
-      <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="6" rx="1"/><path d="M12 9v5 M4 18v-4h16v4 M4 18h.1 M12 14v4m0 0h.1 M20 18h.1"/></svg>Network Info</div>
-      <div class="sys-subtitle">
-        Hostname, IPv4 addresses, and MAC per interface.
-      </div>
-      <div class="sys-out mono" id="netinfo">
-        <div class="kv">
-          <div class="dim">Hostname</div><div id="ni-host">resolving…</div>
-        </div>
-        <div id="ni-ifs" style="margin-top:8px"></div>
-      </div>
     </div>
 
     <!-- Display Mode -->
@@ -753,55 +727,6 @@
       openUploadModal(f);
     });
   }
-
-  // ---- Network Info (hostname + per-interface IPv4 + MAC) ----
-  const hostSpan = document.getElementById('ni-host');
-  const ifsDiv   = document.getElementById('ni-ifs');
-
-  function renderInterfaces(arr){
-    ifsDiv.innerHTML = '';
-    if (!arr || !arr.length){
-      ifsDiv.textContent = 'No active interfaces.';
-      return;
-    }
-    arr.forEach(({if:ifname, mac, ipv4, state})=>{
-      const wrap = document.createElement('div');
-      wrap.style.marginBottom = '8px';
-      const ips = (ipv4 && ipv4.length)
-        ? ipv4.map(ip=>`<span class="chip">${ip}</span>`).join(' ')
-        : '<span class="dim">—</span>';
-      const macChip = mac ? `<span class="chip">${mac}</span>` : '<span class="dim">—</span>';
-      wrap.innerHTML = `
-        <div class="iface">${ifname} <span class="dim">(${state||'unknown'})</span></div>
-        <div>IPv4: ${ips}</div>
-        <div>MAC: ${macChip}</div>
-      `;
-      ifsDiv.appendChild(wrap);
-    });
-  }
-
-  (async ()=>{
-    try{
-      const r = await fetch('/cgi-bin/net_info.sh', {cache:'no-store'});
-      if (r.ok){
-        const j = await r.json();
-        hostSpan.textContent = j.hostname || 'unknown';
-        renderInterfaces(j.interfaces || []);
-        return;
-      }
-      throw new Error('net_info.sh not available');
-    }catch(_){
-      try{
-        const r2 = await fetch('/cgi-bin/host_ip.sh', {cache:'no-store'});
-        const t  = r2.ok ? (await r2.text()).trim() : '';
-        hostSpan.textContent = '(unknown)';
-        renderInterfaces([{if:'lan', mac:'', ipv4: t? [t]: [], state:'up'}]);
-      }catch{
-        hostSpan.textContent = 'unknown';
-        renderInterfaces([]);
-      }
-    }
-  })();
 
   // ---- Calibration & Print Report button ----
   const btnReport = document.getElementById('btn-report');
