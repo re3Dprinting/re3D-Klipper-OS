@@ -6,6 +6,12 @@ A [CustomPiOS](https://github.com/guysoft/CustomPiOS) built on top of [FullPageO
 
 Every new commit an image is created, streamlining development and removing the need to go through the entire build chain. 
 
+## Documentation
+
+Start with the [re:3D Klipper OS wiki](docs/README.md) for operator guides,
+troubleshooting, and reusable documentation templates. This is a Markdown wiki
+starter; draft procedures are labeled and need review on the applicable hardware.
+
 ## Making custom edits is simple: 
 * Fork this repository
 * Commit changes
@@ -71,6 +77,5 @@ https://github.com/user-attachments/assets/7c31e5cf-c50b-4039-a07f-7ec4125e9f1a
 
 
    
-
 
 
