@@ -1,7 +1,6 @@
 [Unit]
-Description=Generate Mainsail navi.json with LAN IP (fallback 127.0.0.1)
-After=network-online.target
-Wants=network-online.target
+Description=Refresh Mainsail navi.json with the current LAN IP
+After=network.target klipper_config.service
 
 [Service]
 Type=oneshot

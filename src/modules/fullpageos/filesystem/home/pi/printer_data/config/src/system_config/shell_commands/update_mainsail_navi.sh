@@ -21,7 +21,12 @@ fi
 
 mkdir -p "$THEME_DIR"
 
-# Pick best private IPv4: eth0 > wlan0 > anything private; fallback 127.0.0.1
+if ! command -v ip >/dev/null 2>&1; then
+  echo "Cannot refresh navi.json: ip command not found" >&2
+  exit 1
+fi
+
+# Pick best private IPv4: eth0 > wlan0 > anything private.
 pick_ip() {
   # helper: first private IPv4 on an interface (if any)
   int_ip() {
@@ -44,20 +49,19 @@ pick_ip() {
         | head -n1 || true)
   [ -n "${IP:-}" ] && { echo "$IP"; return; }
 
-  echo "127.0.0.1"
+  return 0
 }
 
-# Wait up to 30 s for a real IP (network may not be up yet even if network-online.target fired)
-IP=""
-for _i in $(seq 1 15); do
-  IP="$(pick_ip)"
-  [ "${IP}" != "127.0.0.1" ] && break
-  sleep 2
-done
+IP="$(pick_ip)"
+if [ -z "$IP" ]; then
+  echo "No private LAN IPv4 available; leaving navi.json unchanged. The timer will retry."
+  exit 0
+fi
 
 URL="http://${IP}:${PORT}/"
 
-TMP="$(mktemp)"
+TMP="$(mktemp "$THEME_DIR/.navi.XXXXXX")"
+trap 'rm -f "$TMP"' EXIT
 cat >"$TMP" <<JSON
 [
   {
@@ -70,8 +74,13 @@ cat >"$TMP" <<JSON
 ]
 JSON
 
-install -o pi -g pi -m 0644 "$TMP" "$THEME_DIR/navi.json"
-rm -f "$TMP"
+if [ -f "$THEME_DIR/navi.json" ] && cmp -s "$TMP" "$THEME_DIR/navi.json"; then
+  exit 0
+fi
+
+chown pi:pi "$TMP"
+chmod 0644 "$TMP"
+mv -f "$TMP" "$THEME_DIR/navi.json"
 
 # Optional: write a tiny marker for debugging
 echo "navi.json -> ${URL} ($(date -Is))" | tee "$THEME_DIR/.navi.last"

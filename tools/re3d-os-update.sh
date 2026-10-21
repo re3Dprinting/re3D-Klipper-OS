@@ -153,7 +153,7 @@ if [ -d "${SRC_SYSTEMD}" ]; then
       log "${LOG_TAG}   updated ${svc_name}"
       _RELOAD_NEEDED=1
     fi
-  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 -name '*.service' -print0)
+  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 \( -name '*.service' -o -name '*.timer' \) -print0)
   if [ "${_RELOAD_NEEDED}" -eq 1 ]; then
     systemctl daemon-reload || true
     log "${LOG_TAG} systemd daemon-reload done"
@@ -235,6 +235,11 @@ if [ -d "${SRC_SHELL_CMDS}" ]; then
   fi
 else
   log "${LOG_TAG} WARNING: Source ${SRC_SHELL_CMDS} not found, skipping shell commands."
+fi
+
+if [ -f /etc/systemd/system/update-mainsail-navi.timer ]; then
+  log "${LOG_TAG} Enabling periodic Mainsail navigation refresh..."
+  systemctl enable --now update-mainsail-navi.timer
 fi
 
 # ---------- 6) Ensure matplotlib is installed for graphstats ----------
