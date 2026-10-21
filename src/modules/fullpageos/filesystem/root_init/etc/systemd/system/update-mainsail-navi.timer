@@ -2,8 +2,8 @@
 Description=Periodically refresh the Mainsail Configurator link
 
 [Timer]
-OnBootSec=30s
-OnUnitInactiveSec=30s
+OnBootSec=5s
+OnUnitInactiveSec=5s
 AccuracySec=1s
 Unit=update-mainsail-navi.service
 

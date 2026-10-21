@@ -78,8 +78,8 @@ test('timer is ordered, recurring, and deployed on new and existing images', () 
   const service = fs.readFileSync(path.join(units, 'update-mainsail-navi.service'), 'utf8');
   const timer = fs.readFileSync(path.join(units, 'update-mainsail-navi.timer'), 'utf8');
   assert.match(service, /After=.*klipper_config\.service/);
-  assert.match(timer, /OnBootSec=30s/);
-  assert.match(timer, /OnUnitInactiveSec=30s/);
+  assert.match(timer, /OnBootSec=5s/);
+  assert.match(timer, /OnUnitInactiveSec=5s/);
   assert.match(timer, /Unit=update-mainsail-navi\.service/);
   assert.match(timer, /WantedBy=timers\.target/);
   const build = fs.readFileSync(path.join(root, 'src', 'modules', 'fullpageos', 'start_chroot_script'), 'utf8');
