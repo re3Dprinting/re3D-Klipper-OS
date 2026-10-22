@@ -110,39 +110,6 @@ chown -R "${BASE_USER}:${BASE_USER}" /home/"${BASE_USER}"/.config/labwc || true
 chmod +x /home/"${BASE_USER}"/.config/labwc/autostart || true
 step_end
 
-# Install web stack (optional lighttpd)
-if [ "$FULLPAGEOS_INCLUDE_LIGHTTPD" == "yes" ]
-then
-    step_start "Lighttpd/Web Stack Setup"
-    apt-get install -y lighttpd php-common php-cgi php
-    lighty-enable-mod fastcgi-php
-    chown -R www-data:www-data /var/www/html
-    chmod 775 /var/www/html
-    usermod -a -G www-data pi
-    systemctl enable clear_lighttpd_cache.service
-    pushd /var/www/html
-        if [ "$FULLPAGEOS_INCLUDE_DASHBOARD" == "yes" ]
-        then
-            gitclone FULLPAGEOS_DASHBOARD_REPO FullPageDashboard
-            chown -R pi:pi FullPageDashboard
-            chown -R www-data:www-data FullPageDashboard
-            chmod 775 FullPageDashboard
-            pushd FullPageDashboard
-                sed -i "s@'INIT_URL_PATH', __DIR__ . '/init.txt'@'INIT_URL_PATH', '/"${BASE_BOOT_MOUNT_PATH}"/fullpagedashboard.txt'@g" config.php
-            popd
-        fi
-        if [ "$FULLPAGEOS_INCLUDE_WELCOME" == "yes" ]
-        then
-            gitclone FULLPAGEOS_WELCOME_REPO welcome
-            chown -R www-data:www-data welcome
-        fi
-    popd
-    echo "enabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
-    step_end
-else
-    echo "disabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
-fi
-
 # override timezone
 if [ "$FULLPAGEOS_OVERRIDE_TIMEZONE" != "default" ]
 then
@@ -562,6 +529,9 @@ sudo -u "${BASE_USER}" bash -lc '
 # 8) NGINX as reverse proxy + static hosting for Mainsail
 step_start "NGINX Install & Config"
 apt-get install -y nginx
+
+# Keep the kiosk waiting for Nginx to serve the configured URL.
+echo "enabled" > /"${BASE_BOOT_MOUNT_PATH}"/check_for_httpd
 
 cat >/etc/nginx/conf.d/upstreams.conf <<'EOF'
 # /etc/nginx/conf.d/upstreams.conf
