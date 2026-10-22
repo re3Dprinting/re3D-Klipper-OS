@@ -7,5 +7,5 @@ if command -v wayvnc >/dev/null 2>&1; then
   wayvnc --render-cursor 0.0.0.0 5900 &
 fi
 
-# Kiosk browser loop (waits for web server, then launches Chromium)
+# Kiosk browser loop (local first-boot splash, otherwise waits for web server)
 exec /opt/custompios/scripts/run_onepageos

@@ -6,7 +6,8 @@ swaybg -i /opt/custompios/background.png -m fill &
 
 while true
 do
-    if [[ $(curl -sL -b cookiefile -w "%{http_code}\\n" -H "user-agent: ${USER_AGENT}" "$(/opt/custompios/scripts/get_url)" -o /dev/null) =~ ^([23][0-9]{2,2}|401)$ ]] || grep -q disabled "/boot/firmware/check_for_httpd" ; then
+    # The first-boot splash is local and must not wait for the web server.
+    if [[ -f /etc/firstboot-splash ]] || [[ $(curl -sL -b cookiefile -w "%{http_code}\\n" -H "user-agent: ${USER_AGENT}" "$(/opt/custompios/scripts/get_url)" -o /dev/null) =~ ^([23][0-9]{2,2}|401)$ ]] || grep -q disabled "/boot/firmware/check_for_httpd" ; then
       %BROWSER_START_SCRIPT%
     fi
     sleep 1
