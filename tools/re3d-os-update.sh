@@ -48,6 +48,7 @@ SRC_MCONFIG="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/www"
 SRC_FFF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fff"
 SRC_FGF="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/fgf"
 SRC_COMMON="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/common"
+SRC_RELOAD="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/reload.py"
 SRC_SHELL_CMDS="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands"
 SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
 SRC_BED_CYCLING="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/gcodes/Bed Cycling"
@@ -57,6 +58,7 @@ DST_MCONFIG="/opt/mconfig/www"
 DST_FFF="/home/pi/printer_data/config/src/fff"
 DST_FGF="/home/pi/printer_data/config/src/fgf"
 DST_COMMON="/home/pi/printer_data/config/src/common"
+DST_RELOAD="/home/pi/printer_data/config/src/reload.py"
 DST_SHELL_CMDS="/usr/local/bin"
 DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
@@ -177,6 +179,9 @@ fi
 
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
+
+log "${LOG_TAG} Updating printer configuration reload script..."
+install -m 0644 -o pi -g pi "${SRC_RELOAD}" "${DST_RELOAD}"
 
 if [ -d "${SRC_FFF}" ]; then
   log "${LOG_TAG} Syncing FFF configs..."
