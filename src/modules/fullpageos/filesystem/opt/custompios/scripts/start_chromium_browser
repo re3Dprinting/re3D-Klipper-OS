@@ -7,12 +7,20 @@ set -u  # don't use -e; we want to keep the session alive even if something smal
 FIRSTBOOT_FLAG="/etc/firstboot-splash"
 UI_STARTED="/tmp/firstboot-ui-started"
 WAIT_HTML="/home/pi/wait.html"
-FLASH_UNIT="flash_once.service"       # <— your service name here
 LOG="/tmp/firstboot-kiosk.log"
+
+if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+  PLATFORM=wayland
+elif [[ -n "${DISPLAY:-}" ]]; then
+  PLATFORM=x11
+else
+  echo "[$(date)] kiosk: no Wayland or X11 display in session environment" >>"$LOG"
+  exit 1
+fi
 
 flags=(
   --kiosk
-  --ozone-platform=wayland
+  "--ozone-platform=$PLATFORM"
   --touch-events=enabled
   --disable-pinch
   --noerrdialogs
@@ -33,7 +41,7 @@ flags=(
 # ---------- One-time splash branch ----------
 if [[ -f "$FIRSTBOOT_FLAG" ]]; then
   {
-    echo "[$(date)] firstboot: flag present"
+    echo "[$(date)] firstboot: flag present; display backend: $PLATFORM"
 
     CHROME_BIN="$(command -v chromium-browser || command -v chromium || true)"
     if [[ -z "${CHROME_BIN:-}" ]]; then
@@ -62,8 +70,8 @@ if [[ -f "$FIRSTBOOT_FLAG" ]]; then
       >/tmp/firstboot-chrome.log 2>&1 &
     CHROME_PID=$!
 
-    # Signal flash_once.service's ExecStartPre wait loop that the UI is ready.
-    # (flash_once.service now starts itself at graphical.target; it polls for this file.)
+    # Release flash_once.service's wait loop after attempting to launch the UI.
+    # The service starts at multi-user.target and also has a bounded timeout.
     touch "$UI_STARTED"
 
     echo "[$(date)] firstboot: started splash (PID $CHROME_PID); flash_once.service will start itself"
@@ -73,30 +81,13 @@ if [[ -f "$FIRSTBOOT_FLAG" ]]; then
     # On success flash_once clears firstboot-splash and the system is power-cycled by
     # the user; on reboot Chromium is killed and this wait returns naturally.
     CHROME_START=$SECONDS
-    wait "$CHROME_PID" 2>/dev/null || true
+    CHROME_EXIT=0
+    wait "$CHROME_PID" || CHROME_EXIT=$?
     CHROME_RUNTIME=$(( SECONDS - CHROME_START ))
 
-    echo "[$(date)] firstboot: chromium exited after ${CHROME_RUNTIME}s"
-
-    # --- Last-resort fallback: if Chromium keeps dying almost immediately it never
-    #     showed the splash page.  After 3 consecutive quick-exits give up on the
-    #     firstboot flow entirely and fall through to the normal kiosk UI so the
-    #     machine is usable rather than stuck on a blank desktop forever.
-    FAIL_FILE="/tmp/firstboot-chrome-fails"
-    if (( CHROME_RUNTIME < 15 )); then
-      FAILS=$(( $(cat "$FAIL_FILE" 2>/dev/null || echo 0) + 1 ))
-      echo "$FAILS" > "$FAIL_FILE"
-      echo "[$(date)] firstboot: quick-exit #${FAILS} — splash may not have appeared"
-      if (( FAILS >= 3 )); then
-        echo "[$(date)] firstboot: 3 consecutive quick-exits; giving up — clearing firstboot flag and falling back to normal UI"
-        systemctl stop "$FLASH_UNIT" 2>/dev/null || true
-        rm -f /etc/firstboot-splash /tmp/firstboot-ui-started "$FAIL_FILE"
-      fi
-    else
-      # Chromium ran long enough — reset the failure counter
-      rm -f "$FAIL_FILE"
-      echo "[$(date)] firstboot: leaving cleanup/reboot to systemd"
-    fi
+    echo "[$(date)] firstboot: chromium exited after ${CHROME_RUNTIME}s (code $CHROME_EXIT); see /tmp/firstboot-chrome.log"
+    # The kiosk loop retries the UI; only the flashing service owns flash cleanup.
+    echo "[$(date)] firstboot: leaving firmware service and firstboot flag unchanged"
   } >>"$LOG" 2>&1
   exit 0
 fi

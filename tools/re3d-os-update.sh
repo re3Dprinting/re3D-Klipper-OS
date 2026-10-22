@@ -419,6 +419,10 @@ LIGHTDM_EOF
 fi
 
 # d) Install re3d-kiosk Wayland session desktop file
+SRC_LIGHTDM_DROPIN="${REPO_DIR}/src/modules/fullpageos/filesystem/root_init/etc/systemd/system/update_lightdm_conf.service.d/re3d-kiosk.conf"
+install -D -m 0644 -o root -g root "${SRC_LIGHTDM_DROPIN}" \
+  /etc/systemd/system/update_lightdm_conf.service.d/re3d-kiosk.conf
+
 install -d -m 0755 /usr/share/wayland-sessions
 if [ ! -f /usr/share/wayland-sessions/re3d-kiosk.desktop ]; then
   cat > /usr/share/wayland-sessions/re3d-kiosk.desktop <<'EOF'
