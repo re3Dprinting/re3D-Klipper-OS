@@ -56,7 +56,6 @@ def reload_ui():
 def reboot_services():
     os.system("service moonraker restart")
     os.system("service klipper restart")
-    os.system("service lightdm restart")
 
 def main():
     master_config = read_master_config()
@@ -111,4 +110,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
