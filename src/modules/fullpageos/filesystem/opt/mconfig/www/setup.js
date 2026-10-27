@@ -5,10 +5,10 @@
   document.title = 'Guided Setup - re:3D';
 
   const steps = ['machine', 'network', 'display', 'finish'];
-  const titles = ['Choose your machine', 'Connect your printer', 'Choose your display', 'Ready to finish'];
+  const titles = ['Choose your machine', 'Choose your network mode', 'Choose your display', 'Ready to finish'];
   const descriptions = [
     'Select the correct model and hardware options, then press Set Machine before continuing. Changes take effect after the final reboot. If you leave or reload setup, you will start again at Machine.',
-    'Connect to Wi-Fi or use Ethernet. You can continue offline. Changing networks may disconnect a remote browser; reopening the Configurator at the new address starts setup again at Machine.',
+    'Connect your printer to a network, or continue with offline setup.',
     'Choose the interface for the printer touchscreen. It will switch after setup is finished.',
     'Finish saves setup as complete and reboots into your selected interface. Calibrate the printer before your first print.'
   ];
@@ -18,7 +18,10 @@
   const skip = byId('setup-skip');
   const status = byId('setup-status');
   const page = byId('page');
+  const networkChoices = byId('setup-network-choice');
+  const networkInputs = [byId('setup-network-connect'), byId('setup-network-offline')];
   let step = 'machine';
+  let networkMode = null;
   let busy = false;
   let machineSaved = false;
   let initialized = false;
@@ -28,11 +31,13 @@
     `<li data-step="${name}">${index + 1}. ${['Machine', 'Network', 'Display', 'Finish'][index]}</li>`).join('');
 
   function controls() {
-    next.disabled = busy || !initialized || (step === 'machine' && !machineSaved);
+    next.disabled = busy || !initialized || (step === 'machine' && !machineSaved)
+      || (step === 'network' && !networkMode);
     back.disabled = busy || !initialized;
     back.hidden = step === 'machine';
     skip.disabled = busy || !initialized;
     next.textContent = step === 'finish' ? 'Finish & reboot' : 'Continue';
+    networkInputs.forEach(input => { input.disabled = busy || !initialized; });
   }
 
   async function request(url, options) {
@@ -56,11 +61,13 @@
     const index = steps.indexOf(step);
     byId('setup-title').textContent = titles[index];
     byId('setup-description').textContent = descriptions[index];
+    networkChoices.hidden = step !== 'network';
+    byId('setup-network-offline-note').hidden = step !== 'network' || networkMode !== 'offline';
     byId('setup-progress').querySelectorAll('li').forEach(item => {
       if (item.dataset.step === step) item.setAttribute('aria-current', 'step');
       else item.removeAttribute('aria-current');
     });
-    if (step === 'machine' || step === 'network') {
+    if (step === 'machine' || (step === 'network' && networkMode === 'connect')) {
       if (step === 'machine') machineSaved = false;
       if (!await loadTab(step)) throw new Error('Unable to load this setup screen. Reload to retry.');
     } else {
@@ -105,7 +112,7 @@
         const mode = (await response.text()).trim();
         if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid saved display mode.');
         page.querySelector(`input[value="${mode}"]`).checked = true;
-      } else {
+      } else if (step === 'finish') {
         page.innerHTML = `<div class="card">
           <div class="card-title">Setup complete?</div>
           <p>Use Back to review settings, or Finish &amp; reboot to apply your machine and display choices.</p>
@@ -135,6 +142,9 @@
   }
 
   next.addEventListener('click', () => act(async () => {
+    if (step === 'network' && !networkMode) {
+      throw new Error('Choose a network mode before continuing.');
+    }
     if (step === 'finish') {
       await setSetupState('completed');
       const response = await fetch('/cgi-bin/reboot.sh', {method: 'POST'});
@@ -163,6 +173,16 @@
 
   skip.addEventListener('click', () => {
     location.href = `http://${location.hostname}:80/`;
+  });
+
+  networkInputs.forEach(input => {
+    input.addEventListener('change', async () => {
+      await act(async () => {
+        networkMode = input.value;
+        await render();
+      });
+      input.focus();
+    });
   });
 
   page.addEventListener('change', () => {

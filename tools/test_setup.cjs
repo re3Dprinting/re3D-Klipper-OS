@@ -149,6 +149,10 @@ async function mount({ saved = 'machine', failure = '', flashing = false } = {})
     if (!elements.has(id)) elements.set(id, element());
     return elements.get(id);
   };
+  byId('setup-network-connect').value = 'connect';
+  byId('setup-network-connect').checked = false;
+  byId('setup-network-offline').value = 'offline';
+  byId('setup-network-offline').checked = false;
   const state = { step: saved, failure, flashing };
   const requests = [];
   const loads = [];
@@ -178,13 +182,21 @@ async function mount({ saved = 'machine', failure = '', flashing = false } = {})
   const settle = () => new Promise(resolve => setImmediate(resolve));
   await settle();
   async function click(id) { byId(id).listeners.click(); await settle(); }
-  return { byId, state, requests, loads, events, context, click, settle };
+  async function selectNetwork(mode) {
+    for (const value of ['connect', 'offline']) {
+      byId(`setup-network-${value}`).checked = value === mode;
+    }
+    await byId(`setup-network-${mode}`).listeners.change();
+    await settle();
+  }
+  return { byId, state, requests, loads, events, context, click, selectNetwork, settle };
 }
 
 async function mountDisplay() {
   const wizard = await mount();
   wizard.events['re3d-machine-result']({ detail: { ok: true } });
   await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
   await wizard.click('setup-next');
   return wizard;
 }
@@ -207,8 +219,11 @@ test('wizard keeps step navigation in memory, requires a saved machine, and pers
   assert.equal(wizard.byId('setup-next').disabled, true);
   wizard.events['re3d-machine-result']({ detail: { ok: true } });
   await wizard.click('setup-next');
-  assert.equal(wizard.byId('setup-title').textContent, 'Connect your printer');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
   assert.equal(wizard.state.step, 'machine');
+  assert.equal(wizard.byId('setup-next').disabled, true);
+  await wizard.selectNetwork('connect');
+  assert.deepEqual(wizard.loads, ['machine', 'network']);
   await wizard.click('setup-next');
   assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
   assert.equal(wizard.state.step, 'machine');
@@ -229,7 +244,12 @@ test('exiting or reloading at any unfinished step starts over at Machine', async
   for (const advances of [1, 2, 3]) {
     const wizard = await mount();
     wizard.events['re3d-machine-result']({ detail: { ok: true } });
-    for (let count = 0; count < advances; count++) await wizard.click('setup-next');
+    for (let count = 0; count < advances; count++) {
+      if (wizard.byId('setup-title').textContent === 'Choose your network mode') {
+        await wizard.selectNetwork('offline');
+      }
+      await wizard.click('setup-next');
+    }
     assert.notEqual(wizard.byId('setup-title').textContent, 'Choose your machine');
     await wizard.click('setup-skip');
     assert.equal(wizard.state.step, 'machine');
@@ -238,6 +258,11 @@ test('exiting or reloading at any unfinished step starts over at Machine', async
     assert.deepEqual(reopened.loads, ['machine']);
     assert.equal(reopened.byId('setup-back').hidden, true);
     assert.equal(reopened.byId('setup-next').disabled, true);
+    reopened.events['re3d-machine-result']({ detail: { ok: true } });
+    await reopened.click('setup-next');
+    assert.equal(reopened.byId('setup-next').disabled, true);
+    assert.equal(reopened.byId('setup-network-offline').checked, false);
+    assert.equal(reopened.byId('setup-network-connect').checked, false);
   }
 });
 
@@ -249,7 +274,7 @@ test('forward and Back navigation do not write step progress', async () => {
   await wizard.click('setup-back');
   assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
   await wizard.click('setup-back');
-  assert.equal(wizard.byId('setup-title').textContent, 'Connect your printer');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
   await wizard.click('setup-back');
   assert.equal(wizard.byId('setup-title').textContent, 'Choose your machine');
   assert.equal(wizard.byId('setup-back').hidden, true);
@@ -280,6 +305,49 @@ test('display choices include screenshots, distinct descriptions, and accessible
     assert.match(html, new RegExp(`id="setup-${mode}-title"`));
     assert.match(html, new RegExp(`id="setup-${mode}-description"`));
   }
+});
+
+test('network choices appear only in the wizard and require a selection before continuing', async () => {
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  assert.match(index, /id="setup-network-choice" class="card" hidden/);
+  assert.match(index, /Connect to network/);
+  assert.match(index, /Air-gapped mode/);
+  assert.match(index, /not network isolation/);
+  assert.match(index, /not disabled or disconnected/);
+  const wizard = await mount();
+  assert.equal(wizard.byId('setup-network-choice').hidden, true);
+  wizard.events['re3d-machine-result']({ detail: { ok: true } });
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-network-choice').hidden, false);
+  assert.equal(wizard.byId('setup-next').disabled, true);
+  assert.deepEqual(wizard.loads, ['machine']);
+  await wizard.click('setup-next');
+  assert.match(wizard.byId('setup-status').textContent, /Choose a network mode/);
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
+});
+
+test('offline setup avoids network controls and adapter actions; switching to Connect loads controls', async () => {
+  const wizard = await mount();
+  wizard.events['re3d-machine-result']({ detail: { ok: true } });
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
+  assert.equal(wizard.byId('setup-next').disabled, false);
+  assert.equal(wizard.byId('setup-network-offline-note').hidden, false);
+  assert.deepEqual(wizard.loads, ['machine']);
+  assert.equal(wizard.byId('page').innerHTML, '');
+  assert.ok(wizard.requests.every(request => request.url === '/cgi-bin/setup.py'));
+  await wizard.selectNetwork('connect');
+  assert.deepEqual(wizard.loads, ['machine', 'network']);
+  assert.equal(wizard.byId('setup-network-offline-note').hidden, true);
+  await wizard.selectNetwork('offline');
+  assert.equal(wizard.byId('page').innerHTML, '');
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
+  assert.equal(wizard.byId('setup-network-choice').hidden, true);
+  await wizard.click('setup-back');
+  assert.equal(wizard.byId('setup-network-offline-note').hidden, false);
+  assert.equal(wizard.byId('setup-next').disabled, false);
+  assert.deepEqual(wizard.loads, ['machine', 'network']);
 });
 
 test('manual launch and all previously saved steps start at Machine', async () => {

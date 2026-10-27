@@ -374,6 +374,7 @@
   body.guided-setup .app { display: block; max-width: 1100px }
   body.guided-setup .app-topbar, body.guided-setup .page-header { display: none }
   body.guided-setup #network-info-card { display: none }
+  #setup-network-choice { margin-bottom: 24px }
   .setup-header { margin-bottom: 24px }
   .setup-header h1 { margin: 8px 0; font-size: 30px }
   .setup-header p { color: var(--muted) }
@@ -441,6 +442,28 @@
       <h1 class="page-title" id="page-title">Machine</h1>
       <p class="page-description" id="page-description">Choose your printer and configure its hardware.</p>
     </header>
+    <div id="setup-network-choice" class="card" hidden>
+      <div class="card-title">How will you use your printer?</div>
+      <div class="setup-choices" role="radiogroup" aria-label="Network mode">
+        <label>
+          <div class="setup-choice-heading">
+            <input type="radio" name="setup-network-mode" id="setup-network-connect" value="connect"
+              aria-labelledby="setup-network-connect-title" aria-describedby="setup-network-connect-description">
+            <strong id="setup-network-connect-title">Connect to network</strong>
+          </div>
+          <p id="setup-network-connect-description">Use Wi-Fi or Ethernet for network access. Changing networks may disconnect a remote browser; reopening setup starts again at Machine.</p>
+        </label>
+        <label>
+          <div class="setup-choice-heading">
+            <input type="radio" name="setup-network-mode" id="setup-network-offline" value="offline"
+              aria-labelledby="setup-network-offline-title" aria-describedby="setup-network-offline-description setup-network-offline-note">
+            <strong id="setup-network-offline-title">Air-gapped mode</strong>
+          </div>
+          <p id="setup-network-offline-description">Continue setup offline. Wireless adapter disabling will be added later.</p>
+        </label>
+      </div>
+      <p id="setup-network-offline-note" role="note" hidden>This is an offline setup option only, not network isolation. Existing connections and wireless adapters are not disabled or disconnected.</p>
+    </div>
     <div id="page" class="page-host"><!-- tab content mounts here --></div>
     <div class="setup-status" id="setup-status" role="status" aria-live="polite" hidden></div>
     <div class="setup-actions" id="setup-actions" hidden>
