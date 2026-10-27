@@ -94,8 +94,7 @@
   /* ── Layout ──────────────────────────────────────────────────────────────── */
   .wrap {
     width: 100%;
-    max-width: 1600px;
-    margin: 0 auto;
+    margin: 0;
   }
   .app {
     display: grid;
@@ -206,6 +205,8 @@
   /* ── Content area ────────────────────────────────────────────────────────── */
   .pages {
     min-width: 0;
+    /* Preserve the workspace width without centering the sidebar. */
+    max-width: 1376px;
     padding: 44px 40px 48px;
   }
   .page-header { display: grid; gap: 12px; margin-bottom: 30px }
