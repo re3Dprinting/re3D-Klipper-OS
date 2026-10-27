@@ -80,13 +80,12 @@
           <div class="card-title">Touchscreen interface</div>
           <div class="setup-choices" role="radiogroup" aria-label="Touchscreen interface">
             <label>
-              <div class="setup-preview" aria-hidden="true">
-                <span>Mainsail preview</span><small>Screenshot coming soon</small>
-              </div>
+              <img class="setup-preview" src="/img/setup-mainsail.png" width="1154" height="768"
+                alt="Mainsail dashboard showing printer status, temperatures, toolhead controls, preheat presets, and control macros">
               <div class="setup-choice-heading">
                 <input type="radio" name="setup-display" value="mainsail"
                   aria-labelledby="setup-mainsail-title" aria-describedby="setup-mainsail-description">
-                <strong id="setup-mainsail-title">Mainsail</strong>
+                <strong id="setup-mainsail-title">Mainsail (default)</strong>
               </div>
               <div id="setup-mainsail-description">
                 <span class="setup-choice-tagline">Information-rich &amp; maximalist</span>
@@ -94,9 +93,8 @@
               </div>
             </label>
             <label>
-              <div class="setup-preview" aria-hidden="true">
-                <span>KlipperScreen preview</span><small>Screenshot coming soon</small>
-              </div>
+              <img class="setup-preview" src="/img/setup-klipperscreen.png" width="480" height="320"
+                alt="KlipperScreen home screen showing temperatures and large touch-friendly printer controls">
               <div class="setup-choice-heading">
                 <input type="radio" name="setup-display" value="klipperscreen"
                   aria-labelledby="setup-klipperscreen-title" aria-describedby="setup-klipperscreen-description">

@@ -191,13 +191,22 @@ test('skip preserves progress; a new browser session resumes it, and Back persis
   assert.equal(resumed.state.step, 'machine');
 });
 
-test('display choices include distinct descriptions and preview slots with accessible radio labels', async () => {
+test('display choices include screenshots, distinct descriptions, and accessible radio labels', async () => {
   const wizard = await mount({ saved: 'display' });
   const html = wizard.byId('page').innerHTML;
   assert.equal((html.match(/class="setup-preview"/g) || []).length, 2);
+  assert.match(html, /alt="Mainsail dashboard/);
+  assert.match(html, /alt="KlipperScreen home screen/);
+  assert.doesNotMatch(html, /Screenshot coming soon/);
   assert.match(html, /Information-rich &amp; maximalist/);
+  assert.match(html, /id="setup-mainsail-title">Mainsail \(default\)<\/strong>/);
   assert.match(html, /Minimalist &amp; snappy/);
-  for (const mode of ['mainsail', 'klipperscreen']) {
+  for (const [mode, width, height] of [['mainsail', 1154, 768], ['klipperscreen', 480, 320]]) {
+    assert.match(html, new RegExp(`<img class="setup-preview" src="/img/setup-${mode}\\.png"`));
+    const screenshot = fs.readFileSync(path.join(www, 'img', `setup-${mode}.png`));
+    assert.equal(screenshot.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(screenshot.readUInt32BE(16), width);
+    assert.equal(screenshot.readUInt32BE(20), height);
     assert.match(html, new RegExp(`value="${mode}"`));
     assert.match(html, new RegExp(`aria-labelledby="setup-${mode}-title"`));
     assert.match(html, new RegExp(`aria-describedby="setup-${mode}-description"`));
