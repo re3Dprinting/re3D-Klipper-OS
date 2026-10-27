@@ -57,6 +57,27 @@ class MainsailThemeTests(unittest.TestCase):
         self.assertLessEqual(opacity, .65)
         self.assertIn('pointer-events: none;', pattern)
 
+    def test_toolhead_preserves_compact_controls_and_segmented_offsets(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        scope = '.v-application.theme--dark .toolhead-control-panel '
+
+        def declarations(selector):
+            return re.search(re.escape(scope + selector) + r'\s*\{([^}]+)\}', theme)[1]
+
+        self.assertIn('margin: -2px;', declarations('.row--dense'))
+        self.assertIn('border: 0;', declarations('.v-divider'))
+        self.assertIn('border-radius: var(--re3d-radius-sm);',
+                      declarations('.v-btn--tile:not(.v-btn--icon)'))
+        self.assertIn('border: 2px solid var(--re3d-surface-1) !important;',
+                      declarations('.v-btn-toggle:not(.v-btn-toggle--group) .v-btn.v-btn'))
+        self.assertIn('border-radius: 0;', declarations('._btn-group .v-btn'))
+        for position, side in [('first', 'left'), ('last', 'right')]:
+            segment = declarations('._btn-group .v-btn:' + position + '-child')
+            self.assertIn('border-top-' + side + '-radius: 4px;', segment)
+            self.assertIn('border-bottom-' + side + '-radius: 4px;', segment)
+        self.assertIn('border-radius: 4px;', declarations('.v-text-field--outlined fieldset'))
+        self.assertIn('.theme--dark.v-input:not(.v-input--is-disabled) input,', theme)
+
     def test_generated_themes_include_shared_styles_and_machine_labels(self):
         module = ast.parse((SOURCE / 'setup_printer.py').read_text())
         functions = [node for node in module.body if isinstance(node, ast.FunctionDef)

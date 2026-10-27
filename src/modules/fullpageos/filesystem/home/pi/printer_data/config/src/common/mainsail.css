@@ -219,10 +219,55 @@
     border-radius: var(--re3d-radius-sm);
 }
 
-.theme--dark.v-input input,
-.theme--dark.v-input textarea,
-.theme--dark.v-select .v-select__selection {
+.theme--dark.v-input:not(.v-input--is-disabled) input,
+.theme--dark.v-input:not(.v-input--is-disabled) textarea,
+.theme--dark.v-select:not(.v-input--is-disabled) .v-select__selection {
     color: var(--re3d-fg);
+}
+
+/* Preserve the Toolhead's compact controls and connected Z-offset segments. */
+.v-application.theme--dark .toolhead-control-panel .row--dense {
+    margin: -2px;
+}
+
+.v-application.theme--dark .toolhead-control-panel .v-divider {
+    border: 0;
+}
+
+.v-application.theme--dark .toolhead-control-panel .v-btn--tile:not(.v-btn--icon) {
+    border-radius: var(--re3d-radius-sm);
+}
+
+.v-application.theme--dark .toolhead-control-panel .v-btn-toggle:not(.v-btn-toggle--group) {
+    background: var(--re3d-surface-1);
+}
+
+.v-application.theme--dark .toolhead-control-panel .v-btn-toggle:not(.v-btn-toggle--group) .v-btn.v-btn {
+    border: 2px solid var(--re3d-surface-1) !important;
+}
+
+.v-application.theme--dark .toolhead-control-panel .v-btn-toggle .v-btn.v-btn--has-bg:not(.v-btn--disabled):not(.primary):not(.error):not(.warning):not(.success):not(.info) {
+    background-color: var(--re3d-surface-2) !important;
+}
+
+.v-application.theme--dark .toolhead-control-panel ._btn-group .v-btn {
+    border-radius: 0;
+    border-color: var(--re3d-border);
+}
+
+.v-application.theme--dark .toolhead-control-panel ._btn-group .v-btn:first-child {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+
+.v-application.theme--dark .toolhead-control-panel ._btn-group .v-btn:last-child {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.v-application.theme--dark .toolhead-control-panel .v-text-field--outlined,
+.v-application.theme--dark .toolhead-control-panel .v-text-field--outlined fieldset {
+    border-radius: 4px;
 }
 
 .v-application.theme--dark .v-btn:focus-visible,
