@@ -631,6 +631,17 @@ window.addEventListener('resize', () => {
   }
 })();
 </script>
-<script src="setup.js"></script>
+<script id="setup-loader">
+if (new URLSearchParams(location.search).get('setup') === '1') {
+  const script = document.createElement('script');
+  script.src = `setup.js?cachebust=${Date.now()}`;
+  script.onerror = () => {
+    const status = document.getElementById('setup-status');
+    status.hidden = false;
+    status.textContent = 'Unable to load setup. Reload to try again.';
+  };
+  document.body.appendChild(script);
+}
+</script>
 </body>
 </html>

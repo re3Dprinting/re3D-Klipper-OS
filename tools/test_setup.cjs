@@ -12,6 +12,34 @@ const scripts = path.join(filesystem, 'opt', 'custompios', 'scripts');
 const bash = process.env.BASH || (process.platform === 'win32'
   ? path.join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe') : 'bash');
 
+test('wizard loader uses a fresh script URL on each visit and reports load failures', () => {
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  const loader = index.match(/<script id="setup-loader">([\s\S]*?)<\/script>/)[1];
+  assert.doesNotMatch(index, /<script src="setup\.js"/);
+  const urls = [];
+  for (const now of [100, 200]) {
+    const scripts = [];
+    const status = { hidden: true, textContent: '' };
+    const context = {
+      location: { search: '?setup=1' }, URLSearchParams, Date: { now: () => now },
+      document: {
+        createElement: () => ({}), getElementById: () => status,
+        body: { appendChild: script => scripts.push(script) }
+      }
+    };
+    vm.runInNewContext(loader, context);
+    assert.equal(scripts.length, 1);
+    urls.push(scripts[0].src);
+    scripts[0].onerror();
+    assert.equal(status.hidden, false);
+    assert.match(status.textContent, /Unable to load setup/);
+    context.location.search = '';
+    vm.runInNewContext(loader, context);
+    assert.equal(scripts.length, 1);
+  }
+  assert.deepEqual(urls, ['setup.js?cachebust=100', 'setup.js?cachebust=200']);
+});
+
 function runShell(source, { step, flashing = false, body = '', method = 'POST' } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-setup-'));
   try {

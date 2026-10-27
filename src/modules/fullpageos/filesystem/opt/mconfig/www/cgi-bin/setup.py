@@ -13,16 +13,21 @@ FLASH_FLAG = Path("/etc/firstboot-splash")
 STATES = ("machine", "completed")
 
 
+def normalize_state(step):
+    # Older browser tabs may still send step names after an OS update.
+    if step in ("welcome", "network", "display", "finish"):
+        return "machine"
+    if step not in STATES:
+        raise ValueError("Invalid setup state.")
+    return step
+
+
 def read_step():
     try:
         step = STATE.read_text(encoding="ascii").strip()
     except FileNotFoundError:
         return None
-    if step in ("welcome", "network", "display", "finish"):
-        return "machine"
-    if step not in STATES:
-        raise ValueError("Invalid saved setup state.")
-    return step
+    return normalize_state(step)
 
 
 def save_step(step):
@@ -64,9 +69,9 @@ def main():
             if not 0 < length <= 1024:
                 raise ValueError("Invalid setup request length.")
             payload = json.loads(sys.stdin.read(length))
-            if not isinstance(payload, dict) or payload.get("step") not in STATES:
+            if not isinstance(payload, dict):
                 raise ValueError("Invalid setup state.")
-            save_step(payload["step"])
+            save_step(normalize_state(payload.get("step")))
         respond("200 OK", {"step": read_step(), "flashing": FLASH_FLAG.exists()})
     except (ValueError, UnicodeError) as error:
         print(f"Setup: {error}", file=sys.stderr)

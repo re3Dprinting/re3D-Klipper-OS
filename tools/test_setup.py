@@ -55,16 +55,26 @@ class SetupTests(unittest.TestCase):
                 self.assertEqual(self.request()[1]["step"], step)
                 self.assertEqual(list(self.state.parent.iterdir()), [self.state])
 
-    def test_invalid_requests_and_step_saves_preserve_status(self):
+    def test_invalid_requests_preserve_status(self):
         setup.save_step("machine")
-        for raw in ['{"step":"../completed"}', '[]', '{}', 'not json', ''] + [
-                json.dumps({"step": step}) for step in ("welcome", "network", "display", "finish")]:
+        for raw in ['{"step":"../completed"}', '{"step":"unknown"}', '[]', '{}', 'not json', '']:
             with self.subTest(raw=raw):
                 headers, data = self.request("POST", raw=raw)
                 self.assertIn("400 Bad Request", headers)
                 self.assertIn("error", data)
                 self.assertEqual(setup.read_step(), "machine")
         self.assertIn("405 Method Not Allowed", self.request("DELETE")[0])
+
+    def test_older_browser_step_posts_succeed_without_saving_progress(self):
+        for step in ("welcome", "machine", "network", "display", "finish"):
+            with self.subTest(step=step):
+                headers, data = self.request("POST", {"step": step})
+                self.assertIn("200 OK", headers)
+                self.assertEqual(data["step"], "machine")
+                self.assertEqual(self.state.read_text().strip(), "machine")
+                self.assertEqual(self.request()[1]["step"], "machine")
+        self.assertIn("200 OK", self.request("POST", {"step": "completed"})[0])
+        self.assertEqual(self.state.read_text().strip(), "completed")
 
     def test_all_legacy_step_progress_starts_over_at_machine(self):
         for step in ("welcome", "network", "display", "finish"):
