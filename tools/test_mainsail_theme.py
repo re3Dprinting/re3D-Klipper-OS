@@ -13,11 +13,11 @@ SOURCE = FILESYSTEM / 'home/pi/printer_data/config/src'
 
 
 class MainsailThemeTests(unittest.TestCase):
-    def test_palette_matches_configurator(self):
+    def test_brand_and_surfaces_match_configurator(self):
         configurator = (FILESYSTEM / 'opt/mconfig/www/index.html').read_text(encoding='utf-8')
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         for token in ['brand', 'bg', 'surface-0', 'surface-1', 'surface-2', 'surface-3',
-                      'border', 'border-2', 'fg', 'muted', 'dim']:
+                      'border', 'border-2']:
             with self.subTest(token=token):
                 expected = re.search(r'--' + token + r':\s*([^;]+);', configurator)[1]
                 actual = re.search(r'--re3d-' + token + r':\s*([^;]+);', theme)[1]
@@ -25,6 +25,36 @@ class MainsailThemeTests(unittest.TestCase):
         for deposition in ['fff', 'fgf']:
             defaults = json.loads((SOURCE / deposition / '.theme/default.json').read_text())
             self.assertEqual(defaults['uiSettings']['primary'], '#E7C547')
+
+    def test_text_contrast_keeps_readable_hierarchy(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        colors = dict(re.findall(r'--re3d-([\w-]+):\s*(#[\dA-Fa-f]{6});', theme))
+
+        def luminance(color):
+            channels = [int(color[index:index + 2], 16) / 255 for index in [1, 3, 5]]
+            linear = [value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4
+                      for value in channels]
+            return sum(value * weight for value, weight in zip(linear, [.2126, .7152, .0722]))
+
+        for foreground, background in [('fg', 'surface-3'), ('muted', 'surface-3'),
+                                       ('dim', 'surface-0')]:
+            with self.subTest(foreground=foreground):
+                contrast = ((luminance(colors[foreground]) + .05)
+                            / (luminance(colors[background]) + .05))
+                self.assertGreaterEqual(contrast, 7)
+        self.assertGreater(luminance(colors['fg']), luminance(colors['muted']))
+        self.assertGreater(luminance(colors['muted']), luminance(colors['dim']))
+        secondary = re.search(
+            r'\.v-application\.theme--dark \.text--secondary\s*\{([^}]+)\}', theme)[1]
+        self.assertIn('color: var(--re3d-muted) !important;', secondary)
+        self.assertIn('.theme--dark.v-label:not(.v-label--is-disabled),', theme)
+        navigation = re.search(
+            r'\.theme--dark\.v-navigation-drawer \.v-list-item:not\(\.sidebar-logo\)\s*\{([^}]+)\}',
+            theme)[1]
+        self.assertIn('color: var(--re3d-muted);', navigation)
+        title = re.search(
+            r'\.theme--dark\.v-navigation-drawer \.v-list-item__title\s*\{([^}]+)\}', theme)[1]
+        self.assertNotIn('opacity:', title)
 
     def test_industrial_geometry_headers_and_label_casing(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')

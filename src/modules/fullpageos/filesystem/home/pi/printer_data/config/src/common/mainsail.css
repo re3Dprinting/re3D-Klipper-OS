@@ -1,4 +1,4 @@
-/* Match the Configurator palette, with tighter geometry for printer controls. */
+/* Use the Configurator palette with brighter text and compact printer controls. */
 .v-application.theme--dark {
     --re3d-brand: #E7C547;
     --re3d-action-hover: #EFD56D;
@@ -11,9 +11,9 @@
     --re3d-surface-3: #383B40;
     --re3d-border: #32353A;
     --re3d-border-2: #494D54;
-    --re3d-fg: #EEF0F3;
-    --re3d-muted: #ACAFB8;
-    --re3d-dim: #999DA6;
+    --re3d-fg: #F4F6F8;
+    --re3d-muted: #CDD1D8;
+    --re3d-dim: #B6BBC5;
     --re3d-radius: 10px;
     --re3d-radius-sm: 8px;
     --re3d-shadow: none;
@@ -146,9 +146,13 @@
 }
 
 .theme--dark.v-data-table > .v-data-table__wrapper > table > thead > tr > th,
-.theme--dark.v-label,
+.theme--dark.v-label:not(.v-label--is-disabled),
 .theme--dark.v-messages {
     color: var(--re3d-muted);
+}
+
+.v-application.theme--dark .text--secondary {
+    color: var(--re3d-muted) !important;
 }
 
 .theme--dark.v-data-table > .v-data-table__wrapper > table > tbody > tr:hover:not(.v-data-table__expanded__content):not(.v-data-table__empty-wrapper) {
