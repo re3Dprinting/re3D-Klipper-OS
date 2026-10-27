@@ -83,8 +83,7 @@ class MainsailThemeTests(unittest.TestCase):
         pattern = re.search(re.escape(selector) + r'\s*\{([^}]+)\}', theme)[1]
         self.assertIn('display: block;', pattern)
         opacity = float(re.search(r'opacity:\s*([\d.]+);', pattern)[1])
-        self.assertGreater(opacity, 0)
-        self.assertLessEqual(opacity, .65)
+        self.assertEqual(opacity, .8)
         self.assertIn('pointer-events: none;', pattern)
 
     def test_toolhead_preserves_compact_controls_and_segmented_offsets(self):

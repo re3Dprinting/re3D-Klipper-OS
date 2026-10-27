@@ -58,7 +58,7 @@
 
 .theme--dark.v-navigation-drawer .v-navigation-drawer__image {
     display: block;
-    opacity: .6;
+    opacity: .8;
     pointer-events: none;
 }
 
