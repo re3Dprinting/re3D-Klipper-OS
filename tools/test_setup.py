@@ -45,8 +45,9 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(data, {"step": None, "flashing": False})
         self.assertFalse(self.state.exists())
 
-    def test_progress_and_completion_persist_atomically(self):
-        for step in setup.STEPS:
+    def test_only_pending_and_completed_states_persist_atomically(self):
+        self.assertEqual(setup.STATES, ("machine", "completed"))
+        for step in setup.STATES:
             with self.subTest(step=step):
                 headers, data = self.request("POST", {"step": step})
                 self.assertIn("200 OK", headers)
@@ -54,23 +55,26 @@ class SetupTests(unittest.TestCase):
                 self.assertEqual(self.request()[1]["step"], step)
                 self.assertEqual(list(self.state.parent.iterdir()), [self.state])
 
-    def test_invalid_requests_preserve_progress(self):
-        setup.save_step("network")
-        for raw in ['{"step":"../completed"}', '[]', '{}', 'not json', '']:
+    def test_invalid_requests_and_step_saves_preserve_status(self):
+        setup.save_step("machine")
+        for raw in ['{"step":"../completed"}', '[]', '{}', 'not json', ''] + [
+                json.dumps({"step": step}) for step in ("welcome", "network", "display", "finish")]:
             with self.subTest(raw=raw):
                 headers, data = self.request("POST", raw=raw)
                 self.assertIn("400 Bad Request", headers)
                 self.assertIn("error", data)
-                self.assertEqual(setup.read_step(), "network")
+                self.assertEqual(setup.read_step(), "machine")
         self.assertIn("405 Method Not Allowed", self.request("DELETE")[0])
 
-    def test_legacy_welcome_progress_resumes_at_machine(self):
-        setup.save_step("welcome")
-        headers, data = self.request()
-        self.assertIn("200 OK", headers)
-        self.assertEqual(data["step"], "machine")
-        self.request("POST", {"step": "machine"})
-        self.assertEqual(self.state.read_text().strip(), "machine")
+    def test_all_legacy_step_progress_starts_over_at_machine(self):
+        for step in ("welcome", "network", "display", "finish"):
+            with self.subTest(step=step):
+                setup.save_step(step)
+                headers, data = self.request()
+                self.assertIn("200 OK", headers)
+                self.assertEqual(data["step"], "machine")
+                self.request("POST", {"step": "machine"})
+                self.assertEqual(self.state.read_text().strip(), "machine")
 
     def test_flashing_blocks_progress_mutations(self):
         self.flash.touch()

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Persist guided setup progress outside the updater-managed web directory."""
+"""Track whether setup is pending or completed, without saving individual steps."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import tempfile
 
 STATE = Path("/var/lib/re3d-setup/step")
 FLASH_FLAG = Path("/etc/firstboot-splash")
-STEPS = ("machine", "network", "display", "finish", "completed")
+STATES = ("machine", "completed")
 
 
 def read_step():
@@ -18,10 +18,10 @@ def read_step():
         step = STATE.read_text(encoding="ascii").strip()
     except FileNotFoundError:
         return None
-    if step == "welcome":
+    if step in ("welcome", "network", "display", "finish"):
         return "machine"
-    if step not in STEPS:
-        raise ValueError("Invalid saved setup step.")
+    if step not in STATES:
+        raise ValueError("Invalid saved setup state.")
     return step
 
 
@@ -64,8 +64,8 @@ def main():
             if not 0 < length <= 1024:
                 raise ValueError("Invalid setup request length.")
             payload = json.loads(sys.stdin.read(length))
-            if not isinstance(payload, dict) or payload.get("step") not in STEPS:
-                raise ValueError("Invalid setup step.")
+            if not isinstance(payload, dict) or payload.get("step") not in STATES:
+                raise ValueError("Invalid setup state.")
             save_step(payload["step"])
         respond("200 OK", {"step": read_step(), "flashing": FLASH_FLAG.exists()})
     except (ValueError, UnicodeError) as error:
@@ -73,7 +73,7 @@ def main():
         respond("400 Bad Request", {"error": str(error)})
     except OSError as error:
         print(f"Setup state error: {error}", file=sys.stderr)
-        respond("500 Internal Server Error", {"error": "Unable to read or save setup progress."})
+        respond("500 Internal Server Error", {"error": "Unable to read or save setup status."})
 
 
 if __name__ == "__main__":

@@ -7,8 +7,8 @@
   const steps = ['machine', 'network', 'display', 'finish'];
   const titles = ['Choose your machine', 'Connect your printer', 'Choose your display', 'Ready to finish'];
   const descriptions = [
-    'Select the correct model and hardware options, then press Set Machine before continuing. Changes take effect after the final reboot.',
-    'Connect to Wi-Fi or use Ethernet. You can continue offline. Changing networks may disconnect a remote browser; reopen the Configurator at the new address to resume.',
+    'Select the correct model and hardware options, then press Set Machine before continuing. Changes take effect after the final reboot. If you leave or reload setup, you will start again at Machine.',
+    'Connect to Wi-Fi or use Ethernet. You can continue offline. Changing networks may disconnect a remote browser; reopening the Configurator at the new address starts setup again at Machine.',
     'Choose the interface for the printer touchscreen. It will switch after setup is finished.',
     'Finish saves setup as complete and reboots into your selected interface. Calibrate the printer before your first print.'
   ];
@@ -44,7 +44,7 @@
     return data;
   }
 
-  async function saveStep(value) {
+  async function setSetupState(value) {
     await request('/cgi-bin/setup.py', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -136,7 +136,7 @@
 
   next.addEventListener('click', () => act(async () => {
     if (step === 'finish') {
-      await saveStep('completed');
+      await setSetupState('completed');
       const response = await fetch('/cgi-bin/reboot.sh', {method: 'POST'});
       if (!response.ok) throw new Error(`Setup saved, but reboot failed (${response.status}). Retry Finish or reboot manually.`);
       status.textContent = 'Setup saved. Rebooting into your selected interface...';
@@ -152,21 +152,16 @@
         body: new URLSearchParams({mode: selected.value, reboot: 'defer'})
       });
     }
-    const target = steps[steps.indexOf(step) + 1];
-    await saveStep(target);
-    step = target;
+    step = steps[steps.indexOf(step) + 1];
     await render();
   }));
 
   back.addEventListener('click', () => act(async () => {
-    const target = steps[steps.indexOf(step) - 1];
-    await saveStep(target);
-    step = target;
+    step = steps[steps.indexOf(step) - 1];
     await render();
   }));
 
   skip.addEventListener('click', () => {
-    // Deliberately leave persisted progress intact for the next boot.
     location.href = `http://${location.hostname}:80/`;
   });
 
@@ -197,13 +192,7 @@
   act(async () => {
     const state = await request('/cgi-bin/setup.py');
     if (state.flashing) throw new Error('Finish firmware flashing and power-cycle the printer before setup.');
-    if (state.step === null || state.step === 'completed' || state.step === 'welcome') {
-      await saveStep('machine');
-    } else if (steps.includes(state.step)) {
-      step = state.step;
-    } else {
-      throw new Error('Invalid saved setup progress.');
-    }
+    await setSetupState('machine');
     await render();
     initialized = true;
   });

@@ -136,7 +136,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false } = {})
       requests.push({ url, options });
       if (state.failure === url) throw new Error('Connection lost');
       if (url.endsWith('get_display_mode.sh')) return { ok: true, text: async () => 'mainsail' };
-      if (url.endsWith('setup.py') && options.method === 'POST') {
+      if (url.endsWith('setup.py') && options.method === 'POST' && state.httpFailure !== url) {
         state.step = JSON.parse(options.body).step;
       }
       return {
@@ -153,7 +153,15 @@ async function mount({ saved = 'machine', failure = '', flashing = false } = {})
   return { byId, state, requests, loads, events, context, click, settle };
 }
 
-test('wizard saves each step, requires a saved machine, defers display switching, and finishes with a reboot', async () => {
+async function mountDisplay() {
+  const wizard = await mount();
+  wizard.events['re3d-machine-result']({ detail: { ok: true } });
+  await wizard.click('setup-next');
+  await wizard.click('setup-next');
+  return wizard;
+}
+
+test('wizard keeps step navigation in memory, requires a saved machine, and persists completion', async () => {
   const wizard = await mount();
   assert.equal(wizard.byId('setup-title').textContent, 'Choose your machine');
   assert.deepEqual(wizard.loads, ['machine']);
@@ -171,33 +179,59 @@ test('wizard saves each step, requires a saved machine, defers display switching
   assert.equal(wizard.byId('setup-next').disabled, true);
   wizard.events['re3d-machine-result']({ detail: { ok: true } });
   await wizard.click('setup-next');
-  assert.equal(wizard.state.step, 'network');
+  assert.equal(wizard.byId('setup-title').textContent, 'Connect your printer');
+  assert.equal(wizard.state.step, 'machine');
   await wizard.click('setup-next');
-  assert.equal(wizard.state.step, 'display');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
+  assert.equal(wizard.state.step, 'machine');
   await wizard.click('setup-next');
-  assert.equal(wizard.state.step, 'finish');
+  assert.equal(wizard.byId('setup-title').textContent, 'Ready to finish');
+  assert.equal(wizard.state.step, 'machine');
   const display = wizard.requests.find(r => r.url.endsWith('set_display_mode.sh'));
   assert.equal(display.options.body.get('reboot'), 'defer');
   await wizard.click('setup-next');
   assert.equal(wizard.state.step, 'completed');
   assert.ok(wizard.requests.some(r => r.url.endsWith('reboot.sh')));
   assert.equal(wizard.byId('setup-next').disabled, true);
+  const writes = wizard.requests.filter(r => r.url.endsWith('setup.py') && r.options.method === 'POST');
+  assert.deepEqual(writes.map(r => JSON.parse(r.options.body).step), ['machine', 'completed']);
 });
 
-test('skip preserves progress; a new browser session resumes it, and Back persists', async () => {
-  const wizard = await mount({ saved: 'network' });
-  assert.equal(wizard.loads[0], 'network');
-  await wizard.click('setup-skip');
-  assert.equal(wizard.state.step, 'network');
-  assert.equal(wizard.context.location.href, 'http://printer.local:80/');
-  const resumed = await mount({ saved: wizard.state.step });
-  await resumed.click('setup-back');
-  assert.equal(resumed.state.step, 'machine');
-  assert.equal(resumed.byId('setup-back').hidden, true);
+test('exiting or reloading at any unfinished step starts over at Machine', async () => {
+  for (const advances of [1, 2, 3]) {
+    const wizard = await mount();
+    wizard.events['re3d-machine-result']({ detail: { ok: true } });
+    for (let count = 0; count < advances; count++) await wizard.click('setup-next');
+    assert.notEqual(wizard.byId('setup-title').textContent, 'Choose your machine');
+    await wizard.click('setup-skip');
+    assert.equal(wizard.state.step, 'machine');
+    assert.equal(wizard.context.location.href, 'http://printer.local:80/');
+    const reopened = await mount({ saved: wizard.state.step });
+    assert.deepEqual(reopened.loads, ['machine']);
+    assert.equal(reopened.byId('setup-back').hidden, true);
+    assert.equal(reopened.byId('setup-next').disabled, true);
+  }
+});
+
+test('forward and Back navigation do not write step progress', async () => {
+  const wizard = await mountDisplay();
+  wizard.state.failure = '/cgi-bin/setup.py';
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Ready to finish');
+  await wizard.click('setup-back');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
+  await wizard.click('setup-back');
+  assert.equal(wizard.byId('setup-title').textContent, 'Connect your printer');
+  await wizard.click('setup-back');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your machine');
+  assert.equal(wizard.byId('setup-back').hidden, true);
+  assert.equal(wizard.byId('setup-status').textContent, '');
+  const writes = wizard.requests.filter(r => r.url.endsWith('setup.py') && r.options.method === 'POST');
+  assert.equal(writes.length, 1);
 });
 
 test('display choices include screenshots, distinct descriptions, and accessible radio labels', async () => {
-  const wizard = await mount({ saved: 'display' });
+  const wizard = await mountDisplay();
   const html = wizard.byId('page').innerHTML;
   assert.equal((html.match(/class="setup-preview"/g) || []).length, 2);
   assert.match(html, /alt="Mainsail dashboard/);
@@ -220,8 +254,8 @@ test('display choices include screenshots, distinct descriptions, and accessible
   }
 });
 
-test('manual launch and legacy Welcome progress start at Machine', async () => {
-  for (const saved of [null, 'completed', 'welcome']) {
+test('manual launch and all previously saved steps start at Machine', async () => {
+  for (const saved of [null, 'completed', 'welcome', 'machine', 'network', 'display', 'finish']) {
     const wizard = await mount({ saved });
     assert.equal(wizard.state.step, 'machine');
     assert.deepEqual(wizard.loads, ['machine']);
@@ -231,23 +265,29 @@ test('manual launch and legacy Welcome progress start at Machine', async () => {
   }
 });
 
-test('persistence or display failures are visible and never advance progress', async () => {
-  const wizard = await mount();
-  wizard.events['re3d-machine-result']({ detail: { ok: true } });
-  wizard.state.failure = '/cgi-bin/setup.py';
-  await wizard.click('setup-next');
-  assert.equal(wizard.state.step, 'machine');
-  assert.match(wizard.byId('setup-status').textContent, /Connection lost/);
-  const display = await mount({ saved: 'display' });
+test('setup status or display save failures are visible and never report completion', async () => {
+  const initial = await mount({ failure: '/cgi-bin/setup.py' });
+  assert.equal(initial.byId('setup-next').disabled, true);
+  assert.match(initial.byId('setup-status').textContent, /Connection lost/);
+  const display = await mountDisplay();
   display.state.failure = '/cgi-bin/set_display_mode.sh';
   await display.click('setup-next');
-  assert.equal(display.state.step, 'display');
+  assert.equal(display.byId('setup-title').textContent, 'Choose your display');
+  assert.equal(display.state.step, 'machine');
   assert.match(display.byId('setup-status').textContent, /Connection lost/);
   display.state.failure = '';
   display.state.httpFailure = '/cgi-bin/set_display_mode.sh';
   await display.click('setup-next');
-  assert.equal(display.state.step, 'display');
+  assert.equal(display.byId('setup-title').textContent, 'Choose your display');
   assert.match(display.byId('setup-status').textContent, /Unable to save settings/);
+  display.state.httpFailure = '';
+  await display.click('setup-next');
+  display.state.failure = '/cgi-bin/setup.py';
+  await display.click('setup-next');
+  assert.equal(display.state.step, 'machine');
+  assert.equal(display.byId('setup-title').textContent, 'Ready to finish');
+  assert.match(display.byId('setup-status').textContent, /Connection lost/);
+  assert.equal(display.requests.some(r => r.url.endsWith('reboot.sh')), false);
 });
 
 test('setup cannot start while firmware flashing is active', async () => {
