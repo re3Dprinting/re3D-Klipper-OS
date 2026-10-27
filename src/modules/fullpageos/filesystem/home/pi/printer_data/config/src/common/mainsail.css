@@ -57,7 +57,9 @@
 }
 
 .theme--dark.v-navigation-drawer .v-navigation-drawer__image {
-    display: none;
+    display: block;
+    opacity: .6;
+    pointer-events: none;
 }
 
 .theme--dark.v-navigation-drawer .v-list {

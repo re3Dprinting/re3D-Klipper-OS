@@ -47,6 +47,16 @@ class MainsailThemeTests(unittest.TestCase):
         buttons = declarations('.theme--dark.v-btn:not(.v-btn--round):not(.v-btn--tile)')
         self.assertIn('border-radius: var(--re3d-radius-sm);', buttons)
 
+    def test_sidebar_pattern_is_subtle_and_does_not_intercept_navigation(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        selector = '.theme--dark.v-navigation-drawer .v-navigation-drawer__image'
+        pattern = re.search(re.escape(selector) + r'\s*\{([^}]+)\}', theme)[1]
+        self.assertIn('display: block;', pattern)
+        opacity = float(re.search(r'opacity:\s*([\d.]+);', pattern)[1])
+        self.assertGreater(opacity, 0)
+        self.assertLessEqual(opacity, .65)
+        self.assertIn('pointer-events: none;', pattern)
+
     def test_generated_themes_include_shared_styles_and_machine_labels(self):
         module = ast.parse((SOURCE / 'setup_printer.py').read_text())
         functions = [node for node in module.body if isinstance(node, ast.FunctionDef)
