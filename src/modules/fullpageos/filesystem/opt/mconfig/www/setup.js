@@ -5,9 +5,9 @@
   document.title = 'Guided Setup - re:3D';
 
   const steps = ['welcome', 'machine', 'network', 'display', 'finish'];
-  const titles = ['Welcome to re:3D', 'Choose your machine', 'Connect your printer', 'Choose your display', 'Ready to finish'];
+  const titles = ['Welcome to your Gigabot', 'Choose your machine', 'Connect your printer', 'Choose your display', 'Ready to finish'];
   const descriptions = [
-    'Firmware flashing is finished. Let us set up your printer.',
+    'Your next big idea starts here. Let us get your Gigabot ready to print.',
     'Select the correct model and hardware options, then press Set Machine before continuing. Changes take effect after the final reboot.',
     'Connect to Wi-Fi or use Ethernet. You can continue offline. Changing networks may disconnect a remote browser; reopen the Configurator at the new address to resume.',
     'Choose the interface for the printer touchscreen. It will switch after setup is finished.',
@@ -70,8 +70,8 @@
       page.innerHTML = '';
       if (step === 'welcome') {
         page.innerHTML = `<div class="card">
-          <div class="card-title">A few steps before your first print</div>
-          <p>Confirm your printer model and hardware, connect to your network, and choose a touchscreen interface.</p>
+          <div class="card-title">Make it yours</div>
+          <p>We will walk you through your machine and hardware options, connect your Gigabot to your network, and help you choose the touchscreen experience that suits you.</p>
           <p>Progress is saved on the printer. If you skip for now, setup will resume the next time it starts.</p>
           <p>Keep the printer idle during setup. These steps do not move or heat the printer.</p>
         </div>`;
@@ -79,10 +79,34 @@
         page.innerHTML = `<div class="card">
           <div class="card-title">Touchscreen interface</div>
           <div class="setup-choices" role="radiogroup" aria-label="Touchscreen interface">
-            <label><input type="radio" name="setup-display" value="mainsail">
-              <span>Mainsail<small>Full browser-based printer control.</small></span></label>
-            <label><input type="radio" name="setup-display" value="klipperscreen">
-              <span>KlipperScreen<small>A touch-focused printer interface.</small></span></label>
+            <label>
+              <div class="setup-preview" aria-hidden="true">
+                <span>Mainsail preview</span><small>Screenshot coming soon</small>
+              </div>
+              <div class="setup-choice-heading">
+                <input type="radio" name="setup-display" value="mainsail"
+                  aria-labelledby="setup-mainsail-title" aria-describedby="setup-mainsail-description">
+                <strong id="setup-mainsail-title">Mainsail</strong>
+              </div>
+              <div id="setup-mainsail-description">
+                <span class="setup-choice-tagline">Information-rich &amp; maximalist</span>
+                <p>More information at a glance. A full dashboard with detailed graphs, printer status, and controls for those who like to see it all.</p>
+              </div>
+            </label>
+            <label>
+              <div class="setup-preview" aria-hidden="true">
+                <span>KlipperScreen preview</span><small>Screenshot coming soon</small>
+              </div>
+              <div class="setup-choice-heading">
+                <input type="radio" name="setup-display" value="klipperscreen"
+                  aria-labelledby="setup-klipperscreen-title" aria-describedby="setup-klipperscreen-description">
+                <strong id="setup-klipperscreen-title">KlipperScreen</strong>
+              </div>
+              <div id="setup-klipperscreen-description">
+                <span class="setup-choice-tagline">Minimalist &amp; snappy</span>
+                <p>A simpler, snappier touchscreen experience. Fewer distractions, large touch-friendly controls, and quick access to everyday printing tasks.</p>
+              </div>
+            </label>
           </div>
           <p>You can change this later in Configurator &gt; System.</p>
         </div>`;

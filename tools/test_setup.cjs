@@ -155,7 +155,7 @@ async function mount({ saved = 'welcome', failure = '', flashing = false } = {})
 
 test('wizard saves each step, requires a saved machine, defers display switching, and finishes with a reboot', async () => {
   const wizard = await mount();
-  assert.equal(wizard.byId('setup-title').textContent, 'Welcome to re:3D');
+  assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot');
   await wizard.click('setup-next');
   assert.equal(wizard.state.step, 'machine');
   assert.equal(wizard.byId('setup-next').disabled, true);
@@ -189,6 +189,21 @@ test('skip preserves progress; a new browser session resumes it, and Back persis
   const resumed = await mount({ saved: wizard.state.step });
   await resumed.click('setup-back');
   assert.equal(resumed.state.step, 'machine');
+});
+
+test('display choices include distinct descriptions and preview slots with accessible radio labels', async () => {
+  const wizard = await mount({ saved: 'display' });
+  const html = wizard.byId('page').innerHTML;
+  assert.equal((html.match(/class="setup-preview"/g) || []).length, 2);
+  assert.match(html, /Information-rich &amp; maximalist/);
+  assert.match(html, /Minimalist &amp; snappy/);
+  for (const mode of ['mainsail', 'klipperscreen']) {
+    assert.match(html, new RegExp(`value="${mode}"`));
+    assert.match(html, new RegExp(`aria-labelledby="setup-${mode}-title"`));
+    assert.match(html, new RegExp(`aria-describedby="setup-${mode}-description"`));
+    assert.match(html, new RegExp(`id="setup-${mode}-title"`));
+    assert.match(html, new RegExp(`id="setup-${mode}-description"`));
+  }
 });
 
 test('manual launch starts setup on existing and completed installations', async () => {

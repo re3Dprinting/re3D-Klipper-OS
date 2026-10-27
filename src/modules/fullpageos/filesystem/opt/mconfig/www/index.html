@@ -382,10 +382,20 @@
   .setup-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 24px }
   .setup-actions #setup-next { margin-left: auto }
   .setup-status { color: var(--warn); min-height: 24px; margin-top: 12px }
-  .setup-choices { display: grid; gap: 16px; margin: 20px 0 }
-  .setup-choices label { display: flex; gap: 12px; align-items: center; padding: 20px; border: 1px solid var(--border-2); border-radius: var(--radius-sm); cursor: pointer }
-  .setup-choices input { width: 22px; height: 22px; accent-color: var(--brand) }
+  .setup-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0 }
+  .setup-choices label { display: grid; grid-template-rows: auto auto 1fr; gap: 16px; min-width: 0; margin: 0; padding: 16px; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm); cursor: pointer }
+  .setup-choices label:hover { border-color: var(--muted) }
+  .setup-choices label:has(input:checked) { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand) }
+  .setup-choices label:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 3px }
+  .setup-choice-heading { display: flex; gap: 12px; align-items: center; font-size: 18px }
+  .setup-choices input { width: 22px; height: 22px; margin: 0; flex-shrink: 0; accent-color: var(--brand) }
   .setup-choices small { display: block; color: var(--muted) }
+  .setup-preview { display: grid; align-content: center; justify-items: center; gap: 6px; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: var(--surface-0); border: 1px dashed var(--border-2); border-radius: var(--radius-xs); color: var(--muted) }
+  .setup-choice-tagline { font-weight: 600 }
+  .setup-choices p { margin: 8px 0 0; color: var(--muted); line-height: 1.6 }
+  @media (max-width: 599px) {
+    .setup-choices { grid-template-columns: 1fr }
+  }
 </style>
 </head>
 <body>
