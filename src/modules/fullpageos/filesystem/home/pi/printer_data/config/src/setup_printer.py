@@ -77,6 +77,7 @@ def common_setup_printer(deposition_type_path, board, platform):
     add_config(config_path)
     #Setup theme path
     add_theme(theme_path)
+    add_template_file(COMMON_PATH / "mainsail.css", THEME_PATH / "mainsail.css", True)
 
     #Common Files Setup
     add_template_file(COMMON_PATH / "save_variables.cfg", KLIPPER_CONFIG_PATH / "save_variables.cfg")
@@ -122,5 +123,4 @@ def setup_fgf_printer(printer_config, board, platform):
     heater_bed_enabled = validate_and_return_config_param(field="heater_bed_enabled", config=printer_config, valid_selections=["true", "false"], default="true")
     if heater_bed_enabled == "true":
         add_template_file( custom_path / "fgf_heater_bed.cfg", OUTPUT_PATH / "fgf_heater_bed.cfg", False)
-
 

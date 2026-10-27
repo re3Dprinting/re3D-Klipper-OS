@@ -1,0 +1,232 @@
+/* Keep these tokens aligned with the Configurator's index.html. */
+.v-application.theme--dark {
+    --re3d-brand: #E7C547;
+    --re3d-action-hover: #EFD56D;
+    --re3d-action-pressed: #CEB147;
+    --re3d-on-action: #21190C;
+    --re3d-bg: #121314;
+    --re3d-surface-0: #17181A;
+    --re3d-surface-1: #1F2023;
+    --re3d-surface-2: #292B2F;
+    --re3d-surface-3: #383B40;
+    --re3d-border: #32353A;
+    --re3d-border-2: #494D54;
+    --re3d-fg: #EEF0F3;
+    --re3d-muted: #ACAFB8;
+    --re3d-dim: #999DA6;
+    --re3d-radius: 16px;
+    --re3d-radius-sm: 10px;
+    --re3d-shadow: 0 4px 20px rgba(0,0,0,.08);
+    --re3d-focus: 0 0 0 3px rgba(231,197,71,.4);
+    --v-primary-base: var(--re3d-brand);
+    background: var(--re3d-bg);
+    color: var(--re3d-fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
+}
+
+.v-application.theme--dark .text-h1,
+.v-application.theme--dark .text-h2,
+.v-application.theme--dark .text-h3,
+.v-application.theme--dark .text-h4,
+.v-application.theme--dark .text-h5,
+.v-application.theme--dark .text-h6,
+.v-application.theme--dark .text-subtitle-1,
+.v-application.theme--dark .text-subtitle-2,
+.v-application.theme--dark .text-body-1,
+.v-application.theme--dark .text-body-2,
+.v-application.theme--dark .text-caption,
+.v-application.theme--dark .text-button {
+    font-family: inherit !important;
+}
+
+.theme--dark.v-navigation-drawer,
+.theme--dark.v-app-bar.v-toolbar.v-sheet {
+    background-color: var(--re3d-surface-0) !important;
+    color: var(--re3d-fg);
+    box-shadow: none !important;
+}
+
+.theme--dark.v-app-bar.v-toolbar.v-sheet {
+    border-bottom: 1px solid var(--re3d-border);
+}
+
+.theme--dark.v-navigation-drawer {
+    border-right: 1px solid var(--re3d-border);
+}
+
+.theme--dark.v-navigation-drawer .v-navigation-drawer__image {
+    display: none;
+}
+
+.theme--dark.v-navigation-drawer .v-list {
+    background: transparent !important;
+}
+
+.theme--dark.v-navigation-drawer .v-list-item:not(.sidebar-logo) {
+    margin: 6px 8px;
+    border-radius: var(--re3d-radius-sm);
+    color: var(--re3d-muted);
+}
+
+.theme--dark.v-navigation-drawer .v-list-item__title {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: .1px;
+    text-transform: none;
+}
+
+.theme--dark.v-navigation-drawer .v-list-item .v-icon {
+    color: var(--re3d-dim);
+}
+
+.theme--dark.v-navigation-drawer .v-list-item:hover,
+.theme--dark.v-navigation-drawer .v-list-item--active {
+    background: var(--re3d-surface-2);
+    color: var(--re3d-fg) !important;
+}
+
+.theme--dark.v-navigation-drawer .v-list-item--active {
+    border-right: 0 !important;
+    box-shadow: inset 2px 0 0 var(--re3d-brand);
+}
+
+.theme--dark.v-navigation-drawer .v-list-item--active .v-list-item__title {
+    font-weight: 600;
+}
+
+.theme--dark.v-navigation-drawer--mini-variant .v-list-item:not(.sidebar-logo) {
+    margin-inline: 4px;
+}
+
+.theme--dark.v-navigation-drawer .v-list-item--active .v-icon {
+    color: var(--re3d-brand);
+}
+
+.theme--dark.v-navigation-drawer .v-list-item--active::before {
+    opacity: 0;
+}
+
+.v-application.theme--dark .v-card:not(.error):not(.warning):not(.success):not(.info) {
+    background-color: var(--re3d-surface-1) !important;
+    color: var(--re3d-fg);
+    border: 1px solid var(--re3d-border);
+    border-radius: var(--re3d-radius);
+    box-shadow: var(--re3d-shadow) !important;
+}
+
+.v-application.theme--dark .panel > .v-toolbar:not(.error):not(.warning):not(.success):not(.info) {
+    background-color: var(--re3d-surface-1) !important;
+    color: var(--re3d-fg);
+    border-bottom: 1px solid var(--re3d-border);
+    border-radius: var(--re3d-radius) var(--re3d-radius) 0 0;
+}
+
+.v-application.theme--dark .panel .v-toolbar__title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -.2px;
+}
+
+.theme--dark.v-divider,
+.theme--dark.v-data-table > .v-data-table__wrapper > table > thead > tr > th,
+.theme--dark.v-data-table > .v-data-table__wrapper > table > tbody > tr > td {
+    border-color: var(--re3d-border) !important;
+}
+
+.theme--dark.v-data-table,
+.theme--dark.v-tabs > .v-tabs-bar,
+.theme--dark.v-tabs-items,
+.theme--dark.v-list {
+    background-color: transparent;
+    color: var(--re3d-fg);
+}
+
+.theme--dark.v-data-table > .v-data-table__wrapper > table > thead > tr > th,
+.theme--dark.v-label,
+.theme--dark.v-messages {
+    color: var(--re3d-muted);
+}
+
+.theme--dark.v-data-table > .v-data-table__wrapper > table > tbody > tr:hover:not(.v-data-table__expanded__content):not(.v-data-table__empty-wrapper) {
+    background: var(--re3d-surface-2);
+}
+
+.theme--dark.v-sheet.v-list,
+.theme--dark.v-sheet.v-toolbar:not(.v-app-bar):not(.panel-toolbar) {
+    background-color: var(--re3d-surface-1);
+}
+
+.theme--dark.v-btn {
+    border-radius: var(--re3d-radius-sm);
+    text-transform: none;
+    font-weight: 600;
+    letter-spacing: .1px;
+    box-shadow: none;
+}
+
+.theme--dark.v-btn.v-btn--has-bg:not(.v-btn--disabled):not(.primary):not(.error):not(.warning):not(.success):not(.info) {
+    background-color: var(--re3d-surface-3) !important;
+    color: var(--re3d-fg);
+}
+
+/* Leave emergency, warning and other semantic colors to Mainsail. */
+.v-application.theme--dark .primary {
+    background-color: var(--re3d-brand) !important;
+    border-color: var(--re3d-brand) !important;
+}
+
+.v-application.theme--dark .primary--text {
+    color: var(--re3d-brand) !important;
+    caret-color: var(--re3d-brand) !important;
+}
+
+.v-application.theme--dark .v-btn.primary:not(.v-btn--disabled):not(.v-btn--outlined):not(.v-btn--text) {
+    color: var(--re3d-on-action) !important;
+}
+
+.v-application.theme--dark .v-btn.primary:not(.v-btn--disabled):hover {
+    background-color: var(--re3d-action-hover) !important;
+}
+
+.v-application.theme--dark .v-btn.primary:not(.v-btn--disabled):active {
+    background-color: var(--re3d-action-pressed) !important;
+}
+
+.theme--dark.v-btn-toggle:not(.v-btn-toggle--group) {
+    background: var(--re3d-surface-0);
+    border-radius: var(--re3d-radius-sm);
+}
+
+.theme--dark.v-btn-toggle:not(.v-btn-toggle--group) .v-btn {
+    border-color: var(--re3d-border-2) !important;
+}
+
+.theme--dark.v-text-field--solo > .v-input__control > .v-input__slot,
+.theme--dark.v-text-field--filled > .v-input__control > .v-input__slot {
+    background: var(--re3d-surface-0);
+    border-radius: var(--re3d-radius-sm);
+}
+
+.theme--dark.v-text-field--outlined fieldset {
+    border-color: var(--re3d-border-2);
+    border-radius: var(--re3d-radius-sm);
+}
+
+.theme--dark.v-input input,
+.theme--dark.v-input textarea,
+.theme--dark.v-select .v-select__selection {
+    color: var(--re3d-fg);
+}
+
+.v-application.theme--dark .v-btn:focus-visible,
+.v-application.theme--dark .v-list-item:focus-visible,
+.v-application.theme--dark .v-tab:focus-visible {
+    outline: none;
+    box-shadow: inset var(--re3d-focus) !important;
+}
+
+.v-application.theme--dark .v-input--is-focused:not(.error--text) .v-input__slot {
+    box-shadow: var(--re3d-focus);
+}
