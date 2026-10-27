@@ -4,10 +4,9 @@
   document.body.classList.add('guided-setup');
   document.title = 'Guided Setup - re:3D';
 
-  const steps = ['welcome', 'machine', 'network', 'display', 'finish'];
-  const titles = ['Welcome to your Gigabot', 'Choose your machine', 'Connect your printer', 'Choose your display', 'Ready to finish'];
+  const steps = ['machine', 'network', 'display', 'finish'];
+  const titles = ['Choose your machine', 'Connect your printer', 'Choose your display', 'Ready to finish'];
   const descriptions = [
-    'Your next big idea starts here. Let us get your Gigabot ready to print.',
     'Select the correct model and hardware options, then press Set Machine before continuing. Changes take effect after the final reboot.',
     'Connect to Wi-Fi or use Ethernet. You can continue offline. Changing networks may disconnect a remote browser; reopen the Configurator at the new address to resume.',
     'Choose the interface for the printer touchscreen. It will switch after setup is finished.',
@@ -19,19 +18,19 @@
   const skip = byId('setup-skip');
   const status = byId('setup-status');
   const page = byId('page');
-  let step = 'welcome';
+  let step = 'machine';
   let busy = false;
   let machineSaved = false;
   let initialized = false;
 
   for (const id of ['setup-header', 'setup-status', 'setup-actions']) byId(id).hidden = false;
   byId('setup-progress').innerHTML = steps.map((name, index) =>
-    `<li data-step="${name}">${index + 1}. ${['Welcome', 'Machine', 'Network', 'Display', 'Finish'][index]}</li>`).join('');
+    `<li data-step="${name}">${index + 1}. ${['Machine', 'Network', 'Display', 'Finish'][index]}</li>`).join('');
 
   function controls() {
     next.disabled = busy || !initialized || (step === 'machine' && !machineSaved);
     back.disabled = busy || !initialized;
-    back.hidden = step === 'welcome';
+    back.hidden = step === 'machine';
     skip.disabled = busy || !initialized;
     next.textContent = step === 'finish' ? 'Finish & reboot' : 'Continue';
   }
@@ -68,14 +67,7 @@
       cleanupTabArtifacts();
       currentTab = null;
       page.innerHTML = '';
-      if (step === 'welcome') {
-        page.innerHTML = `<div class="card">
-          <div class="card-title">Make it yours</div>
-          <p>We will walk you through your machine and hardware options, connect your Gigabot to your network, and help you choose the touchscreen experience that suits you.</p>
-          <p>Progress is saved on the printer. If you skip for now, setup will resume the next time it starts.</p>
-          <p>Keep the printer idle during setup. These steps do not move or heat the printer.</p>
-        </div>`;
-      } else if (step === 'display') {
+      if (step === 'display') {
         page.innerHTML = `<div class="card">
           <div class="card-title">Touchscreen interface</div>
           <div class="setup-choices" role="radiogroup" aria-label="Touchscreen interface">
@@ -205,8 +197,8 @@
   act(async () => {
     const state = await request('/cgi-bin/setup.py');
     if (state.flashing) throw new Error('Finish firmware flashing and power-cycle the printer before setup.');
-    if (state.step === null || state.step === 'completed') {
-      await saveStep('welcome');
+    if (state.step === null || state.step === 'completed' || state.step === 'welcome') {
+      await saveStep('machine');
     } else if (steps.includes(state.step)) {
       step = state.step;
     } else {

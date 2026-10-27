@@ -115,7 +115,7 @@ function element() {
   };
 }
 
-async function mount({ saved = 'welcome', failure = '', flashing = false } = {}) {
+async function mount({ saved = 'machine', failure = '', flashing = false } = {}) {
   const elements = new Map();
   const byId = id => {
     if (!elements.has(id)) elements.set(id, element());
@@ -155,8 +155,12 @@ async function mount({ saved = 'welcome', failure = '', flashing = false } = {})
 
 test('wizard saves each step, requires a saved machine, defers display switching, and finishes with a reboot', async () => {
   const wizard = await mount();
-  assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot');
-  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your machine');
+  assert.deepEqual(wizard.loads, ['machine']);
+  assert.equal(wizard.byId('setup-back').hidden, true);
+  assert.match(wizard.byId('setup-progress').innerHTML, /1\. Machine/);
+  assert.match(wizard.byId('setup-progress').innerHTML, /4\. Finish/);
+  assert.doesNotMatch(wizard.byId('setup-progress').innerHTML, /welcome/i);
   assert.equal(wizard.state.step, 'machine');
   assert.equal(wizard.byId('setup-next').disabled, true);
   wizard.events['re3d-machine-result']({ detail: { ok: false } });
@@ -189,6 +193,7 @@ test('skip preserves progress; a new browser session resumes it, and Back persis
   const resumed = await mount({ saved: wizard.state.step });
   await resumed.click('setup-back');
   assert.equal(resumed.state.step, 'machine');
+  assert.equal(resumed.byId('setup-back').hidden, true);
 });
 
 test('display choices include screenshots, distinct descriptions, and accessible radio labels', async () => {
@@ -215,19 +220,23 @@ test('display choices include screenshots, distinct descriptions, and accessible
   }
 });
 
-test('manual launch starts setup on existing and completed installations', async () => {
-  for (const saved of [null, 'completed']) {
+test('manual launch and legacy Welcome progress start at Machine', async () => {
+  for (const saved of [null, 'completed', 'welcome']) {
     const wizard = await mount({ saved });
-    assert.equal(wizard.state.step, 'welcome');
-    assert.equal(wizard.byId('setup-next').disabled, false);
+    assert.equal(wizard.state.step, 'machine');
+    assert.deepEqual(wizard.loads, ['machine']);
+    assert.equal(wizard.byId('setup-back').hidden, true);
+    assert.equal(wizard.byId('setup-next').disabled, true);
+    assert.equal(wizard.byId('setup-skip').disabled, false);
   }
 });
 
 test('persistence or display failures are visible and never advance progress', async () => {
   const wizard = await mount();
+  wizard.events['re3d-machine-result']({ detail: { ok: true } });
   wizard.state.failure = '/cgi-bin/setup.py';
   await wizard.click('setup-next');
-  assert.equal(wizard.state.step, 'welcome');
+  assert.equal(wizard.state.step, 'machine');
   assert.match(wizard.byId('setup-status').textContent, /Connection lost/);
   const display = await mount({ saved: 'display' });
   display.state.failure = '/cgi-bin/set_display_mode.sh';

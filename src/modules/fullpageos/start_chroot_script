@@ -1049,7 +1049,7 @@ step_end
 
 touch /etc/firstboot-splash
 install -d -m 0755 /var/lib/re3d-setup
-printf 'welcome\n' > /var/lib/re3d-setup/step
+printf 'machine\n' > /var/lib/re3d-setup/step
 chmod 0755 /opt/mconfig/www/cgi-bin/setup.py
 
 echo "server time.nist.gov" >> /etc/ntp.conf

@@ -10,7 +10,7 @@ import tempfile
 
 STATE = Path("/var/lib/re3d-setup/step")
 FLASH_FLAG = Path("/etc/firstboot-splash")
-STEPS = ("welcome", "machine", "network", "display", "finish", "completed")
+STEPS = ("machine", "network", "display", "finish", "completed")
 
 
 def read_step():
@@ -18,6 +18,8 @@ def read_step():
         step = STATE.read_text(encoding="ascii").strip()
     except FileNotFoundError:
         return None
+    if step == "welcome":
+        return "machine"
     if step not in STEPS:
         raise ValueError("Invalid saved setup step.")
     return step

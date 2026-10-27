@@ -64,6 +64,14 @@ class SetupTests(unittest.TestCase):
                 self.assertEqual(setup.read_step(), "network")
         self.assertIn("405 Method Not Allowed", self.request("DELETE")[0])
 
+    def test_legacy_welcome_progress_resumes_at_machine(self):
+        setup.save_step("welcome")
+        headers, data = self.request()
+        self.assertIn("200 OK", headers)
+        self.assertEqual(data["step"], "machine")
+        self.request("POST", {"step": "machine"})
+        self.assertEqual(self.state.read_text().strip(), "machine")
+
     def test_flashing_blocks_progress_mutations(self):
         self.flash.touch()
         self.assertTrue(self.request()[1]["flashing"])
@@ -82,7 +90,7 @@ class SetupTests(unittest.TestCase):
     def test_only_image_build_initializes_setup(self):
         build = (ROOT / "src/modules/fullpageos/start_chroot_script").read_text(encoding="utf-8")
         updater = (ROOT / "tools/re3d-os-update.sh").read_text(encoding="utf-8")
-        self.assertIn("printf 'welcome\\n' > /var/lib/re3d-setup/step", build)
+        self.assertIn("printf 'machine\\n' > /var/lib/re3d-setup/step", build)
         self.assertNotIn("> /var/lib/re3d-setup/step", updater)
         for script in [build, updater]:
             self.assertIn("chmod 0755", script)
