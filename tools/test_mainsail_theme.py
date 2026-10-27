@@ -17,7 +17,7 @@ class MainsailThemeTests(unittest.TestCase):
         configurator = (FILESYSTEM / 'opt/mconfig/www/index.html').read_text(encoding='utf-8')
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         for token in ['brand', 'bg', 'surface-0', 'surface-1', 'surface-2', 'surface-3',
-                      'border', 'border-2', 'fg', 'muted', 'dim', 'radius', 'radius-sm']:
+                      'border', 'border-2', 'fg', 'muted', 'dim']:
             with self.subTest(token=token):
                 expected = re.search(r'--' + token + r':\s*([^;]+);', configurator)[1]
                 actual = re.search(r'--re3d-' + token + r':\s*([^;]+);', theme)[1]
@@ -25,6 +25,27 @@ class MainsailThemeTests(unittest.TestCase):
         for deposition in ['fff', 'fgf']:
             defaults = json.loads((SOURCE / deposition / '.theme/default.json').read_text())
             self.assertEqual(defaults['uiSettings']['primary'], '#E7C547')
+
+    def test_industrial_geometry_headers_and_label_casing(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+
+        def declarations(selector):
+            return re.search(re.escape(selector) + r'\s*\{([^}]+)\}', theme)[1]
+
+        for token, maximum in [('radius', 6), ('radius-sm', 4)]:
+            radius = re.search(r'--re3d-' + token + r':\s*(\d+)px;', theme)
+            self.assertLessEqual(int(radius[1]), maximum)
+        card = declarations(
+            '.v-application.theme--dark .v-card:not(.error):not(.warning):not(.success):not(.info)')
+        header = declarations(
+            '.v-application.theme--dark .panel > .v-toolbar:not(.error):not(.warning):not(.success):not(.info)')
+        self.assertIn('background-color: var(--re3d-surface-1)', card)
+        self.assertIn('background-color: var(--re3d-surface-2)', header)
+        for selector in ['.theme--dark.v-navigation-drawer .v-list-item__title',
+                         '.theme--dark.v-btn']:
+            self.assertIn('text-transform: uppercase;', declarations(selector))
+        buttons = declarations('.theme--dark.v-btn:not(.v-btn--round):not(.v-btn--tile)')
+        self.assertIn('border-radius: var(--re3d-radius-sm);', buttons)
 
     def test_generated_themes_include_shared_styles_and_machine_labels(self):
         module = ast.parse((SOURCE / 'setup_printer.py').read_text())
