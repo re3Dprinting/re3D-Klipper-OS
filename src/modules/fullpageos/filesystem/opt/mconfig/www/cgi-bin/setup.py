@@ -10,7 +10,7 @@ import tempfile
 
 STATE = Path("/var/lib/re3d-setup/step")
 FLASH_FLAG = Path("/etc/firstboot-splash")
-STATES = ("machine", "completed")
+STATES = ("machine", "openbox", "completed")
 
 
 def normalize_state(step):

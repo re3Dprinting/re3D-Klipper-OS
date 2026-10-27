@@ -1,12 +1,20 @@
 (() => {
   if (new URLSearchParams(location.search).get('setup') !== '1') return;
+  const openBox = new URLSearchParams(location.search).get('flow') === 'openbox';
   window.re3dSetup = true;
   document.body.classList.add('guided-setup');
-  document.title = 'Guided Setup - re:3D';
+  document.title = openBox ? 'Open-box Setup - re:3D' : 'Guided Setup - re:3D';
 
-  const steps = ['machine', 'network', 'display', 'finish'];
-  const titles = ['Choose your machine', 'Choose your network mode', 'Choose your display', 'Ready to finish'];
-  const descriptions = [
+  const steps = openBox ? ['unpacking', 'stoppers', 'network', 'finish'] : ['machine', 'network', 'display', 'finish'];
+  const titles = openBox
+    ? ['Welcome to your Gigabot', 'Shipping stoppers and restraints', 'Choose your network mode', 'Ready to finish']
+    : ['Choose your machine', 'Choose your network mode', 'Choose your display', 'Ready to finish'];
+  const descriptions = openBox ? [
+    'Your printer has been configured by operations. This guide will cover unpacking and network setup.',
+    'This slide is reserved for the customer shipping-stopper removal instructions.',
+    'Connect your printer to a network, or continue with offline setup.',
+    'Finish closes open-box setup and reboots into the interface already selected by operations.'
+  ] : [
     'Select the correct model and hardware options, then press Set Machine before continuing. Changes take effect after the final reboot. If you leave or reload setup, you will start again at Machine.',
     'Connect your printer to a network, or continue with offline setup.',
     'Choose the interface for the printer touchscreen. It will switch after setup is finished.',
@@ -20,21 +28,23 @@
   const page = byId('page');
   const networkChoices = byId('setup-network-choice');
   const networkInputs = [byId('setup-network-connect'), byId('setup-network-offline')];
-  let step = 'machine';
+  let step = steps[0];
   let networkMode = null;
   let busy = false;
   let machineSaved = false;
   let initialized = false;
 
   for (const id of ['setup-header', 'setup-status', 'setup-actions']) byId(id).hidden = false;
+  if (openBox) byId('setup-eyebrow').textContent = 'OPEN-BOX SETUP';
+  const labels = openBox ? ['Unpacking', 'Shipping stoppers', 'Network', 'Finish'] : ['Machine', 'Network', 'Display', 'Finish'];
   byId('setup-progress').innerHTML = steps.map((name, index) =>
-    `<li data-step="${name}">${index + 1}. ${['Machine', 'Network', 'Display', 'Finish'][index]}</li>`).join('');
+    `<li data-step="${name}">${index + 1}. ${labels[index]}</li>`).join('');
 
   function controls() {
     next.disabled = busy || !initialized || (step === 'machine' && !machineSaved)
       || (step === 'network' && !networkMode);
     back.disabled = busy || !initialized;
-    back.hidden = step === 'machine';
+    back.hidden = step === steps[0];
     skip.disabled = busy || !initialized;
     next.textContent = step === 'finish' ? 'Finish & reboot' : 'Continue';
     networkInputs.forEach(input => { input.disabled = busy || !initialized; });
@@ -74,7 +84,17 @@
       cleanupTabArtifacts();
       currentTab = null;
       page.innerHTML = '';
-      if (step === 'display') {
+      if (step === 'unpacking' || step === 'stoppers') {
+        page.innerHTML = `<div class="card">
+          <div class="card-title">${step === 'unpacking' ? 'Unpacking your printer' : 'Shipping-stopper removal'}</div>
+          <div class="setup-slide-preview" role="img" aria-label="Instruction picture placeholder">Instruction picture coming soon</div>
+          <p>${step === 'unpacking'
+            ? 'Operations will provide the unpacking instructions and pictures for this slide.'
+            : 'Operations will provide the stopper locations, removal instructions, and pictures for this slide.'}</p>
+          <p><strong>Draft guide:</strong> These slides are placeholders, not complete unpacking instructions. Follow the supplied instructions or contact re:3D support before operating the printer.</p>
+          <p>If you exit or reload, open-box setup starts again from the beginning. Machine and display settings are not changed by this guide.</p>
+        </div>`;
+      } else if (step === 'display') {
         page.innerHTML = `<div class="card">
           <div class="card-title">Touchscreen interface</div>
           <div class="setup-choices" role="radiogroup" aria-label="Touchscreen interface">
@@ -113,7 +133,12 @@
         if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid saved display mode.');
         page.querySelector(`input[value="${mode}"]`).checked = true;
       } else if (step === 'finish') {
-        page.innerHTML = `<div class="card">
+        page.innerHTML = openBox ? `<div class="card">
+          <div class="card-title">Finish open-box setup</div>
+          <p>Finish &amp; reboot closes this guide and opens the printer interface already configured by operations.</p>
+          <p>The unpacking slides are placeholders. Confirm unpacking is complete using the supplied instructions before operating the printer.</p>
+          <p>Your machine and display settings have not been changed by this guide.</p>
+        </div>` : `<div class="card">
           <div class="card-title">Setup complete?</div>
           <p>Use Back to review settings, or Finish &amp; reboot to apply your machine and display choices.</p>
           <p>After reboot, use Configurator &gt; Tuning for temperature control and bed leveling, then Calibration for material profiles.</p>
@@ -212,7 +237,10 @@
   act(async () => {
     const state = await request('/cgi-bin/setup.py');
     if (state.flashing) throw new Error('Finish firmware flashing and power-cycle the printer before setup.');
-    await setSetupState('machine');
+    if (!openBox && state.step === 'openbox') {
+      throw new Error('Open-box setup is scheduled. Open /?setup=1&flow=openbox to run the customer guide.');
+    }
+    await setSetupState(openBox ? 'openbox' : 'machine');
     await render();
     initialized = true;
   });

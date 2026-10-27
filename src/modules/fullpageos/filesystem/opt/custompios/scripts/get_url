@@ -2,7 +2,11 @@
 
 if [ ! -f /etc/firstboot-splash ] && [ -f /var/lib/re3d-setup/step ] \
     && [ "$(cat /var/lib/re3d-setup/step)" != "completed" ]; then
-    echo "http://localhost:8081/?setup=1"
+    if [ "$(cat /var/lib/re3d-setup/step)" = "openbox" ]; then
+        echo "http://localhost:8081/?setup=1&flow=openbox"
+    else
+        echo "http://localhost:8081/?setup=1"
+    fi
     exit 0
 fi
 

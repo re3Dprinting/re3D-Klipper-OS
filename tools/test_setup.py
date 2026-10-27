@@ -46,7 +46,7 @@ class SetupTests(unittest.TestCase):
         self.assertFalse(self.state.exists())
 
     def test_only_pending_and_completed_states_persist_atomically(self):
-        self.assertEqual(setup.STATES, ("machine", "completed"))
+        self.assertEqual(setup.STATES, ("machine", "openbox", "completed"))
         for step in setup.STATES:
             with self.subTest(step=step):
                 headers, data = self.request("POST", {"step": step})
@@ -89,8 +89,24 @@ class SetupTests(unittest.TestCase):
     def test_flashing_blocks_progress_mutations(self):
         self.flash.touch()
         self.assertTrue(self.request()[1]["flashing"])
-        self.assertIn("409 Conflict", self.request("POST", {"step": "completed"})[0])
+        for step in ("openbox", "completed"):
+            self.assertIn("409 Conflict", self.request("POST", {"step": step})[0])
         self.assertFalse(self.state.exists())
+
+    def test_openbox_can_be_scheduled_on_existing_or_configured_install_and_completed(self):
+        for initial in (None, "machine", "completed"):
+            with self.subTest(initial=initial):
+                if initial is None:
+                    self.state.unlink(missing_ok=True)
+                else:
+                    setup.save_step(initial)
+                headers, data = self.request("POST", {"step": "openbox"})
+                self.assertIn("200 OK", headers)
+                self.assertEqual(data["step"], "openbox")
+                self.assertEqual(self.request()[1]["step"], "openbox")
+                self.assertEqual(self.state.read_text().strip(), "openbox")
+                self.request("POST", {"step": "completed"})
+                self.assertEqual(self.request()[1]["step"], "completed")
 
     def test_corrupt_state_and_io_errors_are_explicit(self):
         setup.save_step("network")

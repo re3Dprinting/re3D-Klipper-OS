@@ -82,7 +82,10 @@ test('only unfinished setup redirects the kiosk URL; flashing keeps its existing
   for (const step of ['welcome', 'machine', 'network', 'display', 'finish']) {
     assert.equal(runShell(source, { step }).stdout.trim(), 'http://localhost:8081/?setup=1');
   }
-  for (const options of [{}, { step: 'completed' }, { step: 'machine', flashing: true }]) {
+  assert.equal(runShell(source, { step: 'openbox' }).stdout.trim(),
+    'http://localhost:8081/?setup=1&flow=openbox');
+  for (const options of [{}, { step: 'completed' }, { step: 'machine', flashing: true },
+    { step: 'openbox', flashing: true }]) {
     assert.equal(runShell(source, options).stdout.trim(), 'http://printer.local/');
   }
 });
@@ -91,7 +94,7 @@ test('unfinished setup and firmware flashing override KlipperScreen without over
   const source = fs.readFileSync(path.join(scripts, 're3d-session'), 'utf8')
     .replace('exec >> "$LOG" 2>&1', ':')
     .replace('if [ "$MODE" = "klipperscreen" ]; then', 'echo "$MODE"; exit 0');
-  for (const options of [{ step: 'display' }, { flashing: true }, { step: 'finish' }]) {
+  for (const options of [{ step: 'display' }, { flashing: true }, { step: 'finish' }, { step: 'openbox' }]) {
     const result = runShell(source, options);
     assert.equal(result.stdout.trim().split('\n').at(-1), 'mainsail');
     assert.equal(result.mode, 'klipperscreen');
@@ -152,7 +155,7 @@ function element() {
   };
 }
 
-async function mount({ saved = 'machine', failure = '', flashing = false } = {}) {
+async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false } = {}) {
   const elements = new Map();
   const byId = id => {
     if (!elements.has(id)) elements.set(id, element());
@@ -167,7 +170,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false } = {})
   const loads = [];
   const events = {};
   const context = {
-    location: { search: '?setup=1', hostname: 'printer.local', href: '' },
+    location: { search: openBox ? '?setup=1&flow=openbox' : '?setup=1', hostname: 'printer.local', href: '' },
     URLSearchParams, console,
     window: { scrollTo() {}, addEventListener(name, fn) { events[name] = fn; } },
     document: { getElementById: byId, body: { classList: { add() {} } } },
@@ -400,4 +403,118 @@ test('setup cannot start while firmware flashing is active', async () => {
   assert.equal(wizard.byId('setup-next').disabled, true);
   assert.match(wizard.byId('setup-status').textContent, /flashing/);
   assert.equal(wizard.requests.length, 1);
+});
+
+test('open-box flow contains draft slides and network only, preserves settings, and reboots on completion', async () => {
+  const wizard = await mount({ saved: 'openbox', openBox: true });
+  assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot');
+  assert.equal(wizard.byId('setup-eyebrow').textContent, 'OPEN-BOX SETUP');
+  assert.equal(wizard.byId('setup-back').hidden, true);
+  assert.match(wizard.byId('page').innerHTML, /Draft guide/);
+  assert.match(wizard.byId('page').innerHTML, /picture coming soon/);
+  assert.doesNotMatch(wizard.byId('setup-progress').innerHTML, /Machine|Display/);
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Shipping stoppers and restraints');
+  assert.match(wizard.byId('page').innerHTML, /Operations will provide the stopper locations/);
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
+  assert.equal(wizard.byId('setup-next').disabled, true);
+  await wizard.selectNetwork('connect');
+  assert.deepEqual(wizard.loads, ['network']);
+  await wizard.selectNetwork('offline');
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Ready to finish');
+  assert.match(wizard.byId('page').innerHTML, /already configured by operations/);
+  await wizard.click('setup-next');
+  assert.equal(wizard.state.step, 'completed');
+  assert.deepEqual(wizard.requests.map(r => r.url),
+    ['/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/reboot.sh']);
+  const writes = wizard.requests.filter(r => r.options.method === 'POST' && r.url.endsWith('setup.py'));
+  assert.deepEqual(writes.map(r => JSON.parse(r.options.body).step), ['openbox', 'completed']);
+});
+
+test('exiting unfinished open-box setup keeps it scheduled and reopening starts at the first slide', async () => {
+  const wizard = await mount({ saved: 'completed', openBox: true });
+  await wizard.click('setup-next');
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
+  await wizard.click('setup-next');
+  await wizard.click('setup-skip');
+  assert.equal(wizard.state.step, 'openbox');
+  assert.equal(wizard.context.location.href, 'http://printer.local:80/');
+  const reopened = await mount({ saved: wizard.state.step, openBox: true });
+  assert.equal(reopened.byId('setup-title').textContent, 'Welcome to your Gigabot');
+  assert.equal(reopened.byId('setup-back').hidden, true);
+  assert.equal(reopened.byId('setup-network-offline').checked, false);
+  assert.deepEqual(reopened.loads, []);
+});
+
+test('normal wizard cannot accidentally replace a scheduled open-box guide', async () => {
+  const wizard = await mount({ saved: 'openbox' });
+  assert.equal(wizard.state.step, 'openbox');
+  assert.match(wizard.byId('setup-status').textContent, /Open-box setup is scheduled/);
+  assert.equal(wizard.byId('setup-next').disabled, true);
+  assert.equal(wizard.requests.length, 1);
+});
+
+test('open-box initialization and completion failures remain explicit and do not reboot', async () => {
+  const failed = await mount({ openBox: true, failure: '/cgi-bin/setup.py' });
+  assert.equal(failed.byId('setup-next').disabled, true);
+  assert.match(failed.byId('setup-status').textContent, /Connection lost/);
+  const flashing = await mount({ openBox: true, flashing: true });
+  assert.equal(flashing.byId('setup-next').disabled, true);
+  assert.match(flashing.byId('setup-status').textContent, /flashing/);
+  const wizard = await mount({ saved: 'openbox', openBox: true });
+  await wizard.click('setup-next');
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
+  await wizard.click('setup-next');
+  wizard.state.httpFailure = '/cgi-bin/setup.py';
+  await wizard.click('setup-next');
+  assert.equal(wizard.state.step, 'openbox');
+  assert.match(wizard.byId('setup-status').textContent, /Unable to save settings/);
+  assert.equal(wizard.requests.some(r => r.url.endsWith('reboot.sh')), false);
+});
+
+test('System schedules open-box setup only after confirmation, without rebooting, and shows failures', async () => {
+  const html = fs.readFileSync(path.join(www, 'tabs', 'system.html'), 'utf8');
+  const source = html.match(/<script id="openbox-scheduler">([\s\S]*?)<\/script>/)[1];
+  for (const failure of ['none', 'http', 'transport']) {
+    const elements = new Map();
+    const byId = id => {
+      if (!elements.has(id)) elements.set(id, element());
+      return elements.get(id);
+    };
+    const requests = [];
+    vm.runInNewContext(source, {
+      document: { getElementById: byId },
+      fetch: async (url, options) => {
+        requests.push({url, options});
+        if (failure === 'transport') throw new Error('Offline');
+        return {ok: failure === 'none', status: 500,
+          json: async () => failure === 'http' ? {error: 'Disk full'} : {step: 'openbox'}};
+      }
+    });
+    byId('btn-schedule-openbox').listeners.click();
+    assert.equal(requests.length, 0);
+    assert.equal(byId('openbox-modal').hidden, false);
+    byId('openbox-cancel').listeners.click();
+    assert.equal(byId('openbox-modal').hidden, true);
+    assert.equal(requests.length, 0);
+    byId('btn-schedule-openbox').listeners.click();
+    await byId('openbox-schedule').listeners.click();
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, '/cgi-bin/setup.py');
+    assert.equal(JSON.parse(requests[0].options.body).step, 'openbox');
+    if (failure === 'none') {
+      assert.equal(byId('openbox-modal').hidden, true);
+      assert.match(byId('openbox-schedule-result').textContent, /has not been rebooted/);
+    } else {
+      assert.equal(byId('openbox-modal').hidden, false);
+      assert.match(byId('openbox-schedule-status').textContent, /Unable to schedule/);
+      assert.equal(byId('openbox-schedule-result').textContent, '');
+    }
+    assert.equal(byId('openbox-schedule').disabled, false);
+    assert.equal(byId('openbox-cancel').disabled, false);
+  }
 });

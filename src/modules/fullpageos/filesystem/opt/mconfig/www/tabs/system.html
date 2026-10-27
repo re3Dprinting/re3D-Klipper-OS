@@ -219,6 +219,16 @@
 
     <!-- Mainboard Firmware -->
     <div class="card sys-card">
+      <div class="sys-title">Customer Open-box Setup</div>
+      <div class="sys-subtitle">For operations: schedule the customer unpacking guide and network setup for the next boot. Machine and display settings are preserved. The unpacking slides are currently placeholders.</div>
+      <div class="btn-row">
+        <button type="button" class="btn-ghost" id="btn-schedule-openbox">Schedule Open-box Setup</button>
+      </div>
+      <div class="hint" id="openbox-schedule-result" role="status" aria-live="polite"></div>
+    </div>
+
+    <!-- Mainboard Firmware -->
+    <div class="card sys-card">
       <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4 M9 18v4m6-4v4 M2 9h4m-4 6h4 M18 9h4m-4 6h4"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Mainboard Firmware</div>
       <div class="sys-subtitle">
         Manually trigger a firmware re-flash on the Archimajor board. The printer will reboot
@@ -378,6 +388,62 @@
     <div class="hint mono" id="upload-modal-status"></div>
   </div>
 </div>
+
+<div class="modal-wrap" id="openbox-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="openbox-modal-title">
+    <h3 id="openbox-modal-title">Schedule customer open-box setup?</h3>
+    <p>The next boot will show the unpacking guide and network choices instead of normal setup or printer control. This does not reboot now. The guide will keep appearing on boot until the customer finishes it.</p>
+    <p>The unpacking slides are placeholders until operations supplies the instructions and pictures.</p>
+    <div class="actions">
+      <button type="button" class="btn-ghost" id="openbox-cancel">Cancel</button>
+      <button type="button" id="openbox-schedule">Schedule for next boot</button>
+    </div>
+    <div class="hint" id="openbox-schedule-status" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script id="openbox-scheduler">
+(() => {
+  const button = document.getElementById('btn-schedule-openbox');
+  const modal = document.getElementById('openbox-modal');
+  const cancel = document.getElementById('openbox-cancel');
+  const schedule = document.getElementById('openbox-schedule');
+  const status = document.getElementById('openbox-schedule-status');
+  const result = document.getElementById('openbox-schedule-result');
+  button.addEventListener('click', () => {
+    status.textContent = '';
+    modal.hidden = false;
+    cancel.focus();
+  });
+  cancel.addEventListener('click', () => {
+    modal.hidden = true;
+    button.focus();
+  });
+  schedule.addEventListener('click', async () => {
+    schedule.disabled = true;
+    cancel.disabled = true;
+    status.textContent = 'Scheduling...';
+    try {
+      const response = await fetch('/cgi-bin/setup.py', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({step: 'openbox'}),
+        cache: 'no-store'
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || `Request failed (${response.status})`);
+      modal.hidden = true;
+      result.textContent = 'Open-box setup scheduled for the next boot. The printer has not been rebooted.';
+      button.focus();
+    } catch (error) {
+      status.textContent = `Unable to schedule open-box setup: ${error.message || error}`;
+    } finally {
+      schedule.disabled = false;
+      cancel.disabled = false;
+    }
+  });
+})();
+</script>
 
 <script>
 (() => {

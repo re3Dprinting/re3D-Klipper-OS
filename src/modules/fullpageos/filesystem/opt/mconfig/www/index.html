@@ -396,6 +396,7 @@
   .setup-choices small { display: block; color: var(--muted) }
   .setup-preview { display: grid; align-content: center; justify-items: center; gap: 6px; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: var(--surface-0); border: 1px dashed var(--border-2); border-radius: var(--radius-xs); color: var(--muted) }
   img.setup-preview { height: auto; border-style: solid }
+  .setup-slide-preview { display: grid; place-items: center; min-height: 180px; margin: 20px 0; padding: 24px; border: 1px dashed var(--border-2); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--muted); text-align: center }
   .setup-choice-tagline { font-weight: 600 }
   .setup-choices p { margin: 8px 0 0; color: var(--muted); line-height: 1.6 }
   @media (max-width: 599px) {
@@ -434,7 +435,7 @@
   <section class="pages">
     <header class="setup-header" id="setup-header" hidden>
       <img src="/img/re3d-logo.png" alt="re:3D" class="brand-logo">
-      <p>FIRST-TIME SETUP</p>
+      <p id="setup-eyebrow">FIRST-TIME SETUP</p>
       <ol class="setup-progress" id="setup-progress" aria-label="Setup progress"></ol>
       <h1 id="setup-title" tabindex="-1">Guided Setup</h1>
       <p id="setup-description"></p>
