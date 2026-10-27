@@ -8,19 +8,19 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <style>
-    /* Keep maintenance surfaces and text neutral; reserve color for accents and status. */
+    /* Match the configurator palette; keep inline so this page stands alone during updates. */
     :root{
       color-scheme: dark;
-      --bg: #121212;
-      --card: #202020;
-      --surface-0: #181818;
-      --surface-2: #2B2B2B;
-      --border: #353535;
+      --bg: #121314;
+      --card: #1F2023;
+      --surface-0: #17181A;
+      --surface-2: #292B2F;
+      --border: #32353A;
       --accent: #E7C547;
       --accent-soft:#CEB147;
-      --text: #F0F0F0;
-      --muted: #B0B0B0;
-      --dim: #9E9E9E;
+      --text: #EEF0F3;
+      --muted: #ACAFB8;
+      --dim: #999DA6;
       --warn:#f97316;
     }
     *{box-sizing:border-box;margin:0;padding:0}
@@ -62,7 +62,7 @@
     .page-header{display:grid;gap:12px}
     .eyebrow{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
     .eyebrow::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent)}
-    .notice{padding:14px 16px;background:rgba(231,197,71,.05);border:1px solid var(--border);border-left:2px solid var(--accent);border-radius:10px}
+    .notice{padding:14px 16px;background:var(--surface-0);border:1px solid var(--border);border-left:2px solid var(--accent);border-radius:10px}
     .notice strong{color:var(--text)}
     .progress-panel{padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface-0);display:grid;gap:16px}
     .log-heading{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:12px}
