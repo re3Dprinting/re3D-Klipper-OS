@@ -32,9 +32,9 @@ class MainsailThemeTests(unittest.TestCase):
         def declarations(selector):
             return re.search(re.escape(selector) + r'\s*\{([^}]+)\}', theme)[1]
 
-        for token, maximum in [('radius', 6), ('radius-sm', 4)]:
+        for token, expected in [('radius', 10), ('radius-sm', 8)]:
             radius = re.search(r'--re3d-' + token + r':\s*(\d+)px;', theme)
-            self.assertLessEqual(int(radius[1]), maximum)
+            self.assertEqual(int(radius[1]), expected)
         card = declarations(
             '.v-application.theme--dark .v-card:not(.error):not(.warning):not(.success):not(.info)')
         header = declarations(

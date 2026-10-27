@@ -14,8 +14,8 @@
     --re3d-fg: #EEF0F3;
     --re3d-muted: #ACAFB8;
     --re3d-dim: #999DA6;
-    --re3d-radius: 6px;
-    --re3d-radius-sm: 4px;
+    --re3d-radius: 10px;
+    --re3d-radius-sm: 8px;
     --re3d-shadow: none;
     --re3d-focus: 0 0 0 3px rgba(231,197,71,.4);
     --v-primary-base: var(--re3d-brand);
