@@ -40,6 +40,15 @@ test('wizard loader uses a fresh script URL on each visit and reports load failu
   assert.deepEqual(urls, ['setup.js?cachebust=100', 'setup.js?cachebust=200']);
 });
 
+test('wizard labels its exit action and suppresses only the non-interactive heading outline', () => {
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  assert.match(index, /id="setup-skip">Exit wizard<\/button>/);
+  assert.doesNotMatch(index, /Skip for now/);
+  assert.match(index, /\.setup-header h1:focus\s*\{\s*outline:\s*none\s*\}/);
+  assert.match(index, /<h1 id="setup-title" tabindex="-1">/);
+  assert.match(index, /\.setup-choices label:has\(input:focus-visible\)/);
+});
+
 function runShell(source, { step, flashing = false, body = '', method = 'POST' } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-setup-'));
   try {

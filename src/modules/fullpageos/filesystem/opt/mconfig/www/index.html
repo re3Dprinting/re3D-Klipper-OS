@@ -377,6 +377,7 @@
   #setup-network-choice { margin-bottom: 24px }
   .setup-header { margin-bottom: 24px }
   .setup-header h1 { margin: 8px 0; font-size: 30px }
+  .setup-header h1:focus { outline: none }
   .setup-header p { color: var(--muted) }
   .setup-progress { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none }
   .setup-progress li { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted) }
@@ -467,7 +468,7 @@
     <div id="page" class="page-host"><!-- tab content mounts here --></div>
     <div class="setup-status" id="setup-status" role="status" aria-live="polite" hidden></div>
     <div class="setup-actions" id="setup-actions" hidden>
-      <button type="button" class="btn-ghost" id="setup-skip">Skip for now</button>
+      <button type="button" class="btn-ghost" id="setup-skip">Exit wizard</button>
       <button type="button" class="btn-ghost" id="setup-back">Back</button>
       <button type="button" id="setup-next">Continue</button>
     </div>
