@@ -1,5 +1,11 @@
 #!/bin/bash
 
+if [ ! -f /etc/firstboot-splash ] && [ -f /var/lib/re3d-setup/step ] \
+    && [ "$(cat /var/lib/re3d-setup/step)" != "completed" ]; then
+    echo "http://localhost:8081/?setup=1"
+    exit 0
+fi
+
 SERIAL=`cat /proc/cpuinfo | grep -i '^Serial' | awk '{ print $3 }'`
 URL="$(head -n 1 /boot/firmware/fullpageos.txt | sed -e "s/{serial}/${SERIAL}/g")"
 echo $URL

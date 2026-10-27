@@ -113,6 +113,7 @@ fi
 
 log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
+chmod 0755 "${DST_MCONFIG}/cgi-bin/setup.py"
 
 # Sync wait.html (first-boot / flash UI) if changed
 if [ -f "${SRC_WAIT_HTML}" ]; then
@@ -450,6 +451,7 @@ fi
 # e) Update kiosk scripts (including new re3d-session wrapper)
 for src_dst in \
   "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/re3d-session:/opt/custompios/scripts/re3d-session" \
+  "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/get_url:/opt/custompios/scripts/get_url" \
   "${SRC_RUN_ONEPAGEOS}:/opt/custompios/scripts/run_onepageos" \
   "${SRC_CHROMIUM_SCRIPT}:/opt/custompios/scripts/start_chromium_browser" \
   "${SRC_FULLSCREEN}:/opt/custompios/scripts/fullscreen" \

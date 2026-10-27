@@ -371,6 +371,21 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; scroll-behavior: auto !important }
   }
+  body.guided-setup .app { display: block; max-width: 1100px }
+  body.guided-setup .app-topbar, body.guided-setup .page-header { display: none }
+  .setup-header { margin-bottom: 24px }
+  .setup-header h1 { margin: 8px 0; font-size: 30px }
+  .setup-header p { color: var(--muted) }
+  .setup-progress { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none }
+  .setup-progress li { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted) }
+  .setup-progress [aria-current] { border-color: var(--brand); color: var(--fg) }
+  .setup-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 24px }
+  .setup-actions #setup-next { margin-left: auto }
+  .setup-status { color: var(--warn); min-height: 24px; margin-top: 12px }
+  .setup-choices { display: grid; gap: 16px; margin: 20px 0 }
+  .setup-choices label { display: flex; gap: 12px; align-items: center; padding: 20px; border: 1px solid var(--border-2); border-radius: var(--radius-sm); cursor: pointer }
+  .setup-choices input { width: 22px; height: 22px; accent-color: var(--brand) }
+  .setup-choices small { display: block; color: var(--muted) }
 </style>
 </head>
 <body>
@@ -402,12 +417,25 @@
   </div>
 
   <section class="pages">
+    <header class="setup-header" id="setup-header" hidden>
+      <img src="/img/re3d-logo.png" alt="re:3D" class="brand-logo">
+      <p>FIRST-TIME SETUP</p>
+      <ol class="setup-progress" id="setup-progress" aria-label="Setup progress"></ol>
+      <h1 id="setup-title" tabindex="-1">Guided Setup</h1>
+      <p id="setup-description"></p>
+    </header>
     <header class="page-header">
       <div class="page-eyebrow">Machine configuration</div>
       <h1 class="page-title" id="page-title">Machine</h1>
       <p class="page-description" id="page-description">Choose your printer and configure its hardware.</p>
     </header>
     <div id="page" class="page-host"><!-- tab content mounts here --></div>
+    <div class="setup-status" id="setup-status" role="status" aria-live="polite" hidden></div>
+    <div class="setup-actions" id="setup-actions" hidden>
+      <button type="button" class="btn-ghost" id="setup-skip">Skip for now</button>
+      <button type="button" class="btn-ghost" id="setup-back">Back</button>
+      <button type="button" id="setup-next">Continue</button>
+    </div>
   </section>
 </div>
 
@@ -508,8 +536,8 @@ async function loadTab(name){
   }catch(err){
     hostEl.innerHTML = `<div class="card"><div class="hint">Failed to load <span class="mono">${url}</span>: ${err}</div></div>`;
     setActiveTab(name);
-    currentTab = name;
-    return;
+    currentTab = null;
+    return false;
   }
 
   // parse
@@ -545,9 +573,10 @@ async function loadTab(name){
 
   // update UI
   setActiveTab(name);
-  history.replaceState(null,'',`#${name}`);
+  if (!window.re3dSetup) history.replaceState(null,'',`#${name}`);
   currentTab = name;
   window.scrollTo({top:0, behavior:'auto'});
+  return true;
 }
 
 // nav binding
@@ -556,10 +585,14 @@ tabbar.querySelectorAll('.tab[data-page]').forEach(btn=>{
 });
 
 // deep-link on load
-loadTab((location.hash || '#machine').slice(1));
+if (new URLSearchParams(location.search).get('setup') !== '1') {
+  loadTab((location.hash || '#machine').slice(1));
+}
 
 // back/forward support
-window.addEventListener('hashchange', ()=>loadTab((location.hash||'#machine').slice(1)));
+window.addEventListener('hashchange', ()=>{
+  if (!window.re3dSetup) loadTab((location.hash||'#machine').slice(1));
+});
 window.addEventListener('resize', () => {
   if (currentTab) setActiveTab(currentTab);
 });
@@ -586,5 +619,6 @@ window.addEventListener('resize', () => {
   }
 })();
 </script>
+<script src="setup.js"></script>
 </body>
 </html>

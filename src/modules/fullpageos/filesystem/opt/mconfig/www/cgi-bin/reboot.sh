@@ -1,17 +1,10 @@
 #!/bin/bash
-# Minimal BusyBox httpd CGI for reboot
+# Schedule a reboot after returning the CGI response.
+set -euo pipefail
 
-echo "Content-Type: text/plain"
-echo ""
-
-# Kick the reboot in the background so CGI can return immediately
-if command -v systemctl >/dev/null 2>&1; then
-  sudo /bin/systemctl reboot >/dev/null 2>&1 &
-elif command -v reboot >/dev/null 2>&1; then
-  sudo /sbin/reboot >/dev/null 2>&1 &
-else
-  echo "No reboot command found."
+if ! output="$(sudo /bin/systemd-run --quiet --on-active=3s /bin/systemctl reboot 2>&1)"; then
+  printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nUnable to schedule reboot: %s\n' "$output"
   exit 1
 fi
 
-echo "Rebooting…"
+printf 'Content-Type: text/plain\r\n\r\nReboot scheduled.\n'

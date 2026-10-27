@@ -18,6 +18,11 @@ MAX_FAILS=3
 exec >> "$LOG" 2>&1
 
 MODE=$(cat "$MODE_FILE" 2>/dev/null || echo "mainsail")
+# Keep flashing and unfinished setup in Chromium without changing the saved mode.
+if [ -f /etc/firstboot-splash ] || { [ -f /var/lib/re3d-setup/step ] \
+    && [ "$(cat /var/lib/re3d-setup/step)" != "completed" ]; }; then
+  MODE="mainsail"
+fi
 echo "[$(date)] re3d-session started — mode: ${MODE}"
 
 if [ "$MODE" = "klipperscreen" ]; then
