@@ -6,14 +6,13 @@
   document.body.classList.add('guided-setup');
   document.title = openBox ? 'Open-box Setup - re:3D' : 'Guided Setup - re:3D';
 
-  const steps = openBox ? ['unpacking', 'stoppers', 'safety', 'network', 'finish'] : ['machine', 'network', 'display', 'finish'];
+  const steps = openBox ? ['welcome', 'precautions', 'network', 'finish'] : ['machine', 'network', 'display', 'finish'];
   const titles = openBox
-    ? ['Welcome to your Gigabot', 'Remove the shipping restraints', 'Before your first print', 'Choose your network mode', 'Ready to finish']
+    ? ['Welcome to your Gigabot', 'A few things before you start', 'Choose your network mode', 'Ready to finish']
     : ['Choose your machine', 'Choose your network mode', 'Choose your display', 'Ready to finish'];
   const descriptions = openBox ? [
-    'Your printer has been configured by operations. Check unpacking, shipping restraints, and network access before using it.',
-    'Do not home, move, or print with shipping restraints still installed.',
-    'Review these essentials and read the complete safety and operating instructions before using your printer.',
+    'Big ideas start here.',
+    'Check these precautions before moving, homing, or printing.',
     'Connect your printer to a network, or continue with offline setup.',
     'Finish closes open-box setup and reboots into the interface already selected by operations.'
   ] : [
@@ -39,7 +38,7 @@
   for (const id of ['setup-header', 'setup-status', 'setup-actions']) byId(id).hidden = false;
   if (openBox) byId('setup-eyebrow').textContent = 'OPEN-BOX SETUP';
   byId('setup-preview-notice').hidden = !preview;
-  const labels = openBox ? ['Unpacking', 'Shipping restraints', 'Before printing', 'Network', 'Finish'] : ['Machine', 'Network', 'Display', 'Finish'];
+  const labels = openBox ? ['Welcome', 'Precautions', 'Network', 'Finish'] : ['Machine', 'Network', 'Display', 'Finish'];
   byId('setup-progress').innerHTML = steps.map((name, index) =>
     `<li data-step="${name}">${index + 1}. ${labels[index]}</li>`).join('');
 
@@ -91,51 +90,45 @@
       cleanupTabArtifacts();
       currentTab = null;
       page.innerHTML = '';
-      if (step === 'unpacking') {
-        page.innerHTML = `<div class="card">
-          <div class="card-title">Check unpacking and placement</div>
-          <div class="openbox-slide">
-            <figure><img src="/img/openbox-packaging.jpg" width="698" height="698" alt="Gigabot in its crate with protective shipping packaging"><figcaption>Packaging removal: guide page 11, A4.</figcaption></figure>
-            <div>
-              <ul>
-                <li>Inspect the crate and printer for damage, including the Tip n' Tell and Shockwatch indicators. Record damage or triggered indicators and report them to <a href="mailto:shipping@re3d.org">shipping@re3d.org</a> within 24 hours.</li>
-                <li>Remove shipping zip ties, bubble wrap, cardboard, straps, and tape from the printer, wheeled platform, and bottom panel. Do not cut permanent wiring or cable restraints.</li>
-                <li>If lifting is still needed, follow the full uncrating instructions: at least two people must hold the outer frame. Position the printer's front on the platform side with the wheel brakes.</li>
-              </ul>
-              <figure><img class="openbox-detail" src="/img/openbox-positioning.jpg" width="698" height="698" alt="Gigabot outer frame and wheeled platform during uncrating"><figcaption>Platform placement: guide page 11, A5.</figcaption></figure>
-            </div>
+      if (step === 'welcome') {
+        page.innerHTML = `<div class="card openbox-welcome">
+          <div class="openbox-welcome-copy">
+            <span class="openbox-kicker">MADE FOR BIG IDEAS</span>
+            <h2>Think big.<br><span>Print huge.</span></h2>
+            <p>Your Gigabot is configured. Just a few precautions and a network choice, and you are on your way.</p>
+            <div class="openbox-welcome-route"><span>01 &nbsp; Check</span><span>02 &nbsp; Connect</span><span>03 &nbsp; Create</span></div>
+            <p class="hint">No machine configuration needed. Let's get you started.</p>
           </div>
-          <p class="hint">Summary of Gigabot 4 Getting Started Guide, revision 04, pages 9-11. Use the complete guide for detailed uncrating instructions.</p>
-          <p>If you exit or reload, open-box setup starts again from the beginning. Machine and display settings are not changed by this guide.</p>
+          <svg class="openbox-printer" viewBox="0 0 320 320" aria-hidden="true" focusable="false">
+            <g fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">
+              <path class="openbox-frame" pathLength="1" d="M65 70 115 38 265 38 265 248 215 282 65 282Z M65 70H215V282 M215 70 265 38 M115 38V70 M65 250H215L265 218"/>
+              <path class="openbox-rail" d="M78 104H203 M90 78V245 M191 78V245"/>
+              <path class="openbox-bed" d="M86 227H195L231 207H121Z"/>
+            </g>
+            <g class="openbox-print" fill="none" stroke="var(--brand)" stroke-width="5" stroke-linecap="round">
+              <path d="M125 212H173 M125 201H173 M125 190H173 M125 179H173 M125 168H173"/>
+            </g>
+            <g class="openbox-nozzle" fill="var(--brand)"><path d="M137 94H161V115L149 127 137 115Z"/></g>
+            <circle class="openbox-ready" cx="265" cy="275" r="20" fill="var(--brand)"/>
+            <path class="openbox-ready" d="m256 275 6 6 12-13" fill="none" stroke="var(--on-action)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </div>`;
-      } else if (step === 'stoppers') {
+      } else if (step === 'precautions') {
         page.innerHTML = `<div class="card">
-          <div class="card-title">Remove all eight bed locks or triangle braces</div>
+          <div class="card-title">Before your first print</div>
           <div class="openbox-slide">
             <figure><img src="/img/openbox-bed-locks.jpg" width="698" height="698" alt="Removing a shipping bed lock from the Gigabot bed frame with a wrench"><figcaption>Shipping restraint removal: guide page 11, A6.</figcaption></figure>
             <div>
-              <p><strong>Check both above AND below the bed frame.</strong> Your printer ships with one of these restraint types:</p>
-              <ul>
-                <li><strong>Bed locks:</strong> remove all eight using an 8 mm wrench.</li>
-                <li><strong>Triangle braces:</strong> remove all eight using a 4 mm hex driver.</li>
+              <p class="openbox-warning"><strong>Remove all eight shipping restraints before any movement.</strong> Check above AND below the bed frame. Bed locks: 8 mm wrench. Triangle braces: 4 mm hex driver. Save them for future transport.</p>
+              <ul class="openbox-precautions">
+                <li><strong>Unpack completely.</strong> Remove shipping packaging and ties, not permanent wiring. If lifting is needed, at least two people must hold the outer frame.</li>
+                <li><strong>Check your space and power.</strong> Use a stable location, clear ventilation, and the grounded supply specified on the printer label. Never bypass the ground pin.</li>
+                <li><strong>Check before printing.</strong> Follow the full guide for bed leveling, Z-home, filament loading, and print profiles. This wizard does not perform those procedures.</li>
               </ul>
-              <p>Save the restraints for future transport. Make sure no shipping packaging or restraints remain before commanding any movement.</p>
-              <p>If you cannot identify all restraints or are unsure what to remove, stop and contact <a href="mailto:support@re3d.org">support@re3d.org</a>.</p>
+              <p class="hint">Damage or tripped shipping indicators? Report to <a href="mailto:shipping@re3d.org">shipping@re3d.org</a> within 24 hours. Unsure about a restraint? Stop and contact <a href="mailto:support@re3d.org">support@re3d.org</a>.</p>
             </div>
           </div>
-          <p class="hint">Gigabot 4 Getting Started Guide, revision 04, page 11, A6. Photos illustrate the guide's Gigabot 4; follow the supplied instructions for your model.</p>
-        </div>`;
-      } else if (step === 'safety') {
-        page.innerHTML = `<div class="card">
-          <div class="card-title">Pre-use checklist</div>
-          <ul>
-            <li>Use a stable location, keep ventilation openings clear, and keep the printer away from water.</li>
-            <li>Use the power supply specified on the printer label and a grounded outlet. Never bypass the ground pin; protect cords from damage and do not overload outlets.</li>
-            <li>Check that the touchscreen is secure and any enclosure handles supplied with your printer have been fitted.</li>
-            <li>Before printing, follow the full guide for bed leveling, Z-home, filament loading, and the correct printing profile. Completing this wizard does not perform those procedures.</li>
-            <li>If connecting to Wi-Fi, use a secured network with a strong password. Devices on the same network may be able to access the printer.</li>
-          </ul>
-          <p class="hint">Summary of guide pages 3-4, 12, 15-29, and 30. This checklist does not replace the complete safety and operating instructions.</p>
+          <p class="hint">Gigabot 4 Getting Started Guide, revision 04, key points from pages 3-4 and 9-30. Read the full guide and follow the instructions for your model.</p>
         </div>`;
       } else if (step === 'display') {
         page.innerHTML = `<div class="card">
@@ -188,12 +181,11 @@
           <p>You can reopen this wizard from Configurator &gt; System at any time.</p>
         </div>`;
       }
-      if (openBox && step !== 'network') {
+      if (openBox && step === 'precautions') {
         page.innerHTML += `<aside class="card openbox-guide" aria-label="Full getting started guide">
           <div class="openbox-qr-placeholder" role="img" aria-label="QR code placeholder, not scannable">QR code<br>coming soon</div>
-          <div><div class="card-title">Keep the full guide handy</div>
-            <p>A QR code for the online Getting Started Guide will go here once its link is finalized. This placeholder is not scannable.</p>
-            <p>For now, use your supplied guide or contact <a href="mailto:support@re3d.org">support@re3d.org</a>.</p>
+          <div><div class="card-title">The full guide, on your phone</div>
+            <p>Online guide link coming soon. This QR placeholder is not scannable; use your supplied Getting Started Guide for now.</p>
           </div>
         </aside>`;
       }

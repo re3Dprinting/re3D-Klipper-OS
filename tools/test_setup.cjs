@@ -405,24 +405,30 @@ test('setup cannot start while firmware flashing is active', async () => {
   assert.equal(wizard.requests.length, 1);
 });
 
-test('open-box flow summarizes guide essentials, preserves settings, and reboots on completion', async () => {
+test('open-box flow has a dedicated welcome and one precautions page, preserves settings, and reboots', async () => {
   const wizard = await mount({ saved: 'openbox', openBox: true });
   assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot');
   assert.equal(wizard.byId('setup-eyebrow').textContent, 'OPEN-BOX SETUP');
   assert.equal(wizard.byId('setup-back').hidden, true);
-  assert.match(wizard.byId('page').innerHTML, /within 24 hours/);
-  assert.match(wizard.byId('page').innerHTML, /at least two people/);
-  assert.match(wizard.byId('page').innerHTML, /openbox-packaging\.jpg/);
-  assert.match(wizard.byId('page').innerHTML, /placeholder is not scannable/);
+  assert.match(wizard.byId('page').innerHTML, /openbox-welcome/);
+  assert.match(wizard.byId('page').innerHTML, /Print huge/);
+  assert.match(wizard.byId('page').innerHTML, /openbox-printer/);
+  assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-qr-placeholder/);
+  assert.match(wizard.byId('setup-progress').innerHTML, /1\. Welcome/);
+  assert.match(wizard.byId('setup-progress').innerHTML, /2\. Precautions/);
+  assert.match(wizard.byId('setup-progress').innerHTML, /4\. Finish/);
+  assert.equal((wizard.byId('setup-progress').innerHTML.match(/<li /g) || []).length, 4);
   assert.doesNotMatch(wizard.byId('setup-progress').innerHTML, /Machine|Display/);
   await wizard.click('setup-next');
-  assert.equal(wizard.byId('setup-title').textContent, 'Remove the shipping restraints');
+  assert.equal(wizard.byId('setup-title').textContent, 'A few things before you start');
+  assert.match(wizard.byId('page').innerHTML, /Remove all eight shipping restraints before any movement/);
   assert.match(wizard.byId('page').innerHTML, /above AND below/);
-  assert.match(wizard.byId('page').innerHTML, /all eight using an 8 mm wrench/);
-  assert.match(wizard.byId('page').innerHTML, /all eight using a 4 mm hex driver/);
+  assert.match(wizard.byId('page').innerHTML, /Bed locks: 8 mm wrench/);
+  assert.match(wizard.byId('page').innerHTML, /Triangle braces: 4 mm hex driver/);
   assert.match(wizard.byId('page').innerHTML, /openbox-bed-locks\.jpg/);
-  await wizard.click('setup-next');
-  assert.equal(wizard.byId('setup-title').textContent, 'Before your first print');
+  assert.match(wizard.byId('page').innerHTML, /within 24 hours/);
+  assert.match(wizard.byId('page').innerHTML, /at least two people/);
+  assert.match(wizard.byId('page').innerHTML, /QR placeholder is not scannable/);
   assert.match(wizard.byId('page').innerHTML, /Never bypass the ground pin/);
   assert.match(wizard.byId('page').innerHTML, /does not perform those procedures/);
   await wizard.click('setup-next');
@@ -444,7 +450,6 @@ test('open-box flow summarizes guide essentials, preserves settings, and reboots
 
 test('exiting unfinished open-box setup keeps it scheduled and reopening starts at the first slide', async () => {
   const wizard = await mount({ saved: 'completed', openBox: true });
-  await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
@@ -477,7 +482,6 @@ test('open-box initialization and completion failures remain explicit and do not
   const wizard = await mount({ saved: 'openbox', openBox: true });
   await wizard.click('setup-next');
   await wizard.click('setup-next');
-  await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
   await wizard.click('setup-next');
   wizard.state.httpFailure = '/cgi-bin/setup.py';
@@ -487,15 +491,18 @@ test('open-box initialization and completion failures remain explicit and do not
   assert.equal(wizard.requests.some(r => r.url.endsWith('reboot.sh')), false);
 });
 
-test('open-box photos are bundled locally and QR area is explicitly a placeholder', () => {
+test('precautions photo is local, QR is a placeholder, and welcome motion is finite and optional', () => {
   const source = fs.readFileSync(path.join(www, 'setup.js'), 'utf8');
-  for (const name of ['packaging', 'positioning', 'bed-locks']) {
-    const image = fs.readFileSync(path.join(www, 'img', `openbox-${name}.jpg`));
-    assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8');
-    assert.match(source, new RegExp(`/img/openbox-${name}\\.jpg`));
-  }
+  const image = fs.readFileSync(path.join(www, 'img', 'openbox-bed-locks.jpg'));
+  assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8');
+  assert.match(source, /\/img\/openbox-bed-locks\.jpg/);
   assert.match(source, /QR code placeholder, not scannable/);
   assert.doesNotMatch(source, /Draft guide|Operations will provide|unpacking slides are placeholders/);
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  assert.match(index, /@keyframes openbox-draw/);
+  assert.match(index, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.openbox-welcome-copy[^}]+animation: none/);
+  const welcomeStyles = index.match(/\.openbox-welcome \{[\s\S]*?\.openbox-slide \{/)[0];
+  assert.doesNotMatch(welcomeStyles, /animation:[^;}\n]*infinite/);
 });
 
 test('developer preview opens from System and never schedules setup, changes settings, or reboots', async () => {
@@ -504,7 +511,6 @@ test('developer preview opens from System and never schedules setup, changes set
   const wizard = await mount({saved: 'completed', openBox: true, preview: true});
   assert.equal(wizard.byId('setup-preview-notice').hidden, false);
   assert.equal(wizard.requests.length, 0);
-  await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.selectNetwork('connect');
