@@ -155,7 +155,7 @@ function element() {
   };
 }
 
-async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false } = {}) {
+async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false, preview = false } = {}) {
   const elements = new Map();
   const byId = id => {
     if (!elements.has(id)) elements.set(id, element());
@@ -170,7 +170,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
   const loads = [];
   const events = {};
   const context = {
-    location: { search: openBox ? '?setup=1&flow=openbox' : '?setup=1', hostname: 'printer.local', href: '' },
+    location: { search: (openBox ? '?setup=1&flow=openbox' : '?setup=1') + (preview ? '&preview=1' : ''), hostname: 'printer.local', href: '' },
     URLSearchParams, console,
     window: { scrollTo() {}, addEventListener(name, fn) { events[name] = fn; } },
     document: { getElementById: byId, body: { classList: { add() {} } } },
@@ -405,17 +405,26 @@ test('setup cannot start while firmware flashing is active', async () => {
   assert.equal(wizard.requests.length, 1);
 });
 
-test('open-box flow contains draft slides and network only, preserves settings, and reboots on completion', async () => {
+test('open-box flow summarizes guide essentials, preserves settings, and reboots on completion', async () => {
   const wizard = await mount({ saved: 'openbox', openBox: true });
   assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot');
   assert.equal(wizard.byId('setup-eyebrow').textContent, 'OPEN-BOX SETUP');
   assert.equal(wizard.byId('setup-back').hidden, true);
-  assert.match(wizard.byId('page').innerHTML, /Draft guide/);
-  assert.match(wizard.byId('page').innerHTML, /picture coming soon/);
+  assert.match(wizard.byId('page').innerHTML, /within 24 hours/);
+  assert.match(wizard.byId('page').innerHTML, /at least two people/);
+  assert.match(wizard.byId('page').innerHTML, /openbox-packaging\.jpg/);
+  assert.match(wizard.byId('page').innerHTML, /placeholder is not scannable/);
   assert.doesNotMatch(wizard.byId('setup-progress').innerHTML, /Machine|Display/);
   await wizard.click('setup-next');
-  assert.equal(wizard.byId('setup-title').textContent, 'Shipping stoppers and restraints');
-  assert.match(wizard.byId('page').innerHTML, /Operations will provide the stopper locations/);
+  assert.equal(wizard.byId('setup-title').textContent, 'Remove the shipping restraints');
+  assert.match(wizard.byId('page').innerHTML, /above AND below/);
+  assert.match(wizard.byId('page').innerHTML, /all eight using an 8 mm wrench/);
+  assert.match(wizard.byId('page').innerHTML, /all eight using a 4 mm hex driver/);
+  assert.match(wizard.byId('page').innerHTML, /openbox-bed-locks\.jpg/);
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Before your first print');
+  assert.match(wizard.byId('page').innerHTML, /Never bypass the ground pin/);
+  assert.match(wizard.byId('page').innerHTML, /does not perform those procedures/);
   await wizard.click('setup-next');
   assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
   assert.equal(wizard.byId('setup-next').disabled, true);
@@ -435,6 +444,7 @@ test('open-box flow contains draft slides and network only, preserves settings, 
 
 test('exiting unfinished open-box setup keeps it scheduled and reopening starts at the first slide', async () => {
   const wizard = await mount({ saved: 'completed', openBox: true });
+  await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
@@ -467,6 +477,7 @@ test('open-box initialization and completion failures remain explicit and do not
   const wizard = await mount({ saved: 'openbox', openBox: true });
   await wizard.click('setup-next');
   await wizard.click('setup-next');
+  await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
   await wizard.click('setup-next');
   wizard.state.httpFailure = '/cgi-bin/setup.py';
@@ -474,6 +485,43 @@ test('open-box initialization and completion failures remain explicit and do not
   assert.equal(wizard.state.step, 'openbox');
   assert.match(wizard.byId('setup-status').textContent, /Unable to save settings/);
   assert.equal(wizard.requests.some(r => r.url.endsWith('reboot.sh')), false);
+});
+
+test('open-box photos are bundled locally and QR area is explicitly a placeholder', () => {
+  const source = fs.readFileSync(path.join(www, 'setup.js'), 'utf8');
+  for (const name of ['packaging', 'positioning', 'bed-locks']) {
+    const image = fs.readFileSync(path.join(www, 'img', `openbox-${name}.jpg`));
+    assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8');
+    assert.match(source, new RegExp(`/img/openbox-${name}\\.jpg`));
+  }
+  assert.match(source, /QR code placeholder, not scannable/);
+  assert.doesNotMatch(source, /Draft guide|Operations will provide|unpacking slides are placeholders/);
+});
+
+test('developer preview opens from System and never schedules setup, changes settings, or reboots', async () => {
+  const system = fs.readFileSync(path.join(www, 'tabs', 'system.html'), 'utf8');
+  assert.match(system, /id="openbox-preview-link" href="\/\?setup=1&amp;flow=openbox&amp;preview=1" target="_blank" rel="noopener"/);
+  const wizard = await mount({saved: 'completed', openBox: true, preview: true});
+  assert.equal(wizard.byId('setup-preview-notice').hidden, false);
+  assert.equal(wizard.requests.length, 0);
+  await wizard.click('setup-next');
+  await wizard.click('setup-next');
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('connect');
+  assert.deepEqual(wizard.loads, ['network']);
+  assert.equal(wizard.byId('page').inert, true);
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('page').inert, false);
+  assert.equal(wizard.byId('setup-next').textContent, 'Finish preview');
+  await wizard.click('setup-next');
+  assert.equal(wizard.context.location.href, '/#system');
+  assert.equal(wizard.requests.length, 0);
+  assert.equal(wizard.state.step, 'completed');
+  const exited = await mount({saved: 'openbox', openBox: true, preview: true});
+  await exited.click('setup-skip');
+  assert.equal(exited.context.location.href, '/#system');
+  assert.equal(exited.state.step, 'openbox');
+  assert.equal(exited.requests.length, 0);
 });
 
 test('System schedules open-box setup only after confirmation, without rebooting, and shows failures', async () => {

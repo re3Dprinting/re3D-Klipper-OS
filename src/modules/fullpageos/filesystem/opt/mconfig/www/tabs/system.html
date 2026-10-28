@@ -220,10 +220,12 @@
     <!-- Mainboard Firmware -->
     <div class="card sys-card">
       <div class="sys-title">Customer Open-box Setup</div>
-      <div class="sys-subtitle">For operations: schedule the customer unpacking guide and network setup for the next boot. Machine and display settings are preserved. The unpacking slides are currently placeholders.</div>
+      <div class="sys-subtitle">For operations: schedule the customer unpacking checklist, shipping-restraint instructions, pre-use checks, and network setup for the next boot. Machine and display settings are preserved.</div>
       <div class="btn-row">
+        <a class="btn btn-ghost" id="openbox-preview-link" href="/?setup=1&amp;flow=openbox&amp;preview=1" target="_blank" rel="noopener">Open-box preview (dev)</a>
         <button type="button" class="btn-ghost" id="btn-schedule-openbox">Schedule Open-box Setup</button>
       </div>
+      <div class="hint">Developer preview opens in a new browser tab without scheduling setup, changing settings, or rebooting.</div>
       <div class="hint" id="openbox-schedule-result" role="status" aria-live="polite"></div>
     </div>
 
@@ -393,7 +395,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="openbox-modal-title">
     <h3 id="openbox-modal-title">Schedule customer open-box setup?</h3>
     <p>The next boot will show the unpacking guide and network choices instead of normal setup or printer control. This does not reboot now. The guide will keep appearing on boot until the customer finishes it.</p>
-    <p>The unpacking slides are placeholders until operations supplies the instructions and pictures.</p>
+    <p>The guide summarizes key steps from the Gigabot 4 Getting Started Guide. Customers should still read the complete guide before operating the printer.</p>
     <div class="actions">
       <button type="button" class="btn-ghost" id="openbox-cancel">Cancel</button>
       <button type="button" id="openbox-schedule">Schedule for next boot</button>

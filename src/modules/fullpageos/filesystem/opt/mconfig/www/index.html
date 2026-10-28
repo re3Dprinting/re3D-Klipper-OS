@@ -396,11 +396,19 @@
   .setup-choices small { display: block; color: var(--muted) }
   .setup-preview { display: grid; align-content: center; justify-items: center; gap: 6px; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: var(--surface-0); border: 1px dashed var(--border-2); border-radius: var(--radius-xs); color: var(--muted) }
   img.setup-preview { height: auto; border-style: solid }
-  .setup-slide-preview { display: grid; place-items: center; min-height: 180px; margin: 20px 0; padding: 24px; border: 1px dashed var(--border-2); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--muted); text-align: center }
+  .openbox-slide { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); gap: 24px; margin: 20px 0 }
+  .openbox-slide figure { margin: 0 }
+  .openbox-slide img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm) }
+  .openbox-slide img.openbox-detail { max-width: 180px }
+  .openbox-slide figcaption { margin-top: 8px; color: var(--muted); font-size: 12px }
+  .openbox-slide li { margin-bottom: 12px }
+  .openbox-guide { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: center; gap: 24px; margin-top: 24px }
+  .openbox-qr-placeholder { display: grid; place-content: center; width: 140px; height: 140px; border: 2px dashed var(--border-2); border-radius: var(--radius-sm); color: var(--muted); text-align: center }
   .setup-choice-tagline { font-weight: 600 }
   .setup-choices p { margin: 8px 0 0; color: var(--muted); line-height: 1.6 }
   @media (max-width: 599px) {
     .setup-choices { grid-template-columns: 1fr }
+    .openbox-slide, .openbox-guide { grid-template-columns: 1fr }
   }
 </style>
 </head>
@@ -440,6 +448,7 @@
       <h1 id="setup-title" tabindex="-1">Guided Setup</h1>
       <p id="setup-description"></p>
     </header>
+    <p id="setup-preview-notice" class="hint" hidden>Developer preview: setup status and printer settings are not changed. Network controls are read-only, and Finish does not reboot.</p>
     <header class="page-header">
       <div class="page-eyebrow">Machine configuration</div>
       <h1 class="page-title" id="page-title">Machine</h1>
