@@ -403,16 +403,8 @@
   .openbox-welcome h2 span { color: var(--brand) }
   .openbox-welcome p { max-width: 430px; color: var(--muted) }
   .openbox-welcome-route { display: flex; flex-wrap: wrap; gap: 16px; margin: 24px 0; font-size: 12px; color: var(--fg) }
-  .openbox-printer { width: 100%; max-width: 300px; justify-self: center; color: var(--gray-200) }
-  .openbox-frame { stroke-dasharray: 1; animation: openbox-draw 1.6s ease-out both }
-  .openbox-rail, .openbox-bed { opacity: .4 }
-  .openbox-print { transform-origin: 149px 215px; animation: openbox-build 1.6s .5s ease-out both }
-  .openbox-nozzle { animation: openbox-travel 2s ease-in-out both }
-  .openbox-ready { animation: openbox-arrive .5s 1.7s ease-out both }
+  .openbox-welcome-image { display: block; width: 100%; height: auto; object-fit: contain; max-width: 330px; justify-self: center; border-radius: var(--radius-sm); filter: brightness(.88); animation: openbox-arrive .8s .15s ease-out both }
   @keyframes openbox-arrive { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
-  @keyframes openbox-draw { from { stroke-dashoffset: 1 } to { stroke-dashoffset: 0 } }
-  @keyframes openbox-build { from { opacity: 0; transform: scaleY(0) } to { opacity: 1; transform: scaleY(1) } }
-  @keyframes openbox-travel { 0%, 100% { transform: translateX(0) } 25%, 75% { transform: translateX(-22px) } 50% { transform: translateX(22px) } }
   .openbox-slide { display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1.4fr); gap: 24px; margin: 20px 0 }
   .openbox-slide figure { margin: 0 }
   .openbox-slide img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm) }
@@ -427,11 +419,11 @@
   @media (max-width: 599px) {
     .setup-choices { grid-template-columns: 1fr }
     .openbox-slide, .openbox-welcome { grid-template-columns: 1fr }
-    .openbox-printer { max-width: 190px }
+    .openbox-welcome-image { max-width: 240px }
     .openbox-slide figure { max-width: 220px }
   }
   @media (prefers-reduced-motion: reduce) {
-    .openbox-welcome-copy, .openbox-frame, .openbox-print, .openbox-nozzle, .openbox-ready { animation: none }
+    .openbox-welcome-copy, .openbox-welcome-image { animation: none }
   }
 </style>
 </head>

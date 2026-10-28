@@ -155,7 +155,8 @@ function element() {
   };
 }
 
-async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false, preview = false } = {}) {
+async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false, preview = false,
+  machineType = 'Gigabot 4', machineStatus = 200 } = {}) {
   const elements = new Map();
   const byId = id => {
     if (!elements.has(id)) elements.set(id, element());
@@ -179,6 +180,9 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
     fetch: async (url, options = {}) => {
       requests.push({ url, options });
       if (state.failure === url) throw new Error('Connection lost');
+      if (url.endsWith('get_machine_type.sh')) {
+        return {ok: machineStatus === 200, status: machineStatus, text: async () => machineType};
+      }
       if (url.endsWith('get_display_mode.sh')) return { ok: true, text: async () => 'mainsail' };
       if (url.endsWith('setup.py') && options.method === 'POST' && state.httpFailure !== url) {
         state.step = JSON.parse(options.body).step;
@@ -407,12 +411,13 @@ test('setup cannot start while firmware flashing is active', async () => {
 
 test('open-box flow has a dedicated welcome and one precautions page, preserves settings, and reboots', async () => {
   const wizard = await mount({ saved: 'openbox', openBox: true });
-  assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot');
+  assert.equal(wizard.byId('setup-title').textContent, 'Welcome to your Gigabot 4');
   assert.equal(wizard.byId('setup-eyebrow').textContent, 'OPEN-BOX SETUP');
   assert.equal(wizard.byId('setup-back').hidden, true);
   assert.match(wizard.byId('page').innerHTML, /openbox-welcome/);
   assert.match(wizard.byId('page').innerHTML, /Print huge/);
-  assert.match(wizard.byId('page').innerHTML, /openbox-printer/);
+  assert.match(wizard.byId('page').innerHTML, /<img class="openbox-welcome-image" src="\/img\/openbox-gigabot-4\.png" width="378" height="448"/);
+  assert.doesNotMatch(wizard.byId('page').innerHTML, /<svg/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-qr-placeholder/);
   assert.match(wizard.byId('setup-progress').innerHTML, /1\. Welcome/);
   assert.match(wizard.byId('setup-progress').innerHTML, /2\. Precautions/);
@@ -443,9 +448,60 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   await wizard.click('setup-next');
   assert.equal(wizard.state.step, 'completed');
   assert.deepEqual(wizard.requests.map(r => r.url),
-    ['/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/reboot.sh']);
+    ['/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/get_machine_type.sh', '/cgi-bin/setup.py', '/cgi-bin/reboot.sh']);
   const writes = wizard.requests.filter(r => r.options.method === 'POST' && r.url.endsWith('setup.py'));
   assert.deepEqual(writes.map(r => JSON.parse(r.options.body).step), ['openbox', 'completed']);
+});
+
+test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {
+  const machines = [
+    ['Gigabot 4', 'gigabot-4', 378, 448],
+    ['Gigabot 4 XLT', 'gigabot-4-xlt', 403, 505],
+    ['Terabot 4', 'terabot-4', 463, 648],
+    ['GigabotX 2', 'gigabotx-2', 346, 490],
+    ['GigabotX XLT 2', 'gigabotx-2-xlt', 369, 552],
+    ['TerabotX 2', 'terabotx-2', 462, 652]
+  ];
+  const machineTab = fs.readFileSync(path.join(www, 'tabs', 'machine.html'), 'utf8');
+  assert.deepEqual([...machineTab.matchAll(/data-type="([^"]+)"/g)].map(match => match[1]).sort(),
+    machines.map(([name]) => name).sort());
+  for (const [name, image, width, height] of machines) {
+    const artwork = fs.readFileSync(path.join(www, 'img', `openbox-${image}.png`));
+    assert.equal(artwork.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(artwork.readUInt32BE(16), width);
+    assert.equal(artwork.readUInt32BE(20), height);
+    for (const preview of [false, true]) {
+      const wizard = await mount({openBox: true, preview, machineType: `${name}\n`});
+      assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
+      assert.ok(wizard.byId('page').innerHTML.includes(`src="/img/openbox-${image}.png" width="${width}" height="${height}"`));
+      assert.ok(wizard.byId('page').innerHTML.includes(`alt="${name} printer"`));
+      assert.ok(wizard.byId('page').innerHTML.includes(`Your ${name} is configured.`));
+      await wizard.click('setup-next');
+      await wizard.click('setup-back');
+      assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
+      assert.equal(wizard.requests.filter(r => r.url.endsWith('get_machine_type.sh')).length, 1);
+      if (preview) {
+        assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
+          [['/cgi-bin/get_machine_type.sh', 'GET']]);
+      }
+    }
+  }
+});
+
+test('machine lookup failures and unknown names are explicit rather than showing the wrong printer', async () => {
+  for (const options of [
+    {failure: '/cgi-bin/get_machine_type.sh', error: /Connection lost/},
+    {machineStatus: 500, error: /Unable to load the configured machine \(500\)/},
+    {machineType: '', error: /Unsupported configured machine/},
+    {machineType: '<img src=x onerror=alert(1)>', error: /Unsupported configured machine/}
+  ]) {
+    const wizard = await mount({openBox: true, preview: true, ...options});
+    assert.equal(wizard.byId('setup-next').disabled, true);
+    assert.match(wizard.byId('setup-status').textContent, options.error);
+    assert.doesNotMatch(wizard.byId('page').innerHTML, /<img/);
+    assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
+      [['/cgi-bin/get_machine_type.sh', 'GET']]);
+  }
 });
 
 test('exiting unfinished open-box setup keeps it scheduled and reopening starts at the first slide', async () => {
@@ -458,7 +514,7 @@ test('exiting unfinished open-box setup keeps it scheduled and reopening starts 
   assert.equal(wizard.state.step, 'openbox');
   assert.equal(wizard.context.location.href, 'http://printer.local:80/');
   const reopened = await mount({ saved: wizard.state.step, openBox: true });
-  assert.equal(reopened.byId('setup-title').textContent, 'Welcome to your Gigabot');
+  assert.equal(reopened.byId('setup-title').textContent, 'Welcome to your Gigabot 4');
   assert.equal(reopened.byId('setup-back').hidden, true);
   assert.equal(reopened.byId('setup-network-offline').checked, false);
   assert.deepEqual(reopened.loads, []);
@@ -495,11 +551,16 @@ test('precautions photo is local, QR is a placeholder, and welcome motion is fin
   const source = fs.readFileSync(path.join(www, 'setup.js'), 'utf8');
   const image = fs.readFileSync(path.join(www, 'img', 'openbox-bed-locks.jpg'));
   assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8');
+  const welcome = fs.readFileSync(path.join(www, 'img', 'openbox-gigabot-4.png'));
+  assert.equal(welcome.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(welcome.readUInt32BE(16), 378);
+  assert.equal(welcome.readUInt32BE(20), 448);
   assert.match(source, /\/img\/openbox-bed-locks\.jpg/);
   assert.match(source, /QR code placeholder, not scannable/);
   assert.doesNotMatch(source, /Draft guide|Operations will provide|unpacking slides are placeholders/);
   const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
-  assert.match(index, /@keyframes openbox-draw/);
+  assert.match(index, /@keyframes openbox-arrive/);
+  assert.match(index, /\.openbox-welcome-image \{[^}]*width: 100%; height: auto; object-fit: contain/);
   assert.match(index, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.openbox-welcome-copy[^}]+animation: none/);
   const welcomeStyles = index.match(/\.openbox-welcome \{[\s\S]*?\.openbox-slide \{/)[0];
   assert.doesNotMatch(welcomeStyles, /animation:[^;}\n]*infinite/);
@@ -510,7 +571,8 @@ test('developer preview opens from System and never schedules setup, changes set
   assert.match(system, /id="openbox-preview-link" href="\/\?setup=1&amp;flow=openbox&amp;preview=1" target="_blank" rel="noopener"/);
   const wizard = await mount({saved: 'completed', openBox: true, preview: true});
   assert.equal(wizard.byId('setup-preview-notice').hidden, false);
-  assert.equal(wizard.requests.length, 0);
+  assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
+    [['/cgi-bin/get_machine_type.sh', 'GET']]);
   await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.selectNetwork('connect');
@@ -521,13 +583,15 @@ test('developer preview opens from System and never schedules setup, changes set
   assert.equal(wizard.byId('setup-next').textContent, 'Finish preview');
   await wizard.click('setup-next');
   assert.equal(wizard.context.location.href, '/#system');
-  assert.equal(wizard.requests.length, 0);
+  assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
+    [['/cgi-bin/get_machine_type.sh', 'GET']]);
   assert.equal(wizard.state.step, 'completed');
   const exited = await mount({saved: 'openbox', openBox: true, preview: true});
   await exited.click('setup-skip');
   assert.equal(exited.context.location.href, '/#system');
   assert.equal(exited.state.step, 'openbox');
-  assert.equal(exited.requests.length, 0);
+  assert.deepEqual(exited.requests.map(r => [r.url, r.options.method || 'GET']),
+    [['/cgi-bin/get_machine_type.sh', 'GET']]);
 });
 
 test('System schedules open-box setup only after confirmation, without rebooting, and shows failures', async () => {

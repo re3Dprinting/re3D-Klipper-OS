@@ -8,7 +8,7 @@
 
   const steps = openBox ? ['welcome', 'precautions', 'network', 'finish'] : ['machine', 'network', 'display', 'finish'];
   const titles = openBox
-    ? ['Welcome to your Gigabot', 'A few things before you start', 'Choose your network mode', 'Ready to finish']
+    ? ['Welcome to your printer', 'A few things before you start', 'Choose your network mode', 'Ready to finish']
     : ['Choose your machine', 'Choose your network mode', 'Choose your display', 'Ready to finish'];
   const descriptions = openBox ? [
     'Big ideas start here.',
@@ -34,6 +34,7 @@
   let busy = false;
   let machineSaved = false;
   let initialized = false;
+  let welcomeMachine = null;
 
   for (const id of ['setup-header', 'setup-status', 'setup-actions']) byId(id).hidden = false;
   if (openBox) byId('setup-eyebrow').textContent = 'OPEN-BOX SETUP';
@@ -91,27 +92,33 @@
       currentTab = null;
       page.innerHTML = '';
       if (step === 'welcome') {
+        if (!welcomeMachine) {
+          const machines = new Map([
+            ['Gigabot 4', {image: 'gigabot-4', width: 378, height: 448}],
+            ['Gigabot 4 XLT', {image: 'gigabot-4-xlt', width: 403, height: 505}],
+            ['Terabot 4', {image: 'terabot-4', width: 463, height: 648}],
+            ['GigabotX 2', {image: 'gigabotx-2', width: 346, height: 490}],
+            ['GigabotX XLT 2', {image: 'gigabotx-2-xlt', width: 369, height: 552}],
+            ['TerabotX 2', {image: 'terabotx-2', width: 462, height: 652}]
+          ]);
+          const response = await fetch('/cgi-bin/get_machine_type.sh', {cache: 'no-store'});
+          if (!response.ok) throw new Error(`Unable to load the configured machine (${response.status}). Reload to retry.`);
+          const name = (await response.text()).trim();
+          const artwork = machines.get(name);
+          if (!artwork) throw new Error('Unsupported configured machine. Check Machine settings in Configurator and reload.');
+          welcomeMachine = {name, ...artwork};
+        }
+        byId('setup-title').textContent = `Welcome to your ${welcomeMachine.name}`;
         page.innerHTML = `<div class="card openbox-welcome">
           <div class="openbox-welcome-copy">
             <span class="openbox-kicker">MADE FOR BIG IDEAS</span>
             <h2>Think big.<br><span>Print huge.</span></h2>
-            <p>Your Gigabot is configured. Just a few precautions and a network choice, and you are on your way.</p>
+            <p>Your ${welcomeMachine.name} is configured. Just a few precautions and a network choice, and you are on your way.</p>
             <div class="openbox-welcome-route"><span>01 &nbsp; Check</span><span>02 &nbsp; Connect</span><span>03 &nbsp; Create</span></div>
             <p class="hint">No machine configuration needed. Let's get you started.</p>
           </div>
-          <svg class="openbox-printer" viewBox="0 0 320 320" aria-hidden="true" focusable="false">
-            <g fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">
-              <path class="openbox-frame" pathLength="1" d="M65 70 115 38 265 38 265 248 215 282 65 282Z M65 70H215V282 M215 70 265 38 M115 38V70 M65 250H215L265 218"/>
-              <path class="openbox-rail" d="M78 104H203 M90 78V245 M191 78V245"/>
-              <path class="openbox-bed" d="M86 227H195L231 207H121Z"/>
-            </g>
-            <g class="openbox-print" fill="none" stroke="var(--brand)" stroke-width="5" stroke-linecap="round">
-              <path d="M125 212H173 M125 201H173 M125 190H173 M125 179H173 M125 168H173"/>
-            </g>
-            <g class="openbox-nozzle" fill="var(--brand)"><path d="M137 94H161V115L149 127 137 115Z"/></g>
-            <circle class="openbox-ready" cx="265" cy="275" r="20" fill="var(--brand)"/>
-            <path class="openbox-ready" d="m256 275 6 6 12-13" fill="none" stroke="var(--on-action)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <img class="openbox-welcome-image" src="/img/openbox-${welcomeMachine.image}.png" width="${welcomeMachine.width}" height="${welcomeMachine.height}"
+            alt="${welcomeMachine.name} printer">
         </div>`;
       } else if (step === 'precautions') {
         page.innerHTML = `<div class="card">
