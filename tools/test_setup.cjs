@@ -470,6 +470,7 @@ test('welcome uses each configured machine and its local cropped artwork in setu
     assert.equal(artwork.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
     assert.equal(artwork.readUInt32BE(16), width);
     assert.equal(artwork.readUInt32BE(20), height);
+    assert.equal(artwork[25], 6, 'Welcome artwork must include transparency for the dark backdrop');
     for (const preview of [false, true]) {
       const wizard = await mount({openBox: true, preview, machineType: `${name}\n`});
       assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
@@ -564,6 +565,7 @@ test('precautions photo is local, QR is a placeholder, and welcome motion is fin
   assert.match(index, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.openbox-welcome-copy[^}]+animation: none/);
   const welcomeStyles = index.match(/\.openbox-welcome \{[\s\S]*?\.openbox-slide \{/)[0];
   assert.doesNotMatch(welcomeStyles, /animation:[^;}\n]*infinite/);
+  assert.doesNotMatch(welcomeStyles, /brightness\(/);
 });
 
 test('developer preview opens from System and never schedules setup, changes settings, or reboots', async () => {
