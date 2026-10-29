@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -102,6 +103,35 @@ class SystemHealthTests(unittest.TestCase):
         self.assertIn("Content-Type: application/json", headers)
         self.assertIn("Cache-Control: no-store", headers)
         self.assertEqual(len(json.loads(body)["checks"]), 9)
+
+    def test_live_checks_do_not_run_storage_power_or_service_commands(self):
+        with patch.object(health, "disk") as disk, \
+                patch.object(health, "throttling") as throttling, \
+                patch.object(health, "service") as service:
+            data = health.collect_health("live")
+            self.assertEqual([check["label"] for check in data["checks"]],
+                             ["CPU temperature", "CPU load", "Memory", "Uptime"])
+            disk.assert_not_called()
+            throttling.assert_not_called()
+            service.assert_not_called()
+        self.assertRaises(ValueError, health.collect_health, "invalid")
+
+    def test_cgi_live_scope_and_invalid_queries(self):
+        for query, count in [("scope=live", 4), ("scope=all", 9),
+                             ("scope=invalid", None), ("scope=", None),
+                             ("scope=live&scope=all", None)]:
+            with self.subTest(query=query):
+                result = subprocess.run(
+                    [sys.executable, "-B", str(CGI / "system_health.py")],
+                    env={**os.environ, "QUERY_STRING": query},
+                    capture_output=True, text=True, check=True)
+                headers, body = result.stdout.split("\n\n", 1)
+                data = json.loads(body)
+                if count is None:
+                    self.assertIn("Status: 400 Bad Request", headers)
+                    self.assertIn("error", data)
+                else:
+                    self.assertEqual(len(data["checks"]), count)
 
 
 if __name__ == "__main__":

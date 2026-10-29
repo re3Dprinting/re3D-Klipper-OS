@@ -193,17 +193,30 @@
   const summary = document.getElementById('sys-health-summary');
   const list = document.getElementById('sys-health-list');
   const labels = { ok: 'OK', warning: 'Warning', error: 'Critical', unknown: 'Unavailable' };
+  const readings = new Map();
+  const rows = new Map();
+  let controller = null;
+  let pollTimer = null;
+  let lastFullCheck = null;
+  let stopped = false;
 
-  async function loadHealth() {
+  async function loadHealth(forceFull = false) {
+    if (stopped || document.hidden || !list.isConnected || controller) return;
+    const started = Date.now();
+    const full = forceFull || lastFullCheck === null || started - lastFullCheck >= 30000;
+    const requestController = new AbortController();
+    controller = requestController;
     refresh.disabled = true;
     list.setAttribute('aria-busy', 'true');
-    list.replaceChildren();
-    summary.textContent = 'Loading system health...';
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    if (!readings.size) summary.textContent = 'Loading system health...';
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      requestController.abort();
+    }, 15000);
     try {
-      const response = await fetch('/cgi-bin/system_health.sh', {
-        cache: 'no-store', signal: controller.signal
+      const response = await fetch('/cgi-bin/system_health.sh' + (full ? '' : '?scope=live'), {
+        cache: 'no-store', signal: requestController.signal
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
@@ -212,45 +225,85 @@
             typeof check.detail !== 'string' || !Object.hasOwn(labels, check.status))) {
         throw new Error('Invalid system health response');
       }
-      if (!list.isConnected) return;
+      if (stopped || document.hidden || !list.isConnected || requestController.signal.aborted) return;
       for (const check of data.checks) {
-        const row = document.createElement('div');
-        row.className = 'sys-health-row';
-        const heading = document.createElement('div');
-        heading.className = 'sys-health-heading';
-        const label = document.createElement('span');
-        label.textContent = check.label;
-        const status = document.createElement('span');
-        status.className = 'sys-health-status';
-        status.dataset.status = check.status;
-        status.textContent = labels[check.status];
-        heading.append(label, status);
-        const detail = document.createElement('div');
-        detail.className = 'sys-health-detail';
-        detail.textContent = check.detail;
-        row.append(heading, detail);
-        list.appendChild(row);
+        let elements = rows.get(check.label);
+        if (!elements) {
+          const row = document.createElement('div');
+          row.className = 'sys-health-row';
+          const heading = document.createElement('div');
+          heading.className = 'sys-health-heading';
+          const label = document.createElement('span');
+          label.textContent = check.label;
+          const status = document.createElement('span');
+          status.className = 'sys-health-status';
+          heading.append(label, status);
+          const detail = document.createElement('div');
+          detail.className = 'sys-health-detail';
+          row.append(heading, detail);
+          list.appendChild(row);
+          elements = { status, detail };
+          rows.set(check.label, elements);
+        }
+        elements.status.dataset.status = check.status;
+        elements.status.textContent = labels[check.status];
+        elements.detail.textContent = check.detail;
+        readings.set(check.label, check);
       }
-      const attention = data.checks.filter(check => ['warning', 'error'].includes(check.status)).length;
-      const unknown = data.checks.filter(check => check.status === 'unknown').length;
+      if (full) lastFullCheck = started;
+      const checks = Array.from(readings.values());
+      const attention = checks.filter(check => ['warning', 'error'].includes(check.status)).length;
+      const unknown = checks.filter(check => check.status === 'unknown').length;
       const state = attention || unknown
         ? `${attention} need attention; ${unknown} unavailable.`
         : 'All checks OK.';
       summary.textContent = `${state} Last checked: ${new Date().toLocaleTimeString()}`;
     } catch (error) {
-      if (list.isConnected) {
+      if (requestController.signal.aborted && !timedOut) return;
+      if (!stopped && !document.hidden && list.isConnected) {
         summary.textContent = 'Unable to load system health: ' +
-          (error.name === 'AbortError' ? 'Request timed out. Try refreshing.' : error.message);
+          (error.name === 'AbortError' ? 'Request timed out.' : error.message) +
+          (readings.size ? ' Showing last readings (stale).' : '') + ' Retrying automatically.';
       }
     } finally {
       clearTimeout(timeout);
+      controller = null;
       refresh.disabled = false;
       list.setAttribute('aria-busy', 'false');
+      if (!stopped && !document.hidden && requestController.signal.aborted && !timedOut) {
+        loadHealth(true);
+      }
     }
   }
 
-  refresh.addEventListener('click', loadHealth);
-  loadHealth();
+  function pause() {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    if (controller) controller.abort();
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      pause();
+      summary.textContent = 'Live updates paused while this page is hidden.';
+    } else if (!stopped) {
+      loadHealth(true);
+      if (pollTimer === null) pollTimer = setInterval(() => loadHealth(), 5000);
+    }
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!list.isConnected) {
+      stopped = true;
+      pause();
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+  });
+  observer.observe(document.getElementById('page'), { childList: true });
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  refresh.addEventListener('click', () => loadHealth(true));
+  onVisibilityChange();
 })();
 </script>
 
@@ -264,7 +317,7 @@
     <div class="sys-health-list" id="sys-health-list" aria-busy="true"></div>
     <details class="sys-health-help">
       <summary>About these checks</summary>
-      <p>Read-only host diagnostics. Service status does not indicate printer readiness. Warnings: CPU temperature at 75 C (critical at 85 C), 1-minute load at CPU core count, memory/storage at 85% (critical at 95%). Power history is since boot.</p>
+      <p>CPU temperature/load, memory and uptime update every 5 seconds; storage, power flags and services every 30 seconds. Updates pause when you leave this tab or hide the page. Read-only host diagnostics; service status does not indicate printer readiness. Warnings: CPU temperature at 75 C (critical at 85 C), 1-minute load at CPU core count, memory/storage at 85% (critical at 95%). Power history is since boot.</p>
     </details>
   </section>
 

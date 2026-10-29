@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from urllib.parse import parse_qs
 
 
 def read_text(path):
@@ -111,7 +112,9 @@ def service(name):
     return status, f"{active} ({sub})"
 
 
-def collect_health():
+def collect_health(scope="all"):
+    if scope not in ("all", "live"):
+        raise ValueError("scope must be all or live")
     checks = [
         ("CPU temperature", temperature),
         ("CPU load", cpu_load),
@@ -123,6 +126,9 @@ def collect_health():
         ("Klipper service", lambda: service("klipper")),
         ("Moonraker service", lambda: service("moonraker")),
     ]
+    if scope == "live":
+        live_labels = {"CPU temperature", "CPU load", "Memory", "Uptime"}
+        checks = [(label, check) for label, check in checks if label in live_labels]
     results = []
     for label, check in checks:
         try:
@@ -134,5 +140,11 @@ def collect_health():
 
 
 if __name__ == "__main__":
+    scopes = parse_qs(os.environ.get("QUERY_STRING", ""), keep_blank_values=True).get("scope", ["all"])
     headers = "Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n"
-    sys.stdout.buffer.write((headers + json.dumps(collect_health()) + "\n").encode("utf-8"))
+    if len(scopes) != 1 or scopes[0] not in ("all", "live"):
+        headers = "Status: 400 Bad Request\r\n" + headers
+        data = {"error": "scope must be all or live"}
+    else:
+        data = collect_health(scopes[0])
+    sys.stdout.buffer.write((headers + json.dumps(data) + "\n").encode("utf-8"))
