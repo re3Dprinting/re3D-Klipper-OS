@@ -8,6 +8,17 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules',
   'fullpageos', 'filesystem', 'opt', 'mconfig', 'www', 'tabs', 'system.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
+test('compact health panel spans both columns before system actions', () => {
+  assert.match(html, /<div class="content sys-content">\s*<section class="card sys-health"/);
+  assert.match(html, /\.sys-health\{[^}]*grid-column:1 \/ -1;[^}]*padding:12px 16px/);
+  assert.match(html, /\.sys-health-list\{[^}]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  for (const columns of [3, 2]) {
+    assert.ok(html.includes(`grid-template-columns:repeat(${columns},minmax(0,1fr))`));
+  }
+  assert.match(html, /<details class="sys-health-help">\s*<summary>About these checks<\/summary>/);
+  assert.equal((html.match(/id="sys-health-title"/g) || []).length, 1);
+});
+
 function element() {
   return {
     children: [], dataset: {}, attributes: {}, listeners: {}, isConnected: true,
