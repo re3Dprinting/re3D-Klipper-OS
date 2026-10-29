@@ -11,7 +11,7 @@ const source = fs.readFileSync(path.join(filesystem, 'home', 'pi', 'printer_data
   'config', 'src', 'system_config', 'shell_commands', 'update_mainsail_navi.sh'), 'utf8');
 const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
 
-test('navigation follows delayed connections and IP changes without overwriting offline or unchanged files', () => {
+test('navigation preserves the browser host and scheme, including the loopback kiosk', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-navi-'));
   try {
     const theme = path.join(directory, 'printer_data', 'config', '.theme');
@@ -20,54 +20,29 @@ test('navigation follows delayed connections and IP changes without overwriting 
     const marker = path.join(theme, '.navi.last');
     const script = source.replace('USER_HOME="/home/pi"',
       `USER_HOME="${directory.replaceAll('\\', '/')}"`);
-    function run(ethernet = '', wifi = '', other = '') {
-      const mocks = `
-ip() {
-  local address=""
-  case "$*" in
-    *"dev eth0"*) address="$TEST_ETH" ;;
-    *"dev wlan0"*) address="$TEST_WIFI" ;;
-    *) address="$TEST_OTHER" ;;
-  esac
-  if [ -n "$address" ]; then
-    printf '2: test inet %s/24 scope global test\\n' "$address"
-  fi
-}
-chown() { :; }
-`;
-      const result = spawnSync(bash, ['-c', mocks + script], {
-        encoding: 'utf8',
-        env: { ...process.env, TEST_ETH: ethernet, TEST_WIFI: wifi, TEST_OTHER: other }
-      });
+    function run() {
+      const result = spawnSync(bash, ['-c', 'chown() { :; }\n' + script], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
-      return result.stdout;
     }
     run();
-    assert.equal(fs.existsSync(navigation), false, 'offline first run must not create a loopback link');
-    run('', '192.168.1.20');
-    assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, 'http://192.168.1.20:8081/');
-
-    const original = fs.readFileSync(navigation, 'utf8');
+    assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, '/configurator/');
     fs.writeFileSync(marker, 'unchanged marker');
     fs.utimesSync(navigation, 946684800, 946684800);
     const modified = fs.statSync(navigation).mtimeMs;
-    run('', '192.168.1.20');
-    assert.equal(fs.statSync(navigation).mtimeMs, modified, 'unchanged link must not be rewritten');
+    run();
+    assert.equal(fs.statSync(navigation).mtimeMs, modified);
     assert.equal(fs.readFileSync(marker, 'utf8'), 'unchanged marker');
-    assert.match(run(), /leaving navi.json unchanged/);
-    assert.equal(fs.readFileSync(navigation, 'utf8'), original);
-
-    run('10.0.0.8', '192.168.1.20');
-    assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, 'http://10.0.0.8:8081/');
-    run('', '', '172.20.0.5');
-    assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, 'http://172.20.0.5:8081/');
-    run('169.254.1.2', '203.0.113.2');
-    assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, 'http://172.20.0.5:8081/');
-
-    fs.writeFileSync(navigation, '[{"href":"http://localhost:8081"}]');
-    run('', '192.168.1.30');
-    assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, 'http://192.168.1.30:8081/');
+    for (const old of ['http://localhost:8081/', 'http://192.168.1.20:8081/']) {
+      fs.writeFileSync(navigation, JSON.stringify([{ href: old }]));
+      run();
+      assert.equal(JSON.parse(fs.readFileSync(navigation))[0].href, '/configurator/');
+    }
     assert.deepEqual(fs.readdirSync(theme).sort(), ['.navi.last', 'navi.json']);
+    for (const type of ['fff', 'fgf']) {
+      const bundled = JSON.parse(fs.readFileSync(path.join(filesystem, 'home', 'pi',
+        'printer_data', 'config', 'src', type, '.theme', 'navi.json')));
+      assert.equal(bundled[0].href, '/configurator/');
+    }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

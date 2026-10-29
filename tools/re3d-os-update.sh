@@ -179,6 +179,18 @@ else
   log "${LOG_TAG} WARNING: ${SRC_SYSTEMD} not found, skipping service file deploy."
 fi
 
+# Deploy password service assets outside the mirrored public web directory.
+log "${LOG_TAG} Deploying optional HTTPS interface authentication..."
+install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth_server.py" /opt/mconfig/auth_server.py
+install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth.html" /opt/mconfig/auth.html
+install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/install_auth.sh" /opt/mconfig/install_auth.sh
+install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/prepare_auth_tls.sh" /opt/mconfig/prepare_auth_tls.sh
+install -d -m 0755 /opt/mconfig/nginx
+for auth_config in "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/nginx/"*.conf; do
+  install -m 0644 "${auth_config}" /opt/mconfig/nginx/
+done
+bash /opt/mconfig/install_auth.sh live
+
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
 
@@ -588,7 +600,8 @@ DROPIN_EOF
 systemctl disable NetworkManager-wait-online.service || true
 systemctl daemon-reload || true
 
-for svc in klipper moonraker mainsail nginx crowsnest; do
+# nginx and BusyBox must switch listeners together at reboot, without killing this CGI updater.
+for svc in klipper moonraker mainsail crowsnest; do
   log "${LOG_TAG} Restarting ${svc}.service (best-effort)..."
   systemctl restart "${svc}.service" || true
 done

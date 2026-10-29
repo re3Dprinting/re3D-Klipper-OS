@@ -1,0 +1,23 @@
+[Unit]
+Description=re3D interface password service
+After=network.target
+Before=nginx.service
+
+[Service]
+User=re3d-auth
+Group=re3d-auth
+ExecStart=/usr/bin/python3 /opt/mconfig/auth_server.py
+Restart=on-failure
+StateDirectory=re3d-auth
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

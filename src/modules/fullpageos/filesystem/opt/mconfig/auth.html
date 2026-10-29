@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>re:3D Interface Password</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14181c;color:#eee}
+    main{max-width:440px;margin:6vh auto;padding:24px}
+    label{display:block;margin:18px 0 6px}
+    input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #667;border-radius:6px}
+    button{margin-top:16px;cursor:pointer;background:#245c63;color:white}
+    p{line-height:1.5}a{color:#7ed4df}#status{white-space:pre-wrap} [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+<main>
+  <h1 id="heading">Interface password</h1>
+  <p id="description">Loading password settings...</p>
+  <p id="warning" hidden>The built-in touchscreen stays unlocked. Direct Moonraker API access
+    (port 7125) and direct camera streams are not protected by this password. This is not a
+    firewall or full printer access control. Do not expose the printer to the Internet.</p>
+  <form id="form">
+    <div id="current-row">
+      <label for="current">Password</label>
+      <input id="current" type="password" autocomplete="current-password" maxlength="1024" required>
+    </div>
+    <div id="new-fields" hidden>
+      <label for="new">New password (at least 12 characters)</label>
+      <input id="new" type="password" autocomplete="new-password" minlength="12" maxlength="1024">
+      <label for="confirm">Confirm new password</label>
+      <input id="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024">
+    </div>
+    <button id="submit" disabled>Log in</button>
+    <button id="disable" type="button" hidden>Disable password protection</button>
+  </form>
+  <button id="logout" type="button" hidden>Log out of this browser</button>
+  <p id="status" role="status" aria-live="polite"></p>
+  <a href="/">Return to interface</a>
+</main>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  const settings = location.pathname === '/auth/settings';
+  let enabled = false;
+  let busy = false;
+  async function request(path, data) {
+    const response = await fetch('/auth/' + path, {
+      method: data ? 'POST' : 'GET',
+      headers: data ? {'Content-Type':'application/json'} : {},
+      body: data ? JSON.stringify(data) : undefined,
+      cache:'no-store'
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Password request failed');
+    return result;
+  }
+  function render() {
+    el('heading').textContent = settings ? 'Interface password' : 'Printer login';
+    el('description').textContent = settings
+      ? (enabled ? 'Protection is enabled. The current password is required to change or disable it.'
+        : 'Protection is optional and currently disabled. Set a password to enable it.')
+      : 'Enter the printer interface password.';
+    el('warning').hidden = !settings;
+    el('new-fields').hidden = !settings;
+    el('new').required = settings;
+    el('confirm').required = settings;
+    el('current-row').hidden = settings && !enabled;
+    el('current').required = !settings || enabled;
+    el('disable').hidden = !settings || !enabled;
+    el('logout').hidden = !enabled;
+    el('submit').textContent = settings ? (enabled ? 'Change password' : 'Enable protection') : 'Log in';
+    el('submit').disabled = false;
+  }
+  async function act(action) {
+    if (busy) return;
+    busy = true;
+    el('status').textContent = '';
+    try { await action(); }
+    catch (error) { el('status').textContent = error.message; }
+    finally { busy = false; }
+  }
+  el('form').addEventListener('submit', event => {
+    event.preventDefault();
+    act(async () => {
+      if (settings) {
+        if (el('new').value !== el('confirm').value) throw new Error('New passwords do not match');
+        await request('password', {current:el('current').value, new:el('new').value});
+        enabled = true;
+        el('form').reset();
+        render();
+        el('status').textContent = 'Password saved. Other browser sessions have been signed out.';
+      } else {
+        await request('login', {password:el('current').value});
+        location.replace('/');
+      }
+    });
+  });
+  el('disable').addEventListener('click', () => act(async () => {
+    if (!el('current').reportValidity()) return;
+    if (!confirm('Disable password protection for both web interfaces?')) return;
+    await request('password', {current:el('current').value, disable:true});
+    enabled = false;
+    el('form').reset();
+    render();
+    el('status').textContent = 'Password protection disabled.';
+  }));
+  el('logout').addEventListener('click', () => act(async () => {
+    await request('logout', {});
+    location.replace('/auth/login');
+  }));
+  act(async () => {
+    enabled = (await request('status')).enabled;
+    if (!settings && !enabled) { location.replace('/'); return; }
+    render();
+  });
+})();
+</script>
+</body>
+</html>

@@ -565,25 +565,12 @@ window.addEventListener('resize', () => {
   if (currentTab) setActiveTab(currentTab);
 });
 
-/* ── LAN IP-aware Dashboard link (global) ───────────────────────────────── */
-(async () => {
+// Preserve the local kiosk host and HTTPS when returning to Mainsail.
+(() => {
   const dash=document.getElementById('dash-link');
-  const currentHost=(location.host||'').split(':')[0];
-  const reuse=h=>h && h!=='localhost' && h!=='127.0.0.1';
-  let targetHost=currentHost;
-
-  if (!reuse(currentHost)) {
-    try {
-      const r=await fetch('/cgi-bin/host_ip.sh',{cache:'no-store'});
-      if (r.ok) {
-        const t=(await r.text()).trim();
-        if (/^\d+\.\d+\.\d+\.\d+$/.test(t)) targetHost=t;
-      }
-    } catch(e){}
-  }
   if (dash) {
-    dash.href=`http://${targetHost||'localhost'}/`;
-    dash.title=`Open Dashboard on ${targetHost||'localhost'}`;
+    dash.href=`${location.protocol}//${location.hostname}/`;
+    dash.title=`Open Dashboard on ${location.hostname}`;
   }
 })();
 </script>
