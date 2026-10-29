@@ -164,12 +164,17 @@ class AuthHandler(BaseHTTPRequestHandler):
     def state(self):
         return self.server.state
 
-    def reply(self, status, data, content_type="application/json", cookie=None, cookie_name=COOKIE):
+    def reply(self, status, data, content_type="application/json", cookie=None, cookie_name=COOKIE,
+              location=None, https_required=False):
         body = data if isinstance(data, bytes) else json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if location is not None:
+            self.send_header("Location", location)
+        if https_required:
+            self.send_header("X-Re3D-HTTPS-Required", "1")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy",
@@ -197,16 +202,40 @@ class AuthHandler(BaseHTTPRequestHandler):
     def local(self):
         return self.headers.get("X-Real-IP", "") in ("127.0.0.1", "::1")
 
+    @property
+    def remote_http(self):
+        return not self.local and self.headers.get("X-Forwarded-Proto") != "https"
+
+    def require_https(self):
+        origin = self.headers.get("X-Re3D-HTTPS-Origin", "")
+        try:
+            parsed = urlsplit(origin)
+            valid = (parsed.scheme == "https" and bool(parsed.netloc)
+                     and not parsed.path and not parsed.query and not parsed.fragment)
+        except ValueError:
+            valid = False
+        if not valid:
+            logging.error("Missing or invalid nginx HTTPS origin")
+            self.reply(500, {"error": "HTTPS redirect is not configured correctly"})
+            return
+        self.reply(307, b"", location=origin + self.path)
+
     def do_GET(self):
         path = urlsplit(self.path).path
         with self.state.lock:
             if path == "/auth/check":
+                if self.remote_http and self.state.mode != "off":
+                    self.reply(401, b"", https_required=True)
+                    return
                 self.state.prune()
                 if self.local and self.state.mode == "lockdown":
                     allowed = self.token(PIN_COOKIE) in self.state.pin_sessions
                 else:
                     allowed = self.state.record is None or self.local or self.token() in self.state.sessions
                 self.reply(204 if allowed else 401, b"")
+            elif self.remote_http and (self.state.mode != "off" or path in ("/auth/login", "/auth/settings")):
+                # Credential forms require TLS even before a password has been configured.
+                self.require_https()
             elif path == "/auth/status":
                 self.reply(200, {"enabled": self.state.record is not None, "mode": self.state.mode,
                                 "local": self.local, "has_pin": self.state.has_pin,
@@ -232,6 +261,9 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.reply(404, {"error": "Not found"})
 
     def do_POST(self):
+        if self.remote_http:
+            self.reply(426, {"error": "Use HTTPS before submitting passwords or changing security settings"})
+            return
         origin = f'{self.headers.get("X-Forwarded-Proto")}://{self.headers.get("Host")}'
         if self.headers.get("Origin") != origin:
             self.reply(403, {"error": "Same-origin requests are required"})

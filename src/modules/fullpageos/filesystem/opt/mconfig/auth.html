@@ -88,7 +88,7 @@
       ? 'Lockdown blocks direct API/camera ports and other incoming services, disables remote desktop and KlipperScreen, and requires key-only SSH recovery for pi. Configure and TEST your SSH key first. The touchscreen uses a separate PIN and locks after 5 minutes idle. Host policy changes take effect after reboot; finish any print before rebooting.'
       : mode === 'basic'
         ? 'Basic protects the web interfaces only. The touchscreen stays unlocked and direct API/camera access can bypass this password.'
-        : 'Off disables interface authentication. Do not expose the printer to the Internet.';
+        : 'Off disables interface authentication and leaves ordinary HTTP available. Security settings still use HTTPS to protect credentials. Do not expose the printer to the Internet.';
     el('mode-row').hidden = !settings;
     el('pending').hidden = !settings || !state.reboot_required;
     el('pending').textContent = `Host policy pending reboot: applied ${state.applied_mode}; requested ${state.mode}. Network and kiosk restrictions switch together at reboot.`;

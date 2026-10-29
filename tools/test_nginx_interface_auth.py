@@ -164,12 +164,39 @@ class NginxAuthTests(unittest.TestCase):
         self.assertEqual(response[0], 200, response)
         return response[2]["Set-Cookie"].split(";")[0]
 
-    def test_https_redirects_and_kiosk_http(self):
+    def test_off_does_not_force_either_interface_to_https(self):
+        for port in (self.http, self.config_http):
+            status, _, headers = self.request(port)
+            self.assertEqual(status, 200)
+            self.assertNotIn("Location", headers)
+            self.assertEqual(self.request(port, "/auth/kiosk-client.js")[0], 200)
+
+    def test_protected_modes_require_https_but_keep_kiosk_http(self):
+        self.enable()
         for port, target in ((self.http, self.https), (self.config_http, self.config_https)):
             response = self.request(port)
-            self.assertEqual(response[0], 308)
+            self.assertEqual(response[0], 307)
             self.assertEqual(response[2]["Location"], f"https://localhost:{target}/")
+            self.assertEqual(response[2]["Cache-Control"], "no-store")
             self.assertEqual(self.request(port, local=True)[0], 200)
+
+    def test_turning_auth_off_stops_https_redirects_without_reloading_nginx(self):
+        self.enable()
+        self.assertEqual(self.request(self.http)[0], 307)
+        self.assertEqual(self.request(self.https, "/auth/password",
+                                      {"current": "long test password", "disable": True})[0], 200)
+        self.assertEqual(self.request(self.http)[0], 200)
+        self.assertEqual(self.request(self.config_http)[0], 200)
+
+    def test_security_forms_use_https_even_when_off_and_do_not_trust_forwarded_client_headers(self):
+        for port, target in ((self.http, self.https), (self.config_http, self.config_https)):
+            for path in ("/auth/settings", "/auth/login", "/auth/settings?return=/"):
+                status, _, headers = self.request(port, path, **{
+                    "X-Forwarded-Proto": "https", "X-Re3D-HTTPS-Origin": "https://attacker.example"})
+                self.assertEqual(status, 307)
+                self.assertEqual(headers["Location"], f"https://localhost:{target}{path}")
+            self.assertEqual(self.request(port, "/auth/password", {"new": "password"})[0], 426)
+        self.assertIsNone(self.auth.state.record)
 
     def test_both_interfaces_and_proxy_paths_require_password(self):
         cookie = self.enable()
@@ -215,6 +242,7 @@ class NginxAuthTests(unittest.TestCase):
         with patch.object(auth.AuthHandler, "do_GET",
                           lambda handler: handler.reply(500, {"error": "Service failure"})):
             self.assertEqual(self.request(self.https)[0], 500)
+            self.assertEqual(self.request(self.http)[0], 500)
 
     def test_lockdown_removes_local_bypass_and_pin_cannot_authenticate_remotely(self):
         with patch.object(auth, "lockdown_readiness", return_value={"ready": True}):
@@ -222,6 +250,12 @@ class NginxAuthTests(unittest.TestCase):
                                    {"new": "admin test password", "mode": "lockdown", "pin": "1234"})
         self.assertEqual(enabled[0], 200)
         admin = enabled[2]["Set-Cookie"].split(";")[0]
+        for port, target in ((self.http, self.https), (self.config_http, self.config_https)):
+            for path in ("/", "/auth/status"):
+                status, _, headers = self.request(port, path, cookie=admin, **{
+                    "X-Forwarded-Proto": "https", "X-Real-IP": "127.0.0.1"})
+                self.assertEqual(status, 307)
+                self.assertEqual(headers["Location"], f"https://localhost:{target}{path}")
         self.assertEqual(self.request(self.http, local=True)[0], 302)
         self.assertEqual(self.request(self.http, cookie=admin, local=True)[0], 302)
         self.assertEqual(self.request(self.https, cookie=admin)[0], 200)

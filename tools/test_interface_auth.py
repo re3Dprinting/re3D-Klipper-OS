@@ -173,6 +173,25 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_http_is_available_when_off_but_remote_credentials_require_tls(self):
+        self.assertEqual(self.request("check", **{"X-Forwarded-Proto": "http"})[0], 204)
+        status, _, _ = self.request("password", {"new": PASSWORD},
+                                    **{"X-Forwarded-Proto": "http", "Origin": "http://printer.local"})
+        self.assertEqual(status, 426)
+        self.assertIsNone(self.state.record)
+        self.enable()
+        self.assertEqual(self.request("check", **{"X-Forwarded-Proto": "http"})[0], 401)
+        self.assertEqual(self.request("check", address="127.0.0.1",
+                                      **{"X-Forwarded-Proto": "http"})[0], 204)
+
+    def test_missing_or_malformed_https_proxy_configuration_fails_explicitly(self):
+        for origin in ("", "https://[invalid"):
+            with self.subTest(origin=origin), self.assertLogs(level="ERROR"):
+                status, body, _ = self.request("settings", **{
+                    "X-Forwarded-Proto": "http", "X-Re3D-HTTPS-Origin": origin})
+            self.assertEqual(status, 500)
+            self.assertIn("HTTPS redirect", body["error"])
+
     def lockdown(self):
         with patch.object(auth, "lockdown_readiness", return_value={"ready": True}):
             status, _, _ = self.request("password", {"mode": "lockdown", "new": PASSWORD, "pin": "1234"})
