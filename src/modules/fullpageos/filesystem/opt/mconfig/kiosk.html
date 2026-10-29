@@ -4,25 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>re:3D Touchscreen Lock</title>
-  <style>
-    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14181c;color:#eee}
-    body{margin:0}main{max-width:340px;margin:4vh auto;padding:20px;text-align:center}
-    input,button{box-sizing:border-box;font:inherit;padding:12px;border:1px solid #667;border-radius:6px}
-    input{width:100%;margin:12px 0;text-align:center;font-size:24px}
-    button{cursor:pointer;background:#245c63;color:white;min-height:48px}
-    #keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-    #unlock{width:100%;margin-top:12px}#status{min-height:2em}
-    #screen{position:fixed;inset:0;display:grid;grid-template-rows:48px 1fr}
-    #toolbar{display:flex;justify-content:space-between;align-items:center;padding:0 12px;background:#14181c}
-    #toolbar button{min-height:36px;padding:4px 16px}
-    iframe{width:100%;height:100%;border:0;background:#14181c}
-    [hidden]{display:none!important}
-  </style>
+  <link rel="stylesheet" href="/auth/security.css">
 </head>
 <body>
-<main id="lock">
-  <h1>Touchscreen locked</h1>
-  <p>Enter your PIN to unlock. The printer continues operating while locked.</p>
+<main id="lock" class="security-card pin-card" aria-labelledby="pin-heading">
+  <header class="security-brand">
+    <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
+    <span class="brand-caption">Touchscreen access</span>
+  </header>
+  <div class="pin-intro">
+    <h1 id="pin-heading">Touchscreen locked</h1>
+    <p>Enter your PIN to unlock. The printer continues operating while locked.</p>
+  </div>
   <form id="form">
     <label for="pin">Touchscreen PIN</label>
     <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
@@ -31,14 +24,20 @@
       <button type="button">1</button><button type="button">2</button><button type="button">3</button>
       <button type="button">4</button><button type="button">5</button><button type="button">6</button>
       <button type="button">7</button><button type="button">8</button><button type="button">9</button>
-      <button type="button">Clear</button><button type="button">0</button><button type="button">Back</button>
+      <button class="key-action" type="button">Clear</button><button type="button">0</button><button class="key-action" type="button">Back</button>
     </div>
-    <button id="unlock">Unlock</button>
+    <button id="unlock" class="btn-primary" type="submit">Unlock</button>
   </form>
-  <p id="status" role="status" aria-live="polite">Checking security mode...</p>
+  <p id="status" class="status-message" role="status" aria-live="polite">Checking security mode...</p>
 </main>
 <section id="screen" hidden>
-  <div id="toolbar"><span>re:3D &mdash; locks after 5 minutes idle</span><button id="lock-now">Lock</button></div>
+  <div id="toolbar">
+    <div class="toolbar-copy">
+      <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
+      <span>Locks after 5 minutes idle</span>
+    </div>
+    <button id="lock-now" class="btn-ghost" type="button">Lock</button>
+  </div>
   <iframe id="printer" title="Printer control"></iframe>
 </section>
 <script>

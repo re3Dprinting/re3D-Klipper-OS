@@ -3,22 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>re:3D Interface Password</title>
-  <style>
-    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14181c;color:#eee}
-    main{max-width:440px;margin:6vh auto;padding:24px}
-    label{display:block;margin:18px 0 6px}
-    input,button,select{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #667;border-radius:6px}
-    button{margin-top:16px;cursor:pointer;background:#245c63;color:white}
-    p{line-height:1.5}a{color:#7ed4df}#status{white-space:pre-wrap} [hidden]{display:none!important}
-  </style>
+  <title>re:3D Printer Security</title>
+  <link rel="stylesheet" href="/auth/security.css">
 </head>
 <body>
-<main>
+<main class="security-card" aria-labelledby="heading">
+  <header class="security-brand">
+    <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
+    <span class="brand-caption">Printer access</span>
+  </header>
   <h1 id="heading">Interface password</h1>
   <p id="description">Loading password settings...</p>
-  <p id="warning" hidden></p>
-  <p id="pending" role="status" hidden></p>
+  <p id="warning" class="notice" hidden></p>
+  <p id="pending" class="notice" role="status" hidden></p>
   <form id="form">
     <div id="mode-row" hidden>
       <label for="mode">Security mode</label>
@@ -32,26 +29,34 @@
       <label for="current">Password</label>
       <input id="current" type="password" autocomplete="current-password" maxlength="1024" required>
     </div>
-    <div id="new-fields" hidden>
-      <label for="new">New password (at least 4 characters)</label>
-      <input id="new" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
-      <label for="confirm">Confirm new password</label>
-      <input id="confirm" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
+    <div id="new-fields" class="credential-fields" hidden>
+      <div>
+        <label for="new">New password (at least 4 characters)</label>
+        <input id="new" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
+      </div>
+      <div>
+        <label for="confirm">Confirm new password</label>
+        <input id="confirm" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
+      </div>
     </div>
-    <div id="pin-fields" hidden>
-      <label for="pin">Touchscreen PIN (at least 4 digits; leave blank to keep existing PIN)</label>
-      <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
-             maxlength="1024" autocomplete="new-password">
-      <label for="pin-confirm">Confirm new touchscreen PIN</label>
-      <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
-             maxlength="1024" autocomplete="new-password">
+    <div id="pin-fields" class="credential-fields" hidden>
+      <div>
+        <label for="pin">Touchscreen PIN (at least 4 digits; leave blank to keep existing PIN)</label>
+        <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+               maxlength="1024" autocomplete="new-password">
+      </div>
+      <div>
+        <label for="pin-confirm">Confirm new touchscreen PIN</label>
+        <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+               maxlength="1024" autocomplete="new-password">
+      </div>
     </div>
-    <button id="submit" disabled>Log in</button>
-    <button id="disable" type="button" hidden>Disable password protection</button>
+    <button id="submit" class="btn-primary" type="submit" disabled>Log in</button>
+    <button id="disable" class="btn-ghost" type="button" hidden>Disable password protection</button>
   </form>
-  <button id="logout" type="button" hidden>Log out of this browser</button>
-  <p id="status" role="status" aria-live="polite"></p>
-  <a href="/">Return to interface</a>
+  <button id="logout" class="btn-ghost" type="button" hidden>Log out of this browser</button>
+  <p id="status" class="status-message" role="status" aria-live="polite"></p>
+  <footer class="security-footer"><a href="/">Return to interface</a></footer>
 </main>
 <script>
 (() => {

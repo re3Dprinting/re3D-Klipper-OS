@@ -222,6 +222,10 @@ class AuthHandler(BaseHTTPRequestHandler):
                 body = ((ROOT / "kiosk-client.js").read_bytes()
                         if self.local and self.state.mode == "lockdown" else b"")
                 self.reply(200, body, "application/javascript")
+            elif path == "/auth/security.css":
+                self.reply(200, (ROOT / "security.css").read_bytes(), "text/css; charset=utf-8")
+            elif path == "/auth/logo.png":
+                self.reply(200, (ROOT / "www/img/re3d-logo.png").read_bytes(), "image/png")
             elif path in ("/auth/login", "/auth/settings"):
                 self.reply(200, (ROOT / "auth.html").read_bytes(), "text/html; charset=utf-8")
             else:

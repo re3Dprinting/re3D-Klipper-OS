@@ -163,6 +163,16 @@ class AuthTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertNotIn(PASSWORD.encode(), body)
 
+    def test_theme_and_logo_load_without_a_session_when_interfaces_are_locked(self):
+        self.enable()
+        status, css, _ = self.request("security.css")
+        self.assertEqual(status, 200)
+        self.assertIn(b"--brand: #E7C547", css)
+        self.assertNotIn(PASSWORD.encode(), css)
+        status, logo, _ = self.request("logo.png")
+        self.assertEqual(status, 200)
+        self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
+
     def lockdown(self):
         with patch.object(auth, "lockdown_readiness", return_value={"ready": True}):
             status, _, _ = self.request("password", {"mode": "lockdown", "new": PASSWORD, "pin": "1234"})

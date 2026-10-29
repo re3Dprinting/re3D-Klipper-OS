@@ -183,7 +183,7 @@ fi
 log "${LOG_TAG} Deploying optional HTTPS interface authentication..."
 install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth_server.py" /opt/mconfig/auth_server.py
 install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth.html" /opt/mconfig/auth.html
-for security_asset in security_policy.py kiosk.html kiosk-client.js; do
+for security_asset in security_policy.py kiosk.html kiosk-client.js security.css; do
   install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/${security_asset}" "/opt/mconfig/${security_asset}"
 done
 install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/install_auth.sh" /opt/mconfig/install_auth.sh
