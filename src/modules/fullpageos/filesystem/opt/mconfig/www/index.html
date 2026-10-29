@@ -393,6 +393,7 @@
       <button class="tab" data-page="calibration"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3m0 14v3 M2 12h3m14 0h3"/></svg>Calibration</button>
       <button class="tab" data-page="troubleshoot"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6 M10 7v4m0 2v.1"/></svg>Troubleshooting</button>
       <button class="tab" data-page="recovery"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 3 8 M3 5v6h6 M12 7v5l3 2"/></svg>Print Recovery</button>
+      <button class="tab" data-page="maintenance"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6a5 5 0 0 0-6 6L3 17a3 3 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3Z"/></svg>Maintenance</button>
       <button class="tab" data-page="system"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.1 M7 17h.1 M11 7h6 M11 17h6"/></svg>System</button>
     </nav>
     <div class="sidebar-footer">
@@ -423,7 +424,7 @@
    - Cleans previous tab’s styles/scripts via data attributes
 ─────────────────────────────────────────────────────────────────────────── */
 
-const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','recovery','system'];
+const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','recovery','maintenance','system'];
 const titleEl = document.getElementById('page-title');
 const descriptionEl = document.getElementById('page-description');
 const hostEl  = document.getElementById('page');
@@ -452,6 +453,7 @@ function setActiveTab(name){
     calibration: 'Build material profiles and dial in print quality.',
     troubleshoot: 'Inspect printer logs and diagnose issues.',
     recovery: 'Resume interrupted prints and manage recovery settings.',
+    maintenance: 'Plan routine maintenance around your printer\'s printing hours.',
     system: 'Manage software, device settings, and your print history.'
   };
   descriptionEl.textContent = descriptions[name];
@@ -462,6 +464,7 @@ function prettyName(pg){
     machine:'Machine', network:'Network', tuning:'Tuning',
     shaper:'Input Shaper', calibration:'Calibration',
     troubleshoot:'Troubleshooting',
+    maintenance:'Maintenance',
     recovery:{ text:'Print Recovery', html:'Print Recovery <span class="beta-tag">BETA</span>' },
     system:'System'
   };

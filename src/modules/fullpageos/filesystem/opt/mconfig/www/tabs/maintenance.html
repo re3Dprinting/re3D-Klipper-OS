@@ -1,0 +1,121 @@
+<style>
+  .maint-preview{border-left:3px solid var(--brand);background:var(--surface-0)}
+  .maint-preview h2,.maint-schedule h2{margin:0 0 8px;font-size:16px;font-weight:600}
+  .maint-preview p,.maint-schedule p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+  .maint-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .maint-metric{display:grid;gap:6px;margin:0}
+  .maint-metric dt{color:var(--muted);font-size:12px}
+  .maint-metric dd{margin:0;font-size:28px;font-weight:600;letter-spacing:-.5px}
+  .maint-metric small{color:var(--dim);font-size:11px}
+  .maint-schedule-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
+  .maint-tag{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;padding:4px 10px;border:1px solid var(--border-2);border-radius:999px;font-size:11px;font-weight:600;color:var(--muted);background:var(--surface-0)}
+  .maint-tag[data-status="overdue"]{color:var(--error);border-color:var(--error-border);background:var(--error-bg)}
+  .maint-tag[data-status="due"]{color:var(--warn);border-color:var(--warn-border);background:var(--warn-bg)}
+  .maint-tag[data-status="soon"]{color:var(--brand)}
+  .maint-tag[data-status="scheduled"]{color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
+  .maint-tasks{list-style:none;padding:0;margin:0}
+  .maint-task{padding:20px 0;border-top:1px solid var(--border)}
+  .maint-task:last-child{padding-bottom:0}
+  .maint-task-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+  .maint-task h3{margin:0;font-size:14px;font-weight:600}
+  .maint-task dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0 0}
+  .maint-task dt{font-size:11px;color:var(--dim)}
+  .maint-task dd{margin:4px 0 0;font-size:13px;font-weight:500}
+  .maint-footer{margin:0;color:var(--muted);font-size:12px}
+  @media(max-width:650px){
+    .maint-overview{grid-template-columns:1fr;gap:12px}
+    .maint-metric dd{font-size:24px}
+    .maint-task dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .maint-task-heading,.maint-schedule-header{align-items:flex-start;flex-wrap:wrap}
+  }
+</style>
+
+<div class="content single">
+  <section class="card maint-preview" aria-labelledby="maint-preview-title">
+    <h2 id="maint-preview-title">Maintenance template</h2>
+    <p>Preview only. All tasks, intervals, printing hours, and completion readings below are examples, not live printer data or approved maintenance guidance. Confirm the schedule for your machine before use. Live hour tracking and saving completed tasks are not available yet.</p>
+  </section>
+
+  <div class="maint-overview" aria-label="Example maintenance overview">
+    <dl class="card maint-metric">
+      <dt>Example printing time</dt>
+      <dd>1,250 h</dd>
+      <small>Printing hours, not time powered on</small>
+    </dl>
+    <dl class="card maint-metric">
+      <dt>Example tasks needing attention</dt>
+      <dd>2 tasks</dd>
+      <small>1 overdue and 1 due now</small>
+    </dl>
+    <dl class="card maint-metric">
+      <dt>Next upcoming example task</dt>
+      <dd>In 25 h</dd>
+      <small>Inspect motion components</small>
+    </dl>
+  </div>
+
+  <section class="card maint-schedule" aria-labelledby="maint-schedule-title">
+    <div class="maint-schedule-header">
+      <div>
+        <h2 id="maint-schedule-title">Maintenance tasks</h2>
+        <p>Example recurring schedule based on accumulated printing time since each task was last completed.</p>
+      </div>
+      <span class="maint-tag">Sample schedule</span>
+    </div>
+    <ul class="maint-tasks">
+      <li class="maint-task">
+        <div class="maint-task-heading">
+          <h3>Inspect belts and pulleys</h3>
+          <span class="maint-tag" data-status="overdue">Overdue by 25 h</span>
+        </div>
+        <p>Example task: check belt condition and pulley alignment.</p>
+        <dl>
+          <div><dt>Repeat every</dt><dd>250 printing h</dd></div>
+          <div><dt>Last completed at</dt><dd>975 h</dd></div>
+          <div><dt>Next due at</dt><dd>1,225 h</dd></div>
+          <div><dt>Since completion</dt><dd>275 printing h</dd></div>
+        </dl>
+      </li>
+      <li class="maint-task">
+        <div class="maint-task-heading">
+          <h3>Inspect and clean build surface</h3>
+          <span class="maint-tag" data-status="due">Due now</span>
+        </div>
+        <p>Example task: inspect the build surface for residue and wear.</p>
+        <dl>
+          <div><dt>Repeat every</dt><dd>50 printing h</dd></div>
+          <div><dt>Last completed at</dt><dd>1,200 h</dd></div>
+          <div><dt>Next due at</dt><dd>1,250 h</dd></div>
+          <div><dt>Since completion</dt><dd>50 printing h</dd></div>
+        </dl>
+      </li>
+      <li class="maint-task">
+        <div class="maint-task-heading">
+          <h3>Inspect motion components</h3>
+          <span class="maint-tag" data-status="soon">Due in 25 h</span>
+        </div>
+        <p>Example task: inspect rails, lead screws, and bearings for wear or debris.</p>
+        <dl>
+          <div><dt>Repeat every</dt><dd>500 printing h</dd></div>
+          <div><dt>Last completed at</dt><dd>775 h</dd></div>
+          <div><dt>Next due at</dt><dd>1,275 h</dd></div>
+          <div><dt>Since completion</dt><dd>475 printing h</dd></div>
+        </dl>
+      </li>
+      <li class="maint-task">
+        <div class="maint-task-heading">
+          <h3>Inspect extrusion components</h3>
+          <span class="maint-tag" data-status="scheduled">Due in 750 h</span>
+        </div>
+        <p>Example task: inspect the feed path, drive components, and nozzle for wear.</p>
+        <dl>
+          <div><dt>Repeat every</dt><dd>1,000 printing h</dd></div>
+          <div><dt>Last completed at</dt><dd>1,000 h</dd></div>
+          <div><dt>Next due at</dt><dd>2,000 h</dd></div>
+          <div><dt>Since completion</dt><dd>250 printing h</dd></div>
+        </dl>
+      </li>
+    </ul>
+  </section>
+  <p class="maint-footer">Planned workflow: record a task as completed at the current printing-hour reading, then calculate its next due reading by adding the task interval. This preview does not record or change anything on the printer.</p>
+</div>

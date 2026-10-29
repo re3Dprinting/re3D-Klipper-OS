@@ -27,7 +27,7 @@ test('only the workspace is capped while desktop and mobile navigation stay inta
   assert.match(rule('.pages'), /min-width:\s*0\s*;/);
   assert.match(rule('.app'), /grid-template-columns:\s*224px minmax\(0,1fr\)/);
   assert.match(styles, /@media \(max-width: 820px\)\s*\{\s*\.app \{ display: block \}/);
-  assert.equal((html.match(/class="tab" data-page=/g) || []).length, 8);
+  assert.equal((html.match(/class="tab" data-page=/g) || []).length, 9);
 });
 
 test('standalone flashing and update screens match the configurator palette', () => {
