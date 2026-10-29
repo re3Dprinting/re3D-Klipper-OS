@@ -8,6 +8,7 @@ const tabs = path.join(__dirname,
   '..', 'src', 'modules', 'fullpageos', 'filesystem', 'opt', 'mconfig', 'www', 'tabs');
 const html = fs.readFileSync(path.join(tabs, 'network.html'), 'utf8');
 const systemHtml = fs.readFileSync(path.join(tabs, 'system.html'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(tabs, '..', 'index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
 function element() {
@@ -63,6 +64,12 @@ test('Network Info exists only in Network; System actions remain and scripts par
   }
 });
 
+test('Network Info is hidden only in guided setup, without hiding Wi-Fi or hostname controls', () => {
+  assert.match(html, /<div class="card" id="network-info-card" style="margin-top:12px">/);
+  assert.match(indexHtml, /body\.guided-setup #network-info-card\s*\{\s*display:\s*none\s*\}/);
+  assert.doesNotMatch(indexHtml, /body\.guided-setup\s+#(?:wifi-list|wifi-status|host-form)\b/);
+});
+
 test('one request populates hostname, all interfaces, addresses, MACs and Wi-Fi banner', async () => {
   const page = await mount({
     hostname: 'printer-01',
@@ -72,6 +79,7 @@ test('one request populates hostname, all interfaces, addresses, MACs and Wi-Fi 
       { if: 'eth1', mac: '', ipv4: [], state: 'down' }
     ]
   });
+
   assert.equal(page.elements['ni-host'].textContent, 'printer-01');
   const interfaces = page.elements['ni-ifs'].children;
   assert.equal(interfaces.length, 3);

@@ -200,6 +200,7 @@
   const cards = Array.from(document.querySelectorAll('.machine-card'));
   const radios = Array.from(document.querySelectorAll('input[name="type-radio"]'));
   const hidden = document.getElementById('machine-type-hidden');
+  const setupMode = !!window.re3dSetup;
 
   // Which options each machine exposes
   const MACHINE_OPTS = {
@@ -241,6 +242,9 @@
         fetch('/cgi-bin/get_machine_type.sh'),
         fetch('/cgi-bin/get_machine_options.sh'),
       ]);
+      if (setupMode && (!typeResp.ok || !optsResp.ok)) {
+        throw new Error('Current machine settings request failed');
+      }
       if (typeResp.ok) {
         const current = (await typeResp.text()).trim();
         const match = radios.find(r => r.value === current);
@@ -257,7 +261,10 @@
         if (chkCrammer) chkCrammer.checked = !!opts.crammer;
         if (chkHeater)  chkHeater.checked  = !!opts.heater_bed;
       }
-    } catch (_) { /* fall through to defaults */ }
+    } catch (error) {
+      if (setupMode) document.getElementById('out-machine').textContent =
+        `Unable to load current machine settings: ${error}. Verify all options before saving.`;
+    }
     // If nothing was selected (fetch failed or unknown), default to first
     if (!radios.some(r => r.checked) && radios.length) radios[0].checked = true;
     applySelectedClasses();
@@ -331,6 +338,7 @@
         params.set('slice_microswiss_hotends', MACHINE_OPTS[hidden.value]?.includes('hotends') && document.getElementById('chk-hotends')?.checked ? 'true' : 'false');
         params.set('crammer',           document.getElementById('chk-crammer')?.checked ? 'true' : 'false');
         params.set('heater_bed',        document.getElementById('chk-heater')?.checked  ? 'true' : 'false');
+        if (setupMode) form.querySelectorAll('input, button').forEach(el => { el.disabled = true; });
         const resp=await fetch('/cgi-bin/set_machine_type.sh',{
           method:'POST',
           headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -338,8 +346,15 @@
         });
         const text=await resp.text();
         out.textContent=text.trim()||'Updated.';
-        if (resp.ok) openRebootModal();
-      }catch(err){ out.textContent=`Error: ${err}`; }
+        if (setupMode) {
+          window.dispatchEvent(new CustomEvent('re3d-machine-result', {detail: {ok: resp.ok}}));
+        } else if (resp.ok) openRebootModal();
+      }catch(err){
+        out.textContent=`Error: ${err}`;
+        if (setupMode) window.dispatchEvent(new CustomEvent('re3d-machine-result', {detail: {ok: false}}));
+      }finally{
+        if (setupMode) form.querySelectorAll('input, button').forEach(el => { el.disabled = false; });
+      }
     });
   }
 })();
