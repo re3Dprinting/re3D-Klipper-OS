@@ -200,13 +200,13 @@
   let lastFullCheck = null;
   let stopped = false;
 
-  async function loadHealth(forceFull = false) {
+  async function loadHealth(forceFull = false, manual = false) {
     if (stopped || document.hidden || !list.isConnected || controller) return;
     const started = Date.now();
     const full = forceFull || lastFullCheck === null || started - lastFullCheck >= 30000;
     const requestController = new AbortController();
     controller = requestController;
-    refresh.disabled = true;
+    if (manual) refresh.disabled = true;
     list.setAttribute('aria-busy', 'true');
     if (!readings.size) summary.textContent = 'Loading system health...';
     let timedOut = false;
@@ -268,7 +268,7 @@
     } finally {
       clearTimeout(timeout);
       controller = null;
-      refresh.disabled = false;
+      if (manual) refresh.disabled = false;
       list.setAttribute('aria-busy', 'false');
       if (!stopped && !document.hidden && requestController.signal.aborted && !timedOut) {
         loadHealth(true);
@@ -302,7 +302,7 @@
   });
   observer.observe(document.getElementById('page'), { childList: true });
   document.addEventListener('visibilitychange', onVisibilityChange);
-  refresh.addEventListener('click', () => loadHealth(true));
+  refresh.addEventListener('click', () => loadHealth(true, true));
   onVisibilityChange();
 })();
 </script>

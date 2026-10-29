@@ -22,7 +22,9 @@ test('compact health panel spans both columns before system actions', () => {
 function element() {
   return {
     children: [], dataset: {}, attributes: {}, listeners: {}, isConnected: true,
-    textContent: '', disabled: false,
+    textContent: '', disabledChanges: [], _disabled: false,
+    get disabled() { return this._disabled; },
+    set disabled(value) { this._disabled = value; this.disabledChanges.push(value); },
     setAttribute(name, value) { this.attributes[name] = value; },
     replaceChildren() { this.children = []; },
     append(...children) { this.children.push(...children); },
@@ -130,6 +132,7 @@ test('health loads on entry, renders text safely, and refreshes without caching'
   assert.equal(detail.textContent, '<script>bad</script>');
   assert.match(elements['sys-health-summary'].textContent, /1 need attention; 0 unavailable/);
   assert.equal(elements['sys-health-refresh'].disabled, false);
+  assert.deepEqual(elements['sys-health-refresh'].disabledChanges, [true, false]);
   assert.equal(list.attributes['aria-busy'], 'false');
 });
 
@@ -193,6 +196,20 @@ test('live requests run every 5 seconds and full checks every 30 seconds, withou
   assert.equal(page.requests.length, 7);
   assert.equal(page.requests[6].url, '/cgi-bin/system_health.sh');
   assert.equal(list.children[0], firstRow);
+  assert.deepEqual(page.elements['sys-health-refresh'].disabledChanges, []);
+});
+
+test('a pending automatic refresh leaves the button unchanged', async () => {
+  const page = await mount();
+  const refresh = page.elements['sys-health-refresh'];
+  page.response.wait = true;
+  await page.advance(5000);
+  assert.equal(page.requests.length, 2);
+  assert.equal(refresh.disabled, false);
+  assert.deepEqual(refresh.disabledChanges, []);
+  page.response.release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(refresh.disabledChanges, []);
 });
 
 test('partial updates preserve warnings from slower checks and manual refresh forces all checks', async () => {
@@ -217,6 +234,7 @@ test('hidden pages pause polling and resume with a full refresh', async () => {
   assert.equal(page.requests[1].url, '/cgi-bin/system_health.sh');
   await page.advance(5000);
   assert.equal(page.requests.length, 3);
+  assert.deepEqual(page.elements['sys-health-refresh'].disabledChanges, []);
 });
 
 test('leaving the tab cancels an active request and releases polling and visibility hooks', async () => {
@@ -276,4 +294,5 @@ test('requests never overlap, timeouts show stale data and automatic retries rec
   await page.advance(5000);
   assert.match(page.elements['sys-health-summary'].textContent, /All checks OK/);
   assert.equal(page.elements['sys-health-list'].children.length, 1);
+  assert.deepEqual(page.elements['sys-health-refresh'].disabledChanges, []);
 });
