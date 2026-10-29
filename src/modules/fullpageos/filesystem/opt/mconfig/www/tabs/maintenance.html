@@ -15,7 +15,10 @@
   .maint-timer[data-status="due"]{color:var(--warn)}
   .maint-timer[data-status="upcoming"]{color:var(--muted)}
   .maint-meta{margin:6px 0 0;color:var(--dim);font-size:11px;line-height:1.6}
+  .maint-note{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}
   .maint-guide{display:grid;justify-items:center;gap:6px;text-align:center}
+  .maint-guide a{color:var(--brand);font-size:11px}
+  .maint-guide a:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
   .maint-qr{display:grid;place-items:center;width:68px;height:68px;border:1px dashed var(--border-2);border-radius:var(--radius-xs);background:var(--surface-0);color:var(--dim);font-size:11px}
   .maint-guide small{font-size:10px;color:var(--dim)}
   .maint-empty,.maint-feedback{margin:0;color:var(--muted);font-size:12px}
@@ -33,7 +36,8 @@
     <div>
       <h2 id="maint-preview-title">Maintenance preview</h2>
       <p class="maint-hours">Example printing time: 1,250 h</p>
-      <p>Demo only: tasks and intervals are placeholders, not approved maintenance guidance. Timers use printing hours, not wall-clock time. Completion buttons update this preview only; changes reset when you leave or reload the tab. QR guides are placeholders until task instructions are linked.</p>
+      <p>Tasks from the GB | GBX Maintenance Schedule. Demo only: all hour intervals and completion readings are arbitrary, not approved maintenance guidance. Weekly tasks use 50 printing h, monthly tasks 250 h, and quarterly/as-needed tasks 1,000 h in this preview. These are not conversions of the guide's calendar intervals.</p>
+      <p>Timers use printing hours, not wall-clock time. The guide's calendar, annual, material-change, wear, and usage-based requirements still apply; do not wait for a demo timer to perform needed maintenance. Completion buttons update this preview only; changes reset when you leave or reload the tab. QR codes are placeholders; available instruction links come from the guide's resource sheet.</p>
     </div>
     <button type="button" class="btn-ghost" id="maint-reset">Reset preview</button>
   </section>
@@ -63,10 +67,76 @@
 (() => {
   const printingHours = 1250;
   const tasks = [
-    { id: 'belts', title: 'Inspect belts and pulleys', interval: 250, lastCompleted: 975 },
-    { id: 'surface', title: 'Inspect and clean build surface', interval: 50, lastCompleted: 1200 },
-    { id: 'motion', title: 'Inspect motion components', interval: 500, lastCompleted: 775 },
-    { id: 'extrusion', title: 'Inspect extrusion components', interval: 1000, lastCompleted: 1000 }
+    {
+      id: 'clean-rails', title: 'Clean rails / V-groove wheels', cadence: 'Weekly',
+      interval: 50, lastCompleted: 1175,
+      note: 'Guide: use Q-tips and 70% isopropyl alcohol (IPA).'
+    },
+    {
+      id: 'surface', title: 'Clean bed', cadence: 'Weekly',
+      interval: 50, lastCompleted: 1200,
+      note: 'Guide: use dish soap and water or IPA.'
+    },
+    {
+      id: 'panels', title: 'Wipe down panels', cadence: 'Weekly',
+      interval: 50, lastCompleted: 1225,
+      note: 'Guide: use IPA with a clean paper towel or glass-cleaning cloth.'
+    },
+    {
+      id: 'bed-level', title: 'Level the bed', cadence: 'Monthly',
+      interval: 250, lastCompleted: 1100,
+      note: 'Guide: prolonged printing can cause slight shifts in the bed.',
+      guideUrl: 'https://bit.ly/bedleveling2'
+    },
+    {
+      id: 'nozzle-level', title: 'Level the nozzles', cadence: 'Monthly',
+      interval: 250, lastCompleted: 1100,
+      note: 'Guide: nozzle alignment depends on single- or dual-extrusion use; follow the leveling instructions.',
+      guideUrl: 'https://bit.ly/levelingnozzles'
+    },
+    {
+      id: 'z-gap', title: 'Adjust the Z-gap', cadence: 'Monthly',
+      interval: 250, lastCompleted: 1150,
+      note: 'Guide: also adjust the Z-gap when changing print materials.',
+      guideUrl: 'https://bit.ly/zaxishome'
+    },
+    {
+      id: 'belts', title: 'Check belt and V-groove wheel tension', cadence: 'Monthly',
+      interval: 250, lastCompleted: 975,
+      note: 'Guide: belt tension targets vary by bot model and axis; use the values for your machine.',
+      guideUrl: 'https://bit.ly/beltandwheeltension'
+    },
+    {
+      id: 'wear', title: 'Inspect bot for wear and tear', cadence: 'Monthly',
+      interval: 250, lastCompleted: 1125,
+      note: 'Guide: record observations in the maintenance log and notify customer support if needed.'
+    },
+    {
+      id: 'firmware', title: 'Update firmware and back up configuration files', cadence: 'Quarterly / as needed',
+      interval: 1000, lastCompleted: 500,
+      note: 'Guide: firmware maintenance and configuration backups are quarterly or as needed.',
+      guideUrl: 'https://bit.ly/klipperfirmwareinstal'
+    },
+    {
+      id: 'printinz', title: 'Replace worn PrintinZ / check heater pad adhesion', cadence: 'Quarterly / as needed',
+      interval: 1000, lastCompleted: 500,
+      note: 'Guide: perform this when adhesion starts to degrade.'
+    },
+    {
+      id: 'grease-rails', title: 'Re-grease linear rails', cadence: 'Quarterly / as needed',
+      interval: 1000, lastCompleted: 250,
+      note: 'Guide: THK recommends every 10,000 km, estimated as 1,200-1,500 printing hours or annually, whichever comes first. The demo timer is not this service limit.'
+    },
+    {
+      id: 'z-rods', title: 'Re-grease Z-rods', cadence: 'Quarterly / as needed',
+      interval: 1000, lastCompleted: 750,
+      note: 'Guide: every 1-2 months with frequent use, or every 3-6 months with infrequent use.'
+    },
+    {
+      id: 'nozzle-clean', title: 'Clean the nozzles', cadence: 'Quarterly / as needed',
+      interval: 1000, lastCompleted: 1000,
+      note: 'Guide: gently remove filament buildup with a brass wire brush at printing temperature; avoid scratching surrounding components.'
+    }
   ].map(task => ({ ...task, originalCompleted: task.lastCompleted, completed: false }));
   const feedback = document.getElementById('maint-feedback');
   const groups = ['attention', 'upcoming'].map(name => ({
@@ -98,7 +168,8 @@
         : left === 0 ? 'Due now' : `Due in ${hours(left)} printing h`);
       timer.dataset.status = left < 0 ? 'overdue' : left === 0 ? 'due' : 'upcoming';
       copy.append(timer, element('p', 'maint-meta',
-        `Every ${hours(task.interval)} printing h | Last completed at ${hours(task.lastCompleted)} h`));
+        `Demo: every ${hours(task.interval)} printing h | Last completed at ${hours(task.lastCompleted)} h | Guide: ${task.cadence}`),
+        element('p', 'maint-note', task.note));
       const action = element('button', 'btn-ghost', task.completed ? 'Undo completion' : 'Mark completed');
       action.type = 'button';
       action.setAttribute('aria-label', `${action.textContent}: ${task.title}`);
@@ -114,8 +185,18 @@
       const guide = element('div', 'maint-guide');
       const qr = element('div', 'maint-qr', 'QR code');
       qr.setAttribute('role', 'img');
-      qr.setAttribute('aria-label', `QR guide placeholder for ${task.title}. Instructions not linked yet.`);
-      guide.append(qr, element('small', '', 'Guide coming soon'));
+      qr.setAttribute('aria-label', `QR code placeholder for ${task.title}. Not scannable yet.`);
+      guide.append(qr);
+      if (task.guideUrl) {
+        const link = element('a', '', 'Open guide');
+        link.href = task.guideUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.setAttribute('aria-label', `Open guide: ${task.title}`);
+        guide.append(link);
+      } else {
+        guide.append(element('small', '', 'Guide not linked'));
+      }
       row.append(copy, action, guide);
       group.list.append(row);
     });
