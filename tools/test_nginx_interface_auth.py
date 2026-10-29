@@ -27,8 +27,10 @@ spec.loader.exec_module(auth)
 
 class Backend(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = ("backend " + self.path).encode()
+        body = (f"<html><body>backend {self.path}</body></html>" if self.path == "/"
+                else "backend " + self.path).encode()
         self.send_response(200)
+        self.send_header("Content-Type", "text/html" if self.path == "/" else "text/plain")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -70,7 +72,7 @@ class NginxAuthTests(unittest.TestCase):
         (cls.work / "logs").mkdir()
         (cls.work / "temp").mkdir()
         (cls.work / "html").mkdir()
-        (cls.work / "html/index.html").write_text("printer interface")
+        (cls.work / "html/index.html").write_text("<html><body>printer interface</body></html>")
 
         def adapt(text):
             return (text.replace("/etc/nginx/re3d-auth/", cls.work.as_posix() + "/")
@@ -98,7 +100,7 @@ class NginxAuthTests(unittest.TestCase):
                               for name in ("apiserver", "mjpgstreamer1", "mjpgstreamer2",
                                            "mjpgstreamer3", "mjpgstreamer4"))
         config = (f"daemon off;\nmaster_process on;\npid {cls.work.as_posix()}/nginx.pid;\n"
-                  "events {}\nhttp {\n" + upstreams +
+                  "events {}\nhttp {\ntypes { text/html html; }\n" + upstreams +
                   "\nmap $http_upgrade $connection_upgrade { default upgrade; '' close; }\n" +
                   (cls.work / "maps.conf").read_text() + main +
                   "\n" + (cls.work / "configurator.conf").read_text() + "\n}\n")
@@ -213,6 +215,27 @@ class NginxAuthTests(unittest.TestCase):
         with patch.object(auth.AuthHandler, "do_GET",
                           lambda handler: handler.reply(500, {"error": "Service failure"})):
             self.assertEqual(self.request(self.https)[0], 500)
+
+    def test_lockdown_removes_local_bypass_and_pin_cannot_authenticate_remotely(self):
+        with patch.object(auth, "lockdown_readiness", return_value={"ready": True}):
+            enabled = self.request(self.https, "/auth/password",
+                                   {"new": "admin test password", "mode": "lockdown", "pin": "1234"})
+        self.assertEqual(enabled[0], 200)
+        admin = enabled[2]["Set-Cookie"].split(";")[0]
+        self.assertEqual(self.request(self.http, local=True)[0], 302)
+        self.assertEqual(self.request(self.http, cookie=admin, local=True)[0], 302)
+        self.assertEqual(self.request(self.https, cookie=admin)[0], 200)
+        self.assertEqual(self.request(self.https, "/auth/pin", {"pin": "1234"})[0], 403)
+        pin = self.request(self.http, "/auth/pin", {"pin": "1234"}, local=True)
+        self.assertEqual(pin[0], 200)
+        token = pin[2]["Set-Cookie"].split(";")[0]
+        for port in (self.http, self.config_http):
+            status, body, _ = self.request(port, cookie=token, local=True)
+            self.assertEqual(status, 200)
+            self.assertIn(b'/auth/kiosk-client.js', body)
+        self.assertEqual(self.request(self.https, cookie=token)[0], 302)
+        self.assertEqual(self.request(self.http, "/auth/lock", {}, cookie=token, local=True)[0], 200)
+        self.assertEqual(self.request(self.http, cookie=token, local=True)[0], 302)
 
 
 if __name__ == "__main__":

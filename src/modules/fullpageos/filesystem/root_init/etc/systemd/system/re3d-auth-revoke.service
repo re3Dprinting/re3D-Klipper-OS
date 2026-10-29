@@ -1,0 +1,7 @@
+[Unit]
+Description=Disconnect revoked printer interface connections
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sleep 2
+ExecStart=/bin/systemctl restart nginx.service

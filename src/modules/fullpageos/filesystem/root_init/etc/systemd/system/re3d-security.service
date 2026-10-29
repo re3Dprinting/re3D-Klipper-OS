@@ -1,0 +1,19 @@
+[Unit]
+Description=Apply re3D host security mode before network services
+DefaultDependencies=no
+After=local-fs.target nftables.service
+Before=network-pre.target nginx.service moonraker.service crowsnest.service display-manager.service ssh.service
+Wants=network-pre.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/mconfig/security_policy.py
+RemainAfterExit=true
+StateDirectory=re3d-security
+StateDirectoryMode=0700
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

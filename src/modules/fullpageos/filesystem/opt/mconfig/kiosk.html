@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>re:3D Touchscreen Lock</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14181c;color:#eee}
+    body{margin:0}main{max-width:340px;margin:4vh auto;padding:20px;text-align:center}
+    input,button{box-sizing:border-box;font:inherit;padding:12px;border:1px solid #667;border-radius:6px}
+    input{width:100%;margin:12px 0;text-align:center;font-size:24px}
+    button{cursor:pointer;background:#245c63;color:white;min-height:48px}
+    #keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    #unlock{width:100%;margin-top:12px}#status{min-height:2em}
+    #screen{position:fixed;inset:0;display:grid;grid-template-rows:48px 1fr}
+    #toolbar{display:flex;justify-content:space-between;align-items:center;padding:0 12px;background:#14181c}
+    #toolbar button{min-height:36px;padding:4px 16px}
+    iframe{width:100%;height:100%;border:0;background:#14181c}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+<main id="lock">
+  <h1>Touchscreen locked</h1>
+  <p>Enter your PIN to unlock. The printer continues operating while locked.</p>
+  <form id="form">
+    <label for="pin">Touchscreen PIN</label>
+    <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+           maxlength="1024" autocomplete="off" required>
+    <div id="keys">
+      <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+      <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+      <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+      <button type="button">Clear</button><button type="button">0</button><button type="button">Back</button>
+    </div>
+    <button id="unlock">Unlock</button>
+  </form>
+  <p id="status" role="status" aria-live="polite">Checking security mode...</p>
+</main>
+<section id="screen" hidden>
+  <div id="toolbar"><span>re:3D &mdash; locks after 5 minutes idle</span><button id="lock-now">Lock</button></div>
+  <iframe id="printer" title="Printer control"></iframe>
+</section>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  let unlocked = false;
+  let busy = false;
+  let lastActivity = performance.now();
+  let dirty = false;
+  let reporting = false;
+  let lastReport = -Infinity;
+  async function request(path, data) {
+    const response = await fetch('/auth/' + path, {
+      method:data ? 'POST' : 'GET', cache:'no-store',
+      headers:data ? {'Content-Type':'application/json'} : {},
+      body:data ? JSON.stringify(data) : undefined
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Touchscreen authentication failed');
+    return result;
+  }
+  function showLock(message = '') {
+    unlocked = false;
+    dirty = false;
+    el('printer').src = 'about:blank';
+    el('screen').hidden = true;
+    el('lock').hidden = false;
+    el('pin').value = '';
+    el('status').textContent = message;
+  }
+  async function lock() {
+    showLock();
+    try { await request('lock', {}); }
+    catch (error) { el('status').textContent = error.message; }
+  }
+  async function reportActivity() {
+    if (reporting || !unlocked) return;
+    reporting = true;
+    dirty = false;
+    lastReport = performance.now();
+    try { await request('activity', {}); }
+    catch (error) { showLock(error.message); }
+    finally { reporting = false; }
+  }
+  el('keys').addEventListener('click', event => {
+    if (event.target.tagName !== 'BUTTON') return;
+    const key = event.target.textContent;
+    if (key === 'Clear') el('pin').value = '';
+    else if (key === 'Back') el('pin').value = el('pin').value.slice(0, -1);
+    else el('pin').value += key;
+  });
+  el('form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    try {
+      await request('pin', {pin:el('pin').value});
+      el('pin').value = '';
+      el('status').textContent = '';
+      unlocked = true;
+      lastActivity = performance.now();
+      lastReport = -Infinity;
+      el('lock').hidden = true;
+      el('screen').hidden = false;
+      el('printer').src = '/';
+    } catch (error) { el('status').textContent = error.message; }
+    finally { busy = false; }
+  });
+  el('lock-now').addEventListener('click', lock);
+  addEventListener('message', event => {
+    if (event.source !== el('printer').contentWindow
+        || !['http://localhost', 'http://localhost:8081'].includes(event.origin)
+        || event.data?.type !== 're3d-activity' || !unlocked) return;
+    lastActivity = performance.now();
+    dirty = true;
+    if (performance.now() - lastReport >= 1000) reportActivity();
+  });
+  setInterval(() => {
+    if (unlocked && performance.now() - lastActivity >= 300000) lock();
+  }, 1000);
+  setInterval(async () => {
+    if (!unlocked) return;
+    try {
+      if (dirty) {
+        await reportActivity();
+      }
+      if (!unlocked) return;
+      const state = await request('kiosk-status');
+      if (state.mode === 'off' || state.mode === 'basic') { location.replace('/'); return; }
+      if (!state.unlocked) showLock('Touchscreen session ended. Enter your PIN again.');
+    } catch (error) { showLock(error.message); }
+  }, 5000);
+  (async () => {
+    try {
+      const state = await request('status');
+      if (state.mode !== 'lockdown') { location.replace('/'); return; }
+      await request('lock', {});
+      showLock();
+    } catch (error) { showLock(error.message); }
+  })();
+})();
+</script>
+</body>
+</html>

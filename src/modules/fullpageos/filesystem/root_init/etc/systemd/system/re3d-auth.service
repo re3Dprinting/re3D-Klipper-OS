@@ -1,6 +1,8 @@
 [Unit]
 Description=re3D interface password service
 After=network.target
+Requires=re3d-security.service
+After=re3d-security.service
 Before=nginx.service
 
 [Service]

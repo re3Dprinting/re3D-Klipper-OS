@@ -6,6 +6,11 @@ set -euo pipefail
 
 MODE="${1:-}"
 
+if [ "$MODE" = "klipperscreen" ] && [ -f /etc/re3d-security/lockdown ]; then
+  echo "ERROR: KlipperScreen is disabled in Lockdown. Change security mode and reboot first." >&2
+  exit 1
+fi
+
 if [ "$MODE" = "mainsail" ] || [ "$MODE" = "klipperscreen" ]; then
   printf '%s' "$MODE" > /etc/re3d-display-mode
   echo "Display mode set to: $MODE — rebooting..."

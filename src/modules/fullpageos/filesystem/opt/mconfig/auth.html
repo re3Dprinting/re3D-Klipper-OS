@@ -8,7 +8,7 @@
     :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#14181c;color:#eee}
     main{max-width:440px;margin:6vh auto;padding:24px}
     label{display:block;margin:18px 0 6px}
-    input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #667;border-radius:6px}
+    input,button,select{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #667;border-radius:6px}
     button{margin-top:16px;cursor:pointer;background:#245c63;color:white}
     p{line-height:1.5}a{color:#7ed4df}#status{white-space:pre-wrap} [hidden]{display:none!important}
   </style>
@@ -17,10 +17,17 @@
 <main>
   <h1 id="heading">Interface password</h1>
   <p id="description">Loading password settings...</p>
-  <p id="warning" hidden>The built-in touchscreen stays unlocked. Direct Moonraker API access
-    (port 7125) and direct camera streams are not protected by this password. This is not a
-    firewall or full printer access control. Do not expose the printer to the Internet.</p>
+  <p id="warning" hidden></p>
+  <p id="pending" role="status" hidden></p>
   <form id="form">
+    <div id="mode-row" hidden>
+      <label for="mode">Security mode</label>
+      <select id="mode">
+        <option value="off">Off</option>
+        <option value="basic">Basic: remote interface password only</option>
+        <option value="lockdown">Lockdown: authenticated interfaces and touchscreen PIN</option>
+      </select>
+    </div>
     <div id="current-row">
       <label for="current">Password</label>
       <input id="current" type="password" autocomplete="current-password" maxlength="1024" required>
@@ -30,6 +37,14 @@
       <input id="new" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
       <label for="confirm">Confirm new password</label>
       <input id="confirm" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
+    </div>
+    <div id="pin-fields" hidden>
+      <label for="pin">Touchscreen PIN (at least 4 digits; leave blank to keep existing PIN)</label>
+      <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+             maxlength="1024" autocomplete="new-password">
+      <label for="pin-confirm">Confirm new touchscreen PIN</label>
+      <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+             maxlength="1024" autocomplete="new-password">
     </div>
     <button id="submit" disabled>Log in</button>
     <button id="disable" type="button" hidden>Disable password protection</button>
@@ -43,6 +58,7 @@
   const el = id => document.getElementById(id);
   const settings = location.pathname === '/auth/settings';
   let enabled = false;
+  let state = {};
   let busy = false;
   async function request(path, data) {
     const response = await fetch('/auth/' + path, {
@@ -56,20 +72,34 @@
     return result;
   }
   function render() {
-    el('heading').textContent = settings ? 'Interface password' : 'Printer login';
+    const mode = el('mode').value;
+    el('heading').textContent = settings ? 'Printer security' : 'Printer login';
     el('description').textContent = settings
-      ? (enabled ? 'Protection is enabled. The current password is required to change or disable it.'
-        : 'Protection is optional and currently disabled. Set a password to enable it.')
+      ? (enabled ? 'The current administrator password is required to change mode, password or PIN. Leave new credentials blank to keep them.'
+        : 'Protection is optional and currently disabled. Choose a mode and set an administrator password.')
       : 'Enter the printer interface password.';
     el('warning').hidden = !settings;
-    el('new-fields').hidden = !settings;
-    el('new').required = settings;
-    el('confirm').required = settings;
+    el('warning').textContent = mode === 'lockdown'
+      ? 'Lockdown blocks direct API/camera ports and other incoming services, disables remote desktop and KlipperScreen, and requires key-only SSH recovery for pi. Configure and TEST your SSH key first. The touchscreen uses a separate PIN and locks after 5 minutes idle. Host policy changes take effect after reboot; finish any print before rebooting.'
+      : mode === 'basic'
+        ? 'Basic protects the web interfaces only. The touchscreen stays unlocked and direct API/camera access can bypass this password.'
+        : 'Off disables interface authentication. Do not expose the printer to the Internet.';
+    el('mode-row').hidden = !settings;
+    el('pending').hidden = !settings || !state.reboot_required;
+    el('pending').textContent = `Host policy pending reboot: applied ${state.applied_mode}; requested ${state.mode}. Network and kiosk restrictions switch together at reboot.`;
+    el('new-fields').hidden = !settings || mode === 'off';
+    el('new').disabled = el('confirm').disabled = !settings || mode === 'off';
+    el('new').required = settings && mode !== 'off' && !enabled;
+    el('confirm').required = el('new').required || !!el('new').value;
+    el('pin-fields').hidden = !settings || mode !== 'lockdown';
+    el('pin').disabled = el('pin-confirm').disabled = !settings || mode !== 'lockdown';
+    el('pin').required = settings && mode === 'lockdown' && !state.has_pin;
+    el('pin-confirm').required = el('pin').required || !!el('pin').value;
     el('current-row').hidden = settings && !enabled;
     el('current').required = !settings || enabled;
     el('disable').hidden = !settings || !enabled;
     el('logout').hidden = !enabled;
-    el('submit').textContent = settings ? (enabled ? 'Change password' : 'Enable protection') : 'Log in';
+    el('submit').textContent = settings ? 'Save security settings' : 'Log in';
     el('submit').disabled = false;
   }
   async function act(action) {
@@ -84,12 +114,19 @@
     event.preventDefault();
     act(async () => {
       if (settings) {
-        if (el('new').value !== el('confirm').value) throw new Error('New passwords do not match');
-        await request('password', {current:el('current').value, new:el('new').value});
-        enabled = true;
+        const mode = el('mode').value;
+        if (mode !== 'off' && el('new').value !== el('confirm').value) throw new Error('New passwords do not match');
+        if (mode === 'lockdown' && el('pin').value !== el('pin-confirm').value) throw new Error('New PINs do not match');
+        await request('password', {current:el('current').value,
+                                  new:mode === 'off' ? '' : el('new').value,
+                                  mode, pin:mode === 'lockdown' ? el('pin').value : ''});
+        state = await request('status');
+        enabled = state.enabled;
         el('form').reset();
+        el('mode').value = state.mode;
         render();
-        el('status').textContent = 'Password saved. Other browser sessions have been signed out.';
+        el('status').textContent = 'Settings saved. Sessions were invalidated.'
+          + (state.reboot_required ? ' Reboot after finishing any print to apply the host policy.' : '');
       } else {
         await request('login', {password:el('current').value});
         location.replace('/');
@@ -101,7 +138,9 @@
     if (!confirm('Disable password protection for both web interfaces?')) return;
     await request('password', {current:el('current').value, disable:true});
     enabled = false;
+    state = await request('status');
     el('form').reset();
+    el('mode').value = 'off';
     render();
     el('status').textContent = 'Password protection disabled.';
   }));
@@ -109,9 +148,15 @@
     await request('logout', {});
     location.replace('/auth/login');
   }));
+  for (const id of ['mode', 'new', 'pin']) el(id).addEventListener('input', render);
   act(async () => {
-    enabled = (await request('status')).enabled;
+    state = await request('status');
+    enabled = state.enabled;
+    if (!settings && state.local && state.mode === 'lockdown') {
+      location.replace('/auth/kiosk'); return;
+    }
     if (!settings && !enabled) { location.replace('/'); return; }
+    el('mode').value = state.mode;
     render();
   });
 })();

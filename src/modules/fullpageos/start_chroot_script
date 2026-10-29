@@ -561,7 +561,7 @@ sudo -u "${BASE_USER}" bash -lc '
 
 # 8) NGINX as reverse proxy + static hosting for Mainsail
 step_start "NGINX Install & Config"
-apt-get install -y nginx openssl
+apt-get install -y nginx openssl nftables
 
 cat >/etc/nginx/conf.d/upstreams.conf <<'EOF'
 # /etc/nginx/conf.d/upstreams.conf

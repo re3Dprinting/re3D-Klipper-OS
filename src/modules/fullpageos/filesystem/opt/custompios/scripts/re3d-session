@@ -11,6 +11,7 @@
 
 LOG="/tmp/re3d-session.log"
 MODE_FILE="/etc/re3d-display-mode"
+LOCKDOWN="/etc/re3d-security/lockdown"
 KS_DIR="/home/pi/KlipperScreen"
 KS_ENV="/home/pi/klipperscreen-env"
 MAX_FAILS=3
@@ -19,6 +20,11 @@ exec >> "$LOG" 2>&1
 
 MODE=$(cat "$MODE_FILE" 2>/dev/null || echo "mainsail")
 echo "[$(date)] re3d-session started — mode: ${MODE}"
+
+if [ -f "$LOCKDOWN" ]; then
+  echo "[$(date)] Lockdown: starting only the PIN-protected Chromium kiosk under cage."
+  exec cage -d -- /opt/custompios/scripts/start_chromium_browser
+fi
 
 if [ "$MODE" = "klipperscreen" ]; then
 

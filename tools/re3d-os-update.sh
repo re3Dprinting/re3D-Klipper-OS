@@ -157,7 +157,7 @@ if [ -d "${SRC_SYSTEMD}" ]; then
       log "${LOG_TAG}   updated ${svc_name}"
       _RELOAD_NEEDED=1
     fi
-  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 \( -name '*.service' -o -name '*.timer' \) -print0)
+  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 \( -name '*.service' -o -name '*.timer' -o -name '*.path' \) -print0)
   if [ "${_RELOAD_NEEDED}" -eq 1 ]; then
     systemctl daemon-reload || true
     log "${LOG_TAG} systemd daemon-reload done"
@@ -183,6 +183,9 @@ fi
 log "${LOG_TAG} Deploying optional HTTPS interface authentication..."
 install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth_server.py" /opt/mconfig/auth_server.py
 install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth.html" /opt/mconfig/auth.html
+for security_asset in security_policy.py kiosk.html kiosk-client.js; do
+  install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/${security_asset}" "/opt/mconfig/${security_asset}"
+done
 install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/install_auth.sh" /opt/mconfig/install_auth.sh
 install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/prepare_auth_tls.sh" /opt/mconfig/prepare_auth_tls.sh
 install -d -m 0755 /opt/mconfig/nginx
@@ -600,8 +603,8 @@ DROPIN_EOF
 systemctl disable NetworkManager-wait-online.service || true
 systemctl daemon-reload || true
 
-# nginx and BusyBox must switch listeners together at reboot, without killing this CGI updater.
-for svc in klipper moonraker mainsail crowsnest; do
+# Security-gated backends and the display must switch together at reboot, without killing this CGI updater.
+for svc in klipper mainsail; do
   log "${LOG_TAG} Restarting ${svc}.service (best-effort)..."
   systemctl restart "${svc}.service" || true
 done

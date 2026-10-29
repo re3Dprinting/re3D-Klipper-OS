@@ -131,7 +131,8 @@ class AuthTests(unittest.TestCase):
                                       address="192.168.1.3")[0], 200)
         self.assertTrue(self.state.verify("abcd"))
         page = (ASSETS / "auth.html").read_text()
-        self.assertEqual(page.count('minlength="4"'), 2)
+        self.assertIn('id="new" type="password" autocomplete="new-password" minlength="4"', page)
+        self.assertIn('id="confirm" type="password" autocomplete="new-password" minlength="4"', page)
         self.assertIn("at least 4 characters", page)
 
     def test_five_attempts_per_minute_and_expired_sessions(self):
@@ -161,6 +162,111 @@ class AuthTests(unittest.TestCase):
             status, body, _ = self.request(page)
             self.assertEqual(status, 200)
             self.assertNotIn(PASSWORD.encode(), body)
+
+    def lockdown(self):
+        with patch.object(auth, "lockdown_readiness", return_value={"ready": True}):
+            status, _, _ = self.request("password", {"mode": "lockdown", "new": PASSWORD, "pin": "1234"})
+        self.assertEqual(status, 200)
+
+    def test_existing_passwords_migrate_to_basic_without_reset(self):
+        record = auth.credential(PASSWORD)
+        self.state.path.write_text(json.dumps(record))
+        loaded = auth.AuthState(self.state.path)
+        self.assertEqual(loaded.mode, "basic")
+        self.assertTrue(loaded.verify(PASSWORD))
+        self.assertFalse(loaded.has_pin)
+        record.update(mode="lockdown", pin=None)
+        self.state.path.write_text(json.dumps(record))
+        with self.assertRaises(ValueError):
+            auth.AuthState(self.state.path)
+
+    def test_lockdown_requires_pin_and_ssh_key_before_persisting(self):
+        self.assertEqual(self.request("password", {"mode": "lockdown", "new": PASSWORD})[0], 400)
+        for value in ("123", "abcd", "１２３４"):
+            self.assertEqual(self.request("password", {"mode": "lockdown", "new": PASSWORD,
+                                                       "pin": value})[0], 400)
+        with patch.object(auth, "lockdown_readiness", return_value={"ready": False, "error": "No SSH key"}):
+            status, body, _ = self.request("password", {"mode": "lockdown", "new": PASSWORD, "pin": "1234"})
+        self.assertEqual(status, 409)
+        self.assertIn("SSH key", body["error"])
+        self.assertIsNone(self.state.record)
+
+    def test_pin_and_admin_sessions_are_separate_and_pin_is_local_only(self):
+        self.lockdown()
+        self.assertEqual(self.request("check", address="127.0.0.1")[0], 401)
+        status, _, admin = self.request("login", {"password": PASSWORD})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("check", cookie=admin, address="127.0.0.1")[0], 401)
+        self.assertEqual(self.request("pin", {"pin": "1234"})[0], 403)
+        status, _, pin = self.request("pin", {"pin": "1234"}, address="127.0.0.1")
+        self.assertEqual(status, 200)
+        self.assertIn(auth.PIN_COOKIE, pin)
+        self.assertEqual(self.request("check", cookie=pin, address="127.0.0.1")[0], 204)
+        self.assertEqual(self.request("check", cookie=pin)[0], 401)
+        self.assertEqual(self.request("password", {"mode": "off"}, cookie=pin, address="127.0.0.1")[0], 403)
+        self.assertEqual(self.request("password", {"pin": "5678", "mode": "lockdown"},
+                                      cookie=pin, address="127.0.0.1")[0], 403)
+        self.assertNotIn("1234", self.state.path.read_text())
+        self.assertEqual(self.request("lock", {}, cookie=pin, address="127.0.0.1")[0], 200)
+        self.assertEqual(self.request("check", cookie=pin, address="127.0.0.1")[0], 401)
+
+    def test_idle_deadline_is_server_enforced_and_background_checks_do_not_refresh_it(self):
+        self.lockdown()
+        _, _, pin = self.request("pin", {"pin": "1234"}, address="127.0.0.1")
+        now = time.monotonic()
+        with patch.object(auth.time, "monotonic", return_value=now + 299):
+            self.assertEqual(self.request("check", cookie=pin, address="127.0.0.1")[0], 204)
+        with patch.object(auth.time, "monotonic", return_value=now + 301):
+            self.assertEqual(self.request("check", cookie=pin, address="127.0.0.1")[0], 401)
+            self.assertEqual(self.request("activity", {}, cookie=pin, address="127.0.0.1")[0], 401)
+
+    def test_activity_refreshes_pin_but_never_remote_access(self):
+        self.lockdown()
+        _, _, pin = self.request("pin", {"pin": "1234"}, address="127.0.0.1")
+        now = time.monotonic()
+        with patch.object(auth.time, "monotonic", return_value=now + 290):
+            self.assertEqual(self.request("activity", {}, cookie=pin, address="127.0.0.1")[0], 200)
+            self.assertEqual(self.request("activity", {}, cookie=pin)[0], 403)
+        with patch.object(auth.time, "monotonic", return_value=now + 301):
+            self.assertEqual(self.request("check", cookie=pin, address="127.0.0.1")[0], 204)
+
+    def test_pin_attempt_rate_limit_and_administrator_pin_change(self):
+        self.lockdown()
+        for _ in range(5):
+            self.assertEqual(self.request("pin", {"pin": "9999"}, address="127.0.0.1")[0], 403)
+        self.assertEqual(self.request("pin", {"pin": "1234"}, address="127.0.0.1")[0], 429)
+        self.assertEqual(self.request("password", {"current": PASSWORD, "mode": "lockdown",
+                                                  "pin": "5678"}, address="192.168.1.3")[0], 200)
+        self.assertTrue(self.state.verify_pin("5678"))
+        self.assertFalse(self.state.verify_pin("1234"))
+
+    def test_status_distinguishes_requested_mode_from_boot_policy(self):
+        self.lockdown()
+        with patch.object(auth, "APPLIED_MODE", Path(self.directory.name) / "mode"):
+            _, status, _ = self.request("status", address="127.0.0.1")
+            self.assertEqual(status["mode"], "lockdown")
+            self.assertEqual(status["applied_mode"], "off")
+            self.assertTrue(status["reboot_required"])
+            auth.APPLIED_MODE.write_text("lockdown\n")
+            self.assertFalse(self.request("status")[1]["reboot_required"])
+
+    def test_logout_and_expiry_request_connection_revocation_but_anonymous_logout_does_not(self):
+        marker = self.state.path.with_name("revoke")
+        self.assertEqual(self.request("logout", {})[0], 200)
+        self.assertFalse(marker.exists())
+        cookie = self.enable()
+        self.assertEqual(self.request("logout", {}, cookie=cookie)[0], 200)
+        self.assertTrue(marker.exists())
+        marker.unlink()
+        _, _, cookie = self.request("login", {"password": PASSWORD})
+        with patch.object(auth.time, "monotonic", return_value=time.monotonic() + auth.SESSION_SECONDS + 1):
+            self.state.prune()
+        self.assertTrue(marker.exists())
+
+    def test_basic_and_off_do_not_require_host_policy_reboot(self):
+        with patch.object(auth, "APPLIED_MODE", Path(self.directory.name) / "mode"):
+            self.enable()
+            self.assertFalse(self.request("status")[1]["reboot_required"])
 
 
 class DeploymentTests(unittest.TestCase):

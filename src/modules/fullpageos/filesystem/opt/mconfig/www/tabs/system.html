@@ -326,14 +326,14 @@
     <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-35</span></div>
 
     <div class="card sys-card">
-      <div class="sys-title">Interface Password</div>
+      <div class="sys-title">Printer Security</div>
       <div class="sys-subtitle">
-        Optionally protect Mainsail and the Configurator with a password.
-        The current password is required to change or disable protection, including on the touchscreen.
-        Direct printer API and camera access remain available without this password.
+        Choose Off, Basic interface protection, or Lockdown with a separate touchscreen PIN,
+        restricted network services and key-only SSH recovery.
+        The administrator password is required to change mode, password or PIN.
       </div>
       <div class="btn-row">
-        <a class="btn-ghost" href="/auth/settings">Manage password</a>
+        <a class="btn-ghost" href="/auth/settings">Security settings</a>
         <a class="btn-ghost" href="/auth/login">Login / logout</a>
       </div>
     </div>
@@ -910,14 +910,31 @@
   const btnKlipperscreen  = document.getElementById('btn-use-klipperscreen');
   const modePill          = document.getElementById('display-mode-pill');
   const modeHint          = document.getElementById('display-mode-hint');
+  let displayLockedDown = false;
 
   async function loadDisplayMode(){
     try {
-      const r = await fetch('/cgi-bin/get_display_mode.sh', {cache:'no-store'});
-      const mode = r.ok ? (await r.text()).trim() : 'mainsail';
-      applyDisplayMode(mode);
-    } catch(_) {
-      applyDisplayMode('mainsail');
+      const [r, securityResponse] = await Promise.all([
+        fetch('/cgi-bin/get_display_mode.sh', {cache:'no-store'}),
+        fetch('/auth/status', {cache:'no-store'})
+      ]);
+      if (!r.ok || !securityResponse.ok) throw new Error('Could not load display/security mode');
+      const security = await securityResponse.json();
+      displayLockedDown = security.mode === 'lockdown' || security.applied_mode === 'lockdown';
+      const mode = (await r.text()).trim();
+      if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid display mode response');
+      applyDisplayMode(displayLockedDown ? 'mainsail' : mode);
+      if (displayLockedDown && modeHint) {
+        modeHint.style.display = 'block';
+        modeHint.textContent = 'KlipperScreen is disabled in Lockdown. Change security mode and reboot first.';
+      }
+    } catch(error) {
+      if (btnMainsail) btnMainsail.disabled = true;
+      if (btnKlipperscreen) btnKlipperscreen.disabled = true;
+      if (modeHint) {
+        modeHint.style.display = 'block';
+        modeHint.textContent = error.message;
+      }
     }
   }
 
@@ -933,7 +950,7 @@
       modePill.style.borderColor = 'var(--success)';
     }
     if (btnMainsail)      { btnMainsail.disabled      = (mode !== 'klipperscreen'); }
-    if (btnKlipperscreen) { btnKlipperscreen.disabled  = (mode === 'klipperscreen'); }
+    if (btnKlipperscreen) { btnKlipperscreen.disabled  = displayLockedDown || (mode === 'klipperscreen'); }
   }
 
   async function setDisplayMode(mode){
@@ -943,16 +960,20 @@
     if (btnMainsail)      btnMainsail.disabled      = true;
     if (btnKlipperscreen) btnKlipperscreen.disabled  = true;
     try {
-      await fetch('/cgi-bin/set_display_mode.sh', {
+      const response = await fetch('/cgi-bin/set_display_mode.sh', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded',
                   'Content-Length': ('mode=' + mode).length},
         body: 'mode=' + mode,
         cache: 'no-store'
       });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'ok') throw new Error(result.message || 'Display mode was not saved');
       modeHint.textContent = 'Mode saved — rebooting…';
-    } catch(_) {
-      modeHint.textContent = 'Request sent — rebooting…';
+    } catch(error) {
+      modeHint.textContent = error.message;
+      if (btnMainsail) btnMainsail.disabled = false;
+      if (btnKlipperscreen) btnKlipperscreen.disabled = displayLockedDown;
     }
   }
 

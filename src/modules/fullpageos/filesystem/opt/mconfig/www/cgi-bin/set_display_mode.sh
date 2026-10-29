@@ -13,6 +13,11 @@ read -r -n "${CONTENT_LENGTH:-0}" POST_DATA 2>/dev/null || POST_DATA=""
 # Extract and validate mode value (strict allow-list)
 MODE="$(printf '%s' "$POST_DATA" | sed -n 's/.*\bmode=\([^&]*\).*/\1/p' | head -1)"
 
+if [ "$MODE" = "klipperscreen" ] && [ -f /etc/re3d-security/lockdown ]; then
+  printf '{"status":"error","message":"KlipperScreen is disabled in Lockdown. Change security mode and reboot first."}\n'
+  exit 0
+fi
+
 if [ "$MODE" = "mainsail" ] || [ "$MODE" = "klipperscreen" ]; then
   printf '%s' "$MODE" > /etc/re3d-display-mode
   printf '{"status":"ok","mode":"%s"}\n' "$MODE"

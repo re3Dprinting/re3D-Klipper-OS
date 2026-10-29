@@ -6,12 +6,20 @@ if [[ "$MODE" != "live" && "$MODE" != "image" ]]; then
   echo "Usage: install_auth.sh [live|image]" >&2
   exit 1
 fi
+if ! command -v nft >/dev/null; then
+  apt-get install -y nftables
+fi
 
 getent passwd re3d-auth >/dev/null || useradd --system --user-group --home-dir /var/lib/re3d-auth --shell /usr/sbin/nologin re3d-auth
 install -d -m 0700 -o re3d-auth -g re3d-auth /var/lib/re3d-auth
 install -d -m 0755 /etc/nginx/re3d-auth
 install -d -m 0755 /etc/systemd/system/nginx.service.d
 install -m 0644 /opt/mconfig/nginx/service.conf /etc/systemd/system/nginx.service.d/re3d-auth.conf
+for service in moonraker crowsnest mconfig; do
+  install -d -m 0755 "/etc/systemd/system/${service}.service.d"
+  printf '[Unit]\nRequires=re3d-security.service\nAfter=re3d-security.service\n' \
+    > "/etc/systemd/system/${service}.service.d/re3d-security.conf"
+done
 
 install -m 0644 /opt/mconfig/nginx/common.conf /etc/nginx/re3d-auth/common.conf
 install -m 0644 /opt/mconfig/nginx/mainsail.conf /etc/nginx/re3d-auth/mainsail.conf
@@ -37,7 +45,7 @@ if include not in text:
 PY
 
 ln -sf /etc/nginx/sites-available/re3d-configurator /etc/nginx/sites-enabled/re3d-configurator
-systemctl enable re3d-auth.service re3d-auth-tls.service
+systemctl enable re3d-security.service re3d-auth.service re3d-auth-tls.service re3d-auth-revoke.path
 if [[ "$MODE" == "live" ]]; then
   bash /opt/mconfig/prepare_auth_tls.sh
   nginx -t
