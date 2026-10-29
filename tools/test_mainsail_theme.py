@@ -147,7 +147,7 @@ class MainsailThemeTests(unittest.TestCase):
                                 self.assertTrue((theme / imported).is_file())
                             for label in labels:
                                 self.assertIn('content: "' + label + '"', custom)
-                            self.assertIn(' v1.4.3-33', custom)
+                            self.assertIn(' v1.4.3-35', custom)
 
     def test_updater_deploys_theme_generator_and_common_assets(self):
         update = (ROOT / 'tools/re3d-os-update.sh').read_text(encoding='utf-8')

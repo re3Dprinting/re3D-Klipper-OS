@@ -25,6 +25,29 @@
     margin:0 0 4px 2px;
   }
   .sys-version{font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--dim)}
+  .sys-health{grid-column:1 / -1;display:grid;gap:10px;padding:12px 16px}
+  .sys-health-toolbar{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
+  .sys-health-title{margin:0;font-size:13px;font-weight:600}
+  .sys-health-summary{flex:1;min-width:140px;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+  .sys-health-toolbar button{min-height:36px;padding:6px 10px;font-size:11px}
+  .sys-health-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px 16px}
+  .sys-health-row{display:grid;align-content:start;gap:3px;border-top:1px solid var(--border);padding-top:8px;min-width:0}
+  .sys-health-heading{display:flex;justify-content:space-between;align-items:center;gap:4px 8px;flex-wrap:wrap;font-size:11px;font-weight:600}
+  .sys-health-detail{font-size:11px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+  .sys-health-status{font-size:10px;font-weight:600}
+  .sys-health-status[data-status="ok"]{color:var(--success)}
+  .sys-health-status[data-status="warning"]{color:var(--warn)}
+  .sys-health-status[data-status="error"]{color:var(--error)}
+  .sys-health-status[data-status="unknown"]{color:var(--muted)}
+  .sys-health-help{font-size:11px;color:var(--muted)}
+  .sys-health-help summary{cursor:pointer;width:fit-content}
+  .sys-health-help p{margin:6px 0 0}
+  @media(max-width:1100px){
+    .sys-health-list{grid-template-columns:repeat(3,minmax(0,1fr))}
+  }
+  @media(max-width:650px){
+    .sys-health-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
 
   .sys-col{
     display:flex;
@@ -164,10 +187,143 @@
   }
 </style>
 
+<script>
+(() => {
+  const refresh = document.getElementById('sys-health-refresh');
+  const summary = document.getElementById('sys-health-summary');
+  const list = document.getElementById('sys-health-list');
+  const labels = { ok: 'OK', warning: 'Warning', error: 'Critical', unknown: 'Unavailable' };
+  const readings = new Map();
+  const rows = new Map();
+  let controller = null;
+  let pollTimer = null;
+  let lastFullCheck = null;
+  let stopped = false;
+
+  async function loadHealth(forceFull = false, manual = false) {
+    if (stopped || document.hidden || !list.isConnected || controller) return;
+    const started = Date.now();
+    const full = forceFull || lastFullCheck === null || started - lastFullCheck >= 30000;
+    const requestController = new AbortController();
+    controller = requestController;
+    if (manual) refresh.disabled = true;
+    list.setAttribute('aria-busy', 'true');
+    if (!readings.size) summary.textContent = 'Loading system health...';
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      requestController.abort();
+    }, 15000);
+    try {
+      const response = await fetch('/cgi-bin/system_health.sh' + (full ? '' : '?scope=live'), {
+        cache: 'no-store', signal: requestController.signal
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data.checks) || !data.checks.length ||
+          data.checks.some(check => !check || typeof check.label !== 'string' ||
+            typeof check.detail !== 'string' || !Object.hasOwn(labels, check.status))) {
+        throw new Error('Invalid system health response');
+      }
+      if (stopped || document.hidden || !list.isConnected || requestController.signal.aborted) return;
+      for (const check of data.checks) {
+        let elements = rows.get(check.label);
+        if (!elements) {
+          const row = document.createElement('div');
+          row.className = 'sys-health-row';
+          const heading = document.createElement('div');
+          heading.className = 'sys-health-heading';
+          const label = document.createElement('span');
+          label.textContent = check.label;
+          const status = document.createElement('span');
+          status.className = 'sys-health-status';
+          heading.append(label, status);
+          const detail = document.createElement('div');
+          detail.className = 'sys-health-detail';
+          row.append(heading, detail);
+          list.appendChild(row);
+          elements = { status, detail };
+          rows.set(check.label, elements);
+        }
+        elements.status.dataset.status = check.status;
+        elements.status.textContent = labels[check.status];
+        elements.detail.textContent = check.detail;
+        readings.set(check.label, check);
+      }
+      if (full) lastFullCheck = started;
+      const checks = Array.from(readings.values());
+      const attention = checks.filter(check => ['warning', 'error'].includes(check.status)).length;
+      const unknown = checks.filter(check => check.status === 'unknown').length;
+      const state = attention || unknown
+        ? `${attention} need attention; ${unknown} unavailable.`
+        : 'All checks OK.';
+      summary.textContent = `${state} Last checked: ${new Date().toLocaleTimeString()}`;
+    } catch (error) {
+      if (requestController.signal.aborted && !timedOut) return;
+      if (!stopped && !document.hidden && list.isConnected) {
+        summary.textContent = 'Unable to load system health: ' +
+          (error.name === 'AbortError' ? 'Request timed out.' : error.message) +
+          (readings.size ? ' Showing last readings (stale).' : '') + ' Retrying automatically.';
+      }
+    } finally {
+      clearTimeout(timeout);
+      controller = null;
+      if (manual) refresh.disabled = false;
+      list.setAttribute('aria-busy', 'false');
+      if (!stopped && !document.hidden && requestController.signal.aborted && !timedOut) {
+        loadHealth(true);
+      }
+    }
+  }
+
+  function pause() {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    if (controller) controller.abort();
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      pause();
+      summary.textContent = 'Live updates paused while this page is hidden.';
+    } else if (!stopped) {
+      loadHealth(true);
+      if (pollTimer === null) pollTimer = setInterval(() => loadHealth(), 5000);
+    }
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!list.isConnected) {
+      stopped = true;
+      pause();
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+  });
+  observer.observe(document.getElementById('page'), { childList: true });
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  refresh.addEventListener('click', () => loadHealth(true, true));
+  onVisibilityChange();
+})();
+</script>
+
 <div class="content sys-content">
+  <section class="card sys-health" aria-labelledby="sys-health-title">
+    <div class="sys-health-toolbar">
+      <h2 class="sys-health-title" id="sys-health-title">System Health</h2>
+      <div class="sys-health-summary" id="sys-health-summary" role="status" aria-live="polite">Loading system health...</div>
+      <button type="button" class="btn-ghost" id="sys-health-refresh">Refresh health</button>
+    </div>
+    <div class="sys-health-list" id="sys-health-list" aria-busy="true"></div>
+    <details class="sys-health-help">
+      <summary>About these checks</summary>
+      <p>CPU temperature/load, memory and uptime update every 5 seconds; storage, power flags and services every 30 seconds. Updates pause when you leave this tab or hide the page. Read-only host diagnostics; service status does not indicate printer readiness. Warnings: CPU temperature at 75 C (critical at 85 C), 1-minute load at CPU core count, memory/storage at 85% (critical at 95%). Power history is since boot.</p>
+    </details>
+  </section>
+
   <!-- Left column: system actions -->
   <div class="sys-col">
-    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-33</span></div>
+    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-35</span></div>
 
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
