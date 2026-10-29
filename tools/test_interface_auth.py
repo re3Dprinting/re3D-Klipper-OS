@@ -115,10 +115,24 @@ class AuthTests(unittest.TestCase):
                                       Origin="https://attacker.example")[0], 403)
         self.assertEqual(self.request("password", {"new": PASSWORD},
                                       **{"Content-Type": "text/plain"})[0], 415)
-        for value in ("short", 123, ["password"]):
+        for value in ("abc", 123, ["password"]):
             self.assertEqual(self.request("password", {"new": value})[0], 400)
         self.assertEqual(self.request("password", {"new": "x" * 1025})[0], 400)
         self.assertIsNone(self.state.record)
+
+    def test_four_character_minimum_for_enabling_and_changing_password(self):
+        for password in ("", "a", "ab", "abc"):
+            with self.subTest(password=password):
+                self.assertEqual(self.request("password", {"new": password})[0], 400)
+                self.assertIsNone(self.state.record)
+        self.assertEqual(self.request("password", {"new": "1234"})[0], 200)
+        self.assertTrue(self.state.verify("1234"))
+        self.assertEqual(self.request("password", {"current": "1234", "new": "abcd"},
+                                      address="192.168.1.3")[0], 200)
+        self.assertTrue(self.state.verify("abcd"))
+        page = (ASSETS / "auth.html").read_text()
+        self.assertEqual(page.count('minlength="4"'), 2)
+        self.assertIn("at least 4 characters", page)
 
     def test_five_attempts_per_minute_and_expired_sessions(self):
         cookie = self.enable()

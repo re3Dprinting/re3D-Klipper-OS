@@ -201,8 +201,8 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(200, {"ok": True, "enabled": False}, cookie="")
             return
         password = data.get("new", "")
-        if len(password) < 12:
-            self.reply(400, {"error": "Use a password of at least 12 characters"})
+        if len(password) < 4:
+            self.reply(400, {"error": "Use a password of at least 4 characters"})
             return
         salt = secrets.token_hex(32)
         self.state.save({"salt": salt, "hash": password_hash(password, salt)})
