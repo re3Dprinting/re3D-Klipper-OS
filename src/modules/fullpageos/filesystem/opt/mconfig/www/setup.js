@@ -120,7 +120,7 @@
         page.innerHTML = `<div class="card openbox-welcome">
           <div class="openbox-welcome-copy">
             <span class="openbox-kicker">MADE FOR BIG IDEAS</span>
-            <h2>Think big.<br><span>Print huge.</span></h2>
+            <h2 id="openbox-welcome-title" tabindex="-1">Dream BIG<br><span>Print HUGE</span></h2>
             <p>Your ${welcomeMachine.name} is configured. Just a few precautions and a network choice, and you are on your way.</p>
             <div class="openbox-welcome-route"><span>01 &nbsp; Check</span><span>02 &nbsp; Connect</span><span>03 &nbsp; Create</span></div>
             <p class="hint">No machine configuration needed. Let's get you started.</p>
@@ -210,7 +210,7 @@
       }
     }
     controls();
-    byId('setup-title').focus();
+    byId(step === 'welcome' ? 'openbox-welcome-title' : 'setup-title').focus();
     window.scrollTo({top: 0, behavior: 'auto'});
   }
 

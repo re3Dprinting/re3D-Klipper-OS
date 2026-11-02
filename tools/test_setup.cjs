@@ -422,7 +422,7 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   assert.equal(wizard.byId('setup-eyebrow').textContent, 'OPEN-BOX SETUP');
   assert.equal(wizard.byId('setup-back').hidden, true);
   assert.match(wizard.byId('page').innerHTML, /openbox-welcome/);
-  assert.match(wizard.byId('page').innerHTML, /Print huge/);
+  assert.match(wizard.byId('page').innerHTML, /Dream BIG<br><span>Print HUGE<\/span>/);
   assert.match(wizard.byId('page').innerHTML, /<img class="openbox-welcome-image" src="\/img\/openbox-gigabot-4\.png" width="768" height="768"/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /<svg/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-qr-placeholder/);
@@ -481,6 +481,17 @@ test('welcome keeps its heading, notices and live buttons on the full-screen car
   const failed = await mount({openBox: true, preview: true, machineStatus: 500});
   assert.equal(failed.bodyClasses.has('openbox-welcome-screen'), false);
   assert.match(failed.byId('setup-status').textContent, /Unable to load/);
+});
+
+test('full-screen welcome artwork spans the content area while actions remain on their own row', () => {
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  assert.match(index, /\.openbox-welcome-screen \.openbox-welcome-image \{ grid-column: 2; grid-row: 1 \/ 5; max-width: min\(100%, calc\(100dvh - 128px\), 600px\)/);
+  assert.match(index, /\.openbox-welcome-screen \.setup-actions \{ grid-column: 1 \/ -1; grid-row: 5;/);
+  assert.match(index, /\.openbox-welcome-screen \.openbox-welcome-image \{ grid-column: 1; grid-row: 3;/);
+  assert.match(index, /\.openbox-welcome-screen \.setup-header \{ display: none \}/);
+  const setup = fs.readFileSync(path.join(www, 'setup.js'), 'utf8');
+  assert.match(setup, /id="openbox-welcome-title" tabindex="-1"/);
+  assert.match(setup, /byId\(step === 'welcome' \? 'openbox-welcome-title' : 'setup-title'\)\.focus\(\)/);
 });
 
 test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {
