@@ -75,6 +75,9 @@ class PasswordTests(unittest.TestCase):
         unit = (ROOT / "src/modules/fullpageos/filesystem/root_init/etc/systemd/system/re3d-ssh-password.service").read_text()
         self.assertIn("Group=re3d-auth", unit)
         self.assertIn("RuntimeDirectoryMode=0750", unit)
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertNotIn("ProtectSystem=full", unit)
+        self.assertIn("ReadWritePaths=/etc", unit)
         self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
         self.assertIn("ssh_password.py", (ROOT / "tools/re3d-os-update.sh").read_text())
 
