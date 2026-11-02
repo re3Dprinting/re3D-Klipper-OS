@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -43,25 +42,25 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn("tcp dport", policy.firewall_rules(quarantine=True))
         self.assertTrue(policy.firewall_rules(replace=True).startswith("delete table"))
 
-    def test_missing_ssh_key_keeps_quarantine_and_does_not_mark_applied(self):
+    def test_missing_ssh_password_keeps_quarantine_and_does_not_mark_applied(self):
         with patch.object(policy, "set_firewall") as firewall, \
-                patch.object(policy, "ssh_readiness", return_value={"ready": False, "error": "No key"}):
-            with self.assertRaisesRegex(RuntimeError, "No key"):
+                patch.object(policy, "ssh_readiness", return_value={"ready": False, "error": "Default password"}):
+            with self.assertRaisesRegex(RuntimeError, "Default password"):
                 policy.apply("lockdown")
         firewall.assert_called_once_with(quarantine=True)
         self.assertFalse((policy.RUNTIME / "mode").exists())
 
-    def test_effective_ssh_override_cannot_silently_leave_password_access(self):
+    def test_effective_ssh_override_cannot_silently_disable_password_access(self):
         with patch.object(policy, "set_firewall") as firewall, \
                 patch.object(policy, "ssh_readiness", return_value={"ready": True}), \
-                patch.object(policy, "run", return_value=subprocess.CompletedProcess([], 0, "passwordauthentication yes\n", "")):
+                patch.object(policy, "run", return_value=subprocess.CompletedProcess([], 0, "passwordauthentication no\n", "")):
             with self.assertRaisesRegex(RuntimeError, "SSH override"):
                 policy.apply("lockdown")
         firewall.assert_called_once_with(quarantine=True)
 
     def test_lockdown_sets_kiosk_policy_and_activated_marker_after_prerequisites(self):
-        effective = ("\n".join(("passwordauthentication no", "kbdinteractiveauthentication no",
-                                "authenticationmethods publickey", "pubkeyauthentication yes",
+        effective = ("\n".join(("passwordauthentication yes", "kbdinteractiveauthentication no",
+                                "authenticationmethods any", "pubkeyauthentication yes",
                                 "permitrootlogin no", "disableforwarding yes", "allowusers pi",
                                 "authorizedkeysfile /home/pi/.ssh/authorized_keys")) + "\n")
         def result(*args, **kwargs):
@@ -105,28 +104,24 @@ class PolicyTests(unittest.TestCase):
         with patch.object(policy, "run", return_value=result):
             self.assertRaises(RuntimeError, policy.table_exists)
 
-    def test_readiness_requires_enabled_ssh_key_and_safe_permissions(self):
+    def test_readiness_requires_enabled_ssh_and_nondefault_password(self):
         def result(*args, **kwargs):
-            if args == ("id", "-u", "pi"):
-                output = "1000"
-            elif args == ("systemctl", "is-enabled", "ssh.service"):
+            if args == ("systemctl", "is-enabled", "ssh.service"):
                 output = "enabled"
-            elif args[:1] == ("ssh-keygen",):
-                output = "256 SHA256:test recovery key"
             else:
                 output = ""
             return subprocess.CompletedProcess(args, 0, output, "")
         with patch.object(policy.shutil, "which", return_value="tool"), \
                 patch.object(policy, "run", side_effect=result), \
-                patch.object(Path, "stat", return_value=SimpleNamespace(st_uid=1000, st_mode=0o600)):
+                patch.object(policy, "password_ready", return_value=True):
             self.assertTrue(policy.ssh_readiness()["ready"])
         with patch.object(policy.shutil, "which", return_value="tool"), \
                 patch.object(policy, "run", side_effect=result), \
-                patch.object(Path, "stat", return_value=SimpleNamespace(st_uid=1000, st_mode=0o666)):
+                patch.object(policy, "password_ready", return_value=False):
             self.assertFalse(policy.ssh_readiness()["ready"])
         with patch.object(policy.shutil, "which", return_value="tool"), \
                 patch.object(policy, "run", side_effect=result), \
-                patch.object(Path, "stat", side_effect=FileNotFoundError("missing key")):
+                patch.object(policy, "password_ready", side_effect=OSError("cannot read account")):
             self.assertFalse(policy.ssh_readiness()["ready"])
 
     def test_deployment_and_display_entry_points_enforce_policy(self):
@@ -144,7 +139,7 @@ class PolicyTests(unittest.TestCase):
         self.assertLess(session.index('if [ -f "$LOCKDOWN" ]'), session.index('if [ "$MODE" = "klipperscreen" ]'))
         self.assertIn("exec cage -d --", session)
         update = (ROOT / "tools/re3d-os-update.sh").read_text(encoding="utf-8")
-        self.assertIn("security_policy.py kiosk.html kiosk-client.js", update)
+        self.assertIn("security_policy.py ssh_password.py kiosk.html kiosk-client.js", update)
         self.assertIn("-name '*.path'", update)
 
 

@@ -45,7 +45,7 @@ if include not in text:
 PY
 
 ln -sf /etc/nginx/sites-available/re3d-configurator /etc/nginx/sites-enabled/re3d-configurator
-systemctl enable re3d-security.service re3d-auth.service re3d-auth-tls.service re3d-auth-revoke.path
+systemctl enable re3d-security.service re3d-auth.service re3d-auth-tls.service re3d-auth-revoke.path re3d-ssh-password.service
 if [[ "$MODE" == "live" ]]; then
   bash /opt/mconfig/prepare_auth_tls.sh
   nginx -t

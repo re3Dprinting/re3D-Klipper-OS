@@ -54,6 +54,23 @@
     <button id="submit" class="btn-primary" type="submit" disabled>Log in</button>
     <button id="disable" class="btn-ghost" type="button" hidden>Disable password protection</button>
   </form>
+  <section id="ssh-section" hidden aria-labelledby="ssh-heading">
+    <h2 id="ssh-heading">SSH / pi account password</h2>
+    <p>This changes the pi account password used by SSH, console login and sudo, not the interface password or touchscreen PIN. The factory password is raspberry unless it has already been changed. Existing SSH keys remain valid. Set a non-default password and test SSH login before enabling Lockdown.</p>
+    <form id="ssh-form">
+      <div id="ssh-admin-row" hidden>
+        <label for="ssh-admin">Current interface administrator password</label>
+        <input id="ssh-admin" type="password" autocomplete="current-password" maxlength="1024">
+      </div>
+      <label for="ssh-current">Current pi password</label>
+      <input id="ssh-current" type="password" autocomplete="current-password" maxlength="1024" required>
+      <label for="ssh-new">New pi password (at least 8 characters)</label>
+      <input id="ssh-new" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
+      <label for="ssh-confirm">Confirm new pi password</label>
+      <input id="ssh-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
+      <button class="btn-primary" type="submit">Change pi password</button>
+    </form>
+  </section>
   <button id="logout" class="btn-ghost" type="button" hidden>Log out of this browser</button>
   <p id="status" class="status-message" role="status" aria-live="polite"></p>
   <footer class="security-footer"><a href="/">Return to interface</a></footer>
@@ -85,11 +102,14 @@
       : 'Enter the printer interface password.';
     el('warning').hidden = !settings;
     el('warning').textContent = mode === 'lockdown'
-      ? 'Lockdown blocks direct API/camera ports and other incoming services, disables remote desktop and KlipperScreen, and requires key-only SSH recovery for pi. Configure and TEST your SSH key first. The touchscreen uses a separate PIN and locks after 5 minutes idle. Host policy changes take effect after reboot; finish any print before rebooting.'
+      ? 'Lockdown blocks direct API/camera ports and other incoming services and disables remote desktop and KlipperScreen. Set a non-default pi password below and TEST SSH login first; existing SSH keys still work. The touchscreen uses a separate PIN and locks after 5 minutes idle. Host policy changes take effect after reboot; finish any print before rebooting.'
       : mode === 'basic'
         ? 'Basic protects the web interfaces only. The touchscreen stays unlocked and direct API/camera access can bypass this password.'
         : 'Off disables interface authentication and leaves ordinary HTTP available. Security settings still use HTTPS to protect credentials. Do not expose the printer to the Internet.';
     el('mode-row').hidden = !settings;
+    el('ssh-section').hidden = !settings;
+    el('ssh-admin-row').hidden = !enabled;
+    el('ssh-admin').required = settings && enabled;
     el('pending').hidden = !settings || !state.reboot_required;
     el('pending').textContent = `Host policy pending reboot: applied ${state.applied_mode}; requested ${state.mode}. Network and kiosk restrictions switch together at reboot.`;
     el('new-fields').hidden = !settings || mode === 'off';
@@ -149,6 +169,16 @@
     render();
     el('status').textContent = 'Password protection disabled.';
   }));
+  el('ssh-form').addEventListener('submit', event => {
+    event.preventDefault();
+    act(async () => {
+      if (el('ssh-new').value !== el('ssh-confirm').value) throw new Error('New pi passwords do not match');
+      await request('ssh-password', {current:el('ssh-admin').value,
+                                    ssh_current:el('ssh-current').value, ssh_new:el('ssh-new').value});
+      el('ssh-form').reset();
+      el('status').textContent = 'pi password changed. Existing SSH keys still work. Test a new SSH connection before enabling Lockdown.';
+    });
+  });
   el('logout').addEventListener('click', () => act(async () => {
     await request('logout', {});
     location.replace('/auth/login');

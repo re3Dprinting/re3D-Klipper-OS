@@ -12,6 +12,7 @@ import logging
 import os
 from pathlib import Path
 import secrets
+import socket
 import tempfile
 import threading
 import time
@@ -56,6 +57,20 @@ def lockdown_readiness():
         return data
     finally:
         connection.close()
+
+
+def change_ssh_password(old, new):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(20)
+        connection.connect("/run/re3d-ssh-password/password.sock")
+        connection.sendall(json.dumps({"old": old, "new": new}).encode() + b"\n")
+        with connection.makefile("rb") as stream:
+            result = json.loads(stream.readline(8193))
+    if (not isinstance(result, dict) or type(result.get("status")) is not int
+            or result["status"] not in (200, 400, 403, 500)
+            or (result["status"] != 200 and not isinstance(result.get("error"), str))):
+        raise ValueError("Invalid system password helper response")
+    return result.pop("status"), result
 
 
 class AuthState:
@@ -278,7 +293,7 @@ class AuthHandler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError("Expected an object")
-            for key in ("password", "current", "new", "pin"):
+            for key in ("password", "current", "new", "pin", "ssh_current", "ssh_new"):
                 if key in data and (not isinstance(data[key], str) or len(data[key]) > 1024):
                     raise ValueError("Passwords must be strings of at most 1024 characters")
         except (ValueError, UnicodeError) as error:
@@ -323,7 +338,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.state.revoke_connections()
             self.reply(200, {"ok": True}, cookie="")
             return
-        if self.path not in ("/auth/login", "/auth/password"):
+        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password"):
             self.reply(404, {"error": "Not found"})
             return
         address = self.headers.get("X-Real-IP", "")
@@ -347,6 +362,10 @@ class AuthHandler(BaseHTTPRequestHandler):
             return
         if self.state.record is not None and not self.state.verify(data.get("current", "")):
             self.reply(403, {"error": "Current password is incorrect"})
+            return
+        if self.path == "/auth/ssh-password":
+            status, result = change_ssh_password(data.get("ssh_current", ""), data.get("ssh_new", ""))
+            self.reply(status, result)
             return
         mode = data.get("mode", self.state.mode if self.state.record else "basic")
         if data.get("disable") is True:
@@ -376,7 +395,7 @@ class AuthHandler(BaseHTTPRequestHandler):
             if self.state.mode != "lockdown":
                 readiness = lockdown_readiness()
                 if not readiness["ready"]:
-                    self.reply(409, {"error": readiness.get("error", "Configure an SSH recovery key first")})
+                    self.reply(409, {"error": readiness.get("error", "Set a non-default pi password first")})
                     return
         record = ({key: self.state.record[key] for key in ("salt", "hash")}
                   if keep_password else credential(password))

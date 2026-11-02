@@ -4,12 +4,12 @@
 import json
 import os
 from pathlib import Path
-import stat
 import subprocess
 import sys
 import shutil
 
 from auth_server import AuthState
+from ssh_password import password_ready
 
 
 STATE = Path("/var/lib/re3d-auth/password.json")
@@ -31,9 +31,12 @@ AuthorizedKeysFile /home/pi/.ssh/authorized_keys
 AllowUsers pi
 PermitRootLogin no
 PubkeyAuthentication yes
-PasswordAuthentication no
+PasswordAuthentication yes
 KbdInteractiveAuthentication no
-AuthenticationMethods publickey
+AuthenticationMethods any
+MaxAuthTries 3
+LoginGraceTime 30
+MaxStartups 3:50:10
 DisableForwarding yes
 X11Forwarding no
 PermitTunnel no
@@ -54,20 +57,14 @@ def ssh_readiness():
             if run("systemctl", action, "ssh.socket", check=False).stdout.strip() == expected:
                 raise ValueError("Disable SSH socket activation before Lockdown; use ssh.service instead")
         if run("systemctl", "is-enabled", "ssh.service", check=False).stdout.strip() != "enabled":
-            raise ValueError("Enable ssh.service and test SSH key login before Lockdown")
-        uid = int(run("id", "-u", "pi").stdout)
-        for path in (Path("/home/pi"), Path("/home/pi/.ssh"), Path("/home/pi/.ssh/authorized_keys")):
-            info = path.stat()
-            if info.st_uid not in (0, uid) or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-                raise ValueError(f"{path} must be owned by pi/root and not group/world writable")
-        result = run("ssh-keygen", "-l", "-f", "/home/pi/.ssh/authorized_keys")
-        if not result.stdout.strip():
-            raise ValueError("No valid SSH recovery key found")
+            raise ValueError("Enable ssh.service and test SSH login before Lockdown")
+        if not password_ready():
+            raise ValueError("Set a non-default, unexpired pi password before Lockdown")
         options = ("-f", str(SSH_CONFIG)) if SSH_CONFIG.exists() else ()
         run("/usr/sbin/sshd", "-t", *options)
         return {"ready": True}
     except (OSError, KeyError, ValueError, subprocess.SubprocessError) as error:
-        return {"ready": False, "error": f"Configure and test pi's SSH recovery key first: {error}"}
+        return {"ready": False, "error": f"Configure and test pi's SSH password first: {error}"}
 
 
 def firewall_rules(quarantine=False, replace=False):
@@ -160,13 +157,13 @@ def apply(mode):
         if not result["ready"]:
             raise RuntimeError(result["error"])
         effective = run("/usr/sbin/sshd", "-T", "-f", str(SSH_CONFIG)).stdout.splitlines()
-        for option in ("passwordauthentication no", "kbdinteractiveauthentication no",
-                       "authenticationmethods publickey", "pubkeyauthentication yes",
+        for option in ("passwordauthentication yes", "kbdinteractiveauthentication no",
+                       "authenticationmethods any", "pubkeyauthentication yes",
                        "permitrootlogin no", "disableforwarding yes", "allowusers pi"):
             if option not in effective:
                 raise RuntimeError(f"SSH override prevents Lockdown: expected {option}")
         if "authorizedkeysfile /home/pi/.ssh/authorized_keys" not in effective:
-            raise RuntimeError("SSH must use pi's checked .ssh/authorized_keys recovery file")
+            raise RuntimeError("SSH must preserve pi's .ssh/authorized_keys file")
         write(SSH_UNIT, "[Service]\nExecStartPre=\n"
               f"ExecStartPre=/usr/sbin/sshd -t -f {SSH_CONFIG}\nExecStart=\n"
               f"ExecStart=/usr/sbin/sshd -D -f {SSH_CONFIG}\nExecReload=\n"
@@ -175,7 +172,7 @@ def apply(mode):
         run("systemctl", "daemon-reload")
         command = run("systemctl", "show", "-p", "ExecStart", "--value", "ssh.service").stdout
         if f"argv[]=/usr/sbin/sshd -D -f {SSH_CONFIG} ;" not in command:
-            raise RuntimeError("An SSH service override prevents the key-only Lockdown command")
+            raise RuntimeError("An SSH service override prevents the Lockdown command")
         stop_desktops()
         policies = {
             "DeveloperToolsAvailability": 2, "BrowserGuestModeEnabled": False,

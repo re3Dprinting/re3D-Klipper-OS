@@ -2,6 +2,8 @@
 Description=re3D interface password service
 After=network.target
 Requires=re3d-security.service
+Requires=re3d-ssh-password.service
+After=re3d-ssh-password.service
 After=re3d-security.service
 Before=nginx.service
 
@@ -18,7 +20,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
-RestrictAddressFamilies=AF_INET
+RestrictAddressFamilies=AF_INET AF_UNIX
 CapabilityBoundingSet=
 
 [Install]

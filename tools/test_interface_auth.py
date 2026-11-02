@@ -54,6 +54,38 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
 
+    def test_ssh_password_changes_require_current_admin_password_when_enabled(self):
+        data = {"ssh_current": "raspberry", "ssh_new": "new pi password"}
+        with patch.object(auth, "change_ssh_password", return_value=(200, {"ok": True})) as change:
+            self.assertEqual(self.request("ssh-password", data)[0], 200)
+            change.assert_called_once_with("raspberry", "new pi password")
+            change.reset_mock()
+            cookie = self.enable()
+            self.assertEqual(self.request("ssh-password", data, cookie=cookie)[0], 403)
+            self.assertEqual(self.request("ssh-password", data, address="127.0.0.1")[0], 403)
+            change.assert_not_called()
+            self.assertEqual(self.request("ssh-password", {**data, "current": PASSWORD})[0], 200)
+
+    def test_ssh_password_changes_enforce_transport_origin_and_rate_limits(self):
+        data = {"ssh_current": "raspberry", "ssh_new": "new pi password"}
+        with patch.object(auth, "change_ssh_password", return_value=(403, {"error": "Wrong pi password"})) as change:
+            self.assertEqual(self.request("ssh-password", data, **{
+                "X-Forwarded-Proto": "http", "Origin": "http://printer.local"})[0], 426)
+            self.assertEqual(self.request("ssh-password", data, Origin="https://attacker.example")[0], 403)
+            change.assert_not_called()
+            for _ in range(5):
+                self.assertEqual(self.request("ssh-password", data)[0], 403)
+            self.assertEqual(self.request("ssh-password", data)[0], 429)
+            self.assertEqual(change.call_count, 5)
+
+    def test_ssh_password_helper_failure_is_reported(self):
+        with patch.object(auth, "change_ssh_password", side_effect=OSError("Helper unavailable")), \
+                self.assertLogs(level="ERROR"):
+            status, body, _ = self.request("ssh-password", {
+                "ssh_current": "raspberry", "ssh_new": "new pi password"})
+        self.assertEqual(status, 500)
+        self.assertIn("error", body)
+
     def test_password_lifecycle_and_current_password_required_even_locally(self):
         self.assertEqual(self.request("check")[0], 204)
         cookie = self.enable()
@@ -209,15 +241,15 @@ class AuthTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             auth.AuthState(self.state.path)
 
-    def test_lockdown_requires_pin_and_ssh_key_before_persisting(self):
+    def test_lockdown_requires_pin_and_ssh_password_before_persisting(self):
         self.assertEqual(self.request("password", {"mode": "lockdown", "new": PASSWORD})[0], 400)
         for value in ("123", "abcd", "１２３４"):
             self.assertEqual(self.request("password", {"mode": "lockdown", "new": PASSWORD,
                                                        "pin": value})[0], 400)
-        with patch.object(auth, "lockdown_readiness", return_value={"ready": False, "error": "No SSH key"}):
+        with patch.object(auth, "lockdown_readiness", return_value={"ready": False, "error": "Default pi password"}):
             status, body, _ = self.request("password", {"mode": "lockdown", "new": PASSWORD, "pin": "1234"})
         self.assertEqual(status, 409)
-        self.assertIn("SSH key", body["error"])
+        self.assertIn("pi password", body["error"])
         self.assertIsNone(self.state.record)
 
     def test_pin_and_admin_sessions_are_separate_and_pin_is_local_only(self):
