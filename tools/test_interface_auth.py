@@ -54,6 +54,28 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
 
+    def test_readiness_checks_require_admin_confirmation_and_use_existing_prerequisites(self):
+        with patch.object(auth, "lockdown_readiness", return_value={"ready": False, "error": "Change pi password"}) as check:
+            status, body, _ = self.request("readiness", {})
+            self.assertEqual(status, 200)
+            self.assertFalse(body["ready"])
+            self.enable()
+            check.reset_mock()
+            self.assertEqual(self.request("readiness", {})[0], 403)
+            check.assert_not_called()
+            status, body, _ = self.request("readiness", {"current": PASSWORD})
+            self.assertEqual(status, 200)
+            self.assertEqual(body["error"], "Change pi password")
+            check.assert_called_once()
+
+    def test_readiness_failure_is_explicit_and_never_looks_ready(self):
+        with patch.object(auth, "lockdown_readiness", side_effect=OSError("Backend unavailable")), \
+                self.assertLogs(level="ERROR"):
+            status, body, _ = self.request("readiness", {})
+        self.assertEqual(status, 500)
+        self.assertIn("error", body)
+        self.assertNotIn("ready", body)
+
     def test_ssh_password_changes_require_current_admin_password_when_enabled(self):
         data = {"ssh_current": "raspberry", "ssh_new": "new pi password"}
         with patch.object(auth, "change_ssh_password", return_value=(200, {"ok": True})) as change:

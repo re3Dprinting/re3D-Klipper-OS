@@ -117,6 +117,45 @@ a:hover { color: var(--brand) }
 .status-message { margin: 18px 0 0; white-space: pre-wrap }
 .status-message:empty { display: none }
 
+.settings-card { max-width: 820px }
+.setup-section { min-width: 0; padding: 22px 0; border-top: 1px solid var(--border) }
+.setup-section h2 { margin: 0 0 10px; font-size: 19px; line-height: 1.4 }
+.setup-section > p { margin-bottom: 14px }
+.setup-section > div + div, .setup-section .credential-fields + div { margin-top: 18px }
+.setup-section > button { margin: 12px 0 }
+.setup-section .field-help { margin: 7px 0 0; font-size: 12px; color: var(--muted) }
+.security-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 16px;
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.eyebrow { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px }
+.security-overview strong { font-size: 15px; font-weight: 600 }
+.security-overview p { grid-column: 1 / -1; margin: 0; font-size: 12px }
+.security-overview a { grid-column: 1 / -1; min-height: 44px; display: flex; align-items: center; font-size: 13px }
+.mode-explanation { margin-top: 14px }
+.security-help { margin: 16px 0; font-size: 13px }
+.security-help summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--fg); font-weight: 600 }
+.security-help summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px }
+.security-help p { margin: 8px 0 14px }
+.security-help li + li { margin-top: 8px }
+.security-help ol { padding-left: 22px; color: var(--muted) }
+.security-help code { color: var(--fg); overflow-wrap: anywhere }
+.mode-comparison dt { margin-top: 12px; color: var(--fg); font-weight: 600 }
+.mode-comparison dd { margin: 4px 0 0; color: var(--muted) }
+.check-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; font-size: 13px; color: var(--fg) }
+.check-row input { flex: 0 0 24px; width: 24px; min-height: 24px; height: 24px; padding: 0; accent-color: var(--brand) }
+[data-state="blocked"] { border-left-color: var(--warn) }
+#readiness[data-state="ready"] { border-left-color: var(--brand); font-weight: 500 }
+.status-message:focus { outline: 2px solid var(--brand); outline-offset: 3px }
+#credentials-section:first-child { padding-top: 0; border-top: 0 }
+.settings-card #credentials-section { padding-top: 22px; border-top: 1px solid var(--border) }
+
 .pin-card { max-width: 420px; text-align: center }
 .pin-card .security-brand { justify-content: center }
 .pin-card h1 { font-size: 26px }
@@ -153,6 +192,7 @@ iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; back
   h1 { font-size: 26px }
   .toolbar-copy { gap: 10px }
   .toolbar-copy span { font-size: 11px }
+  .security-overview { grid-template-columns: minmax(0,1fr) }
 }
 @media (min-width: 600px) and (max-height: 600px) {
   .pin-card {

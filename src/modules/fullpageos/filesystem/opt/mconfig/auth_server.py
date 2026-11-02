@@ -304,7 +304,10 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.post(data)
         except (OSError, http.client.HTTPException, ValueError):
             logging.exception("Could not apply authentication settings")
-            self.reply(500, {"error": "Could not save settings or verify prerequisites; settings were not changed"})
+            error = ("Could not check Lockdown requirements. Check that the Configurator service is running, then try again."
+                     if self.path == "/auth/readiness"
+                     else "Could not save settings or verify prerequisites; settings were not changed")
+            self.reply(500, {"error": error})
 
     def post(self, data):
         if self.path in ("/auth/pin", "/auth/activity", "/auth/lock"):
@@ -338,7 +341,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.state.revoke_connections()
             self.reply(200, {"ok": True}, cookie="")
             return
-        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password"):
+        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness"):
             self.reply(404, {"error": "Not found"})
             return
         address = self.headers.get("X-Real-IP", "")
@@ -347,7 +350,7 @@ class AuthHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.reply(400, {"error": "Missing client address"})
             return
-        if not self.state.attempt(address):
+        if not self.state.attempt("readiness:" + address if self.path == "/auth/readiness" else address):
             self.reply(429, {"error": "Too many password attempts. Wait 60 seconds and try again."})
             return
         if self.path == "/auth/login":
@@ -362,6 +365,9 @@ class AuthHandler(BaseHTTPRequestHandler):
             return
         if self.state.record is not None and not self.state.verify(data.get("current", "")):
             self.reply(403, {"error": "Current password is incorrect"})
+            return
+        if self.path == "/auth/readiness":
+            self.reply(200, lockdown_readiness())
             return
         if self.path == "/auth/ssh-password":
             status, result = change_ssh_password(data.get("ssh_current", ""), data.get("ssh_new", ""))

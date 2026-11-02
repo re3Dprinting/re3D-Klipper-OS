@@ -64,7 +64,7 @@ def ssh_readiness():
         run("/usr/sbin/sshd", "-t", *options)
         return {"ready": True}
     except (OSError, KeyError, ValueError, subprocess.SubprocessError) as error:
-        return {"ready": False, "error": f"Configure and test pi's SSH password first: {error}"}
+        return {"ready": False, "error": f"Lockdown requirements are not met: {error}"}
 
 
 def firewall_rules(quarantine=False, replace=False):

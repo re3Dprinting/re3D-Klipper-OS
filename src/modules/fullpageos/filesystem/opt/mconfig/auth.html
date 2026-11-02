@@ -7,186 +7,358 @@
   <link rel="stylesheet" href="/auth/security.css">
 </head>
 <body>
-<main class="security-card" aria-labelledby="heading">
+<main class="security-card" id="security-page" aria-labelledby="heading">
   <header class="security-brand">
     <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
     <span class="brand-caption">Printer access</span>
   </header>
-  <h1 id="heading">Interface password</h1>
-  <p id="description">Loading password settings...</p>
-  <p id="warning" class="notice" hidden></p>
-  <p id="pending" class="notice" role="status" hidden></p>
-  <form id="form">
-    <div id="mode-row" hidden>
-      <label for="mode">Security mode</label>
-      <select id="mode">
-        <option value="off">Off</option>
-        <option value="basic">Basic: remote interface password only</option>
-        <option value="lockdown">Lockdown: authenticated interfaces and touchscreen PIN</option>
-      </select>
-    </div>
-    <div id="current-row">
-      <label for="current">Password</label>
-      <input id="current" type="password" autocomplete="current-password" maxlength="1024" required>
-    </div>
-    <div id="new-fields" class="credential-fields" hidden>
-      <div>
-        <label for="new">New password (at least 4 characters)</label>
-        <input id="new" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
-      </div>
-      <div>
-        <label for="confirm">Confirm new password</label>
-        <input id="confirm" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
-      </div>
-    </div>
-    <div id="pin-fields" class="credential-fields" hidden>
-      <div>
-        <label for="pin">Touchscreen PIN (at least 4 digits; leave blank to keep existing PIN)</label>
-        <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
-               maxlength="1024" autocomplete="new-password">
-      </div>
-      <div>
-        <label for="pin-confirm">Confirm new touchscreen PIN</label>
-        <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
-               maxlength="1024" autocomplete="new-password">
-      </div>
-    </div>
-    <button id="submit" class="btn-primary" type="submit" disabled>Log in</button>
-    <button id="disable" class="btn-ghost" type="button" hidden>Disable password protection</button>
-  </form>
-  <section id="ssh-section" hidden aria-labelledby="ssh-heading">
-    <h2 id="ssh-heading">SSH / pi account password</h2>
-    <p>This changes the pi account password used by SSH, console login and sudo, not the interface password or touchscreen PIN. The factory password is raspberry unless it has already been changed. Existing SSH keys remain valid. Set a non-default password and test SSH login before enabling Lockdown.</p>
-    <form id="ssh-form">
-      <div id="ssh-admin-row" hidden>
-        <label for="ssh-admin">Current interface administrator password</label>
-        <input id="ssh-admin" type="password" autocomplete="current-password" maxlength="1024">
-      </div>
-      <label for="ssh-current">Current pi password</label>
-      <input id="ssh-current" type="password" autocomplete="current-password" maxlength="1024" required>
-      <label for="ssh-new">New pi password (at least 8 characters)</label>
-      <input id="ssh-new" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
-      <label for="ssh-confirm">Confirm new pi password</label>
-      <input id="ssh-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
-      <button class="btn-primary" type="submit">Change pi password</button>
-    </form>
+  <h1 id="heading">Printer security</h1>
+  <p id="description">Checking your current settings...</p>
+
+  <section id="overview" class="security-overview" hidden aria-label="Current protection">
+    <div><span class="eyebrow">Saved security mode</span><strong id="current-mode"></strong></div>
+    <div><span class="eyebrow">Network &amp; touchscreen policy</span><strong id="applied-mode"></strong></div>
+    <p id="next-step"></p>
+    <a id="next-link" href="#mode-row">Go to the next step</a>
   </section>
+  <p id="pending" class="notice" role="status" hidden></p>
+
+  <section id="mode-row" class="setup-section" hidden aria-labelledby="mode-heading">
+    <h2 id="mode-heading">1. Choose your protection</h2>
+    <label for="mode">How will this printer be used?</label>
+    <select id="mode" form="form" aria-describedby="warning">
+      <option value="off">Off - no interface password</option>
+      <option value="basic">Basic - password for browser access</option>
+      <option value="lockdown">Lockdown - browser, touchscreen &amp; network protection</option>
+    </select>
+    <p id="warning" class="notice mode-explanation"></p>
+    <details class="security-help">
+      <summary>Compare the three modes</summary>
+      <dl class="mode-comparison">
+        <dt>Off</dt><dd>No password for Mainsail or the Configurator. Anyone who can reach the printer can use it.</dd>
+        <dt>Basic</dt><dd>Adds a password to both browser interfaces. The touchscreen stays unlocked. Direct API and camera connections remain available without this password, including slicer integrations.</dd>
+        <dt>Lockdown</dt><dd>Also requires a touchscreen PIN and blocks direct API, camera and other incoming ports. Signed-in browsers still work; unauthenticated slicers do not. Remote desktop and KlipperScreen are disabled. SSH remains available to the pi account using its password or existing keys.</dd>
+      </dl>
+      <p>No mode makes it safe to expose this printer directly to the Internet.</p>
+    </details>
+  </section>
+
+  <section id="ssh-section" class="setup-section" hidden aria-labelledby="ssh-heading">
+    <h2 id="ssh-heading">Prepare SSH recovery access</h2>
+    <p id="ssh-intro"></p>
+    <p id="readiness" class="notice" role="status">Not checked yet.</p>
+    <div id="ssh-admin-row" hidden>
+      <label for="ssh-admin">Current web administrator password</label>
+      <input id="ssh-admin" form="ssh-form" type="password" autocomplete="current-password" maxlength="1024"
+             aria-describedby="ssh-admin-help">
+      <p id="ssh-admin-help" class="field-help">Confirms that you may check recovery access or change the pi password. This is not the pi password.</p>
+    </div>
+    <button id="check-readiness" type="button">Check Lockdown requirements</button>
+    <details id="ssh-details" class="security-help">
+      <summary>Change the pi account password</summary>
+      <p>The pi account is used for SSH, console login and sudo. Its password is separate from the web password and touchscreen PIN. Existing SSH keys will keep working.</p>
+      <form id="ssh-form">
+        <div>
+          <label for="ssh-current">Current pi password</label>
+          <input id="ssh-current" type="password" autocomplete="current-password" maxlength="1024" required
+                 aria-describedby="ssh-default-help">
+          <p id="ssh-default-help" class="field-help">The factory default is raspberry. If it has been changed, use the current password instead.</p>
+        </div>
+        <div class="credential-fields">
+          <div>
+            <label for="ssh-new">New pi password (at least 8 characters)</label>
+            <input id="ssh-new" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
+          </div>
+          <div>
+            <label for="ssh-confirm">Confirm new pi password</label>
+            <input id="ssh-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
+          </div>
+        </div>
+        <button id="ssh-submit" class="btn-primary" type="submit">Change pi password</button>
+      </form>
+    </details>
+    <details class="security-help" id="ssh-test-help">
+      <summary>How do I test SSH access?</summary>
+      <ol>
+        <li>On a computer on the same network, open Terminal (macOS/Linux) or PowerShell (Windows).</li>
+        <li>Run <code id="ssh-command">ssh pi@PRINTER_ADDRESS</code>, using the printer's network address, not localhost.</li>
+        <li>On a first connection, verify the host-key fingerprint through a trusted channel before accepting it.</li>
+        <li>Sign in as pi using its current password. Nothing appears while you type the password; this is normal.</li>
+        <li>Keep the working session open until setup is complete. Type <code>exit</code> when you are ready to close it.</li>
+      </ol>
+      <p>SSH is a text-based maintenance connection, not the printer's browser interface. A browser cannot test an SSH login for you. If login fails or you do not know the current password, contact your printer administrator before enabling Lockdown.</p>
+    </details>
+    <label id="ssh-test-row" class="check-row" hidden>
+      <input id="ssh-tested" type="checkbox">
+      <span>I successfully tested SSH login using the current pi password.</span>
+    </label>
+    <p id="ssh-status" class="status-message" role="status" aria-live="polite" tabindex="-1"></p>
+  </section>
+
+  <form id="form">
+    <section id="credentials-section" class="setup-section" aria-labelledby="credentials-heading">
+      <h2 id="credentials-heading" hidden>Set your access credentials</h2>
+      <p id="credentials-help" hidden></p>
+      <div id="new-fields" class="credential-fields" hidden>
+        <div>
+          <label for="new">New web administrator password (at least 4 characters)</label>
+          <input id="new" type="password" autocomplete="new-password" minlength="4" maxlength="1024"
+                 aria-describedby="web-password-help">
+          <p id="web-password-help" class="field-help">Used for Mainsail, the Configurator and security changes. Longer, unique passwords are safer. Leave both fields blank to keep an existing password.</p>
+        </div>
+        <div>
+          <label for="confirm">Confirm new web password</label>
+          <input id="confirm" type="password" autocomplete="new-password" minlength="4" maxlength="1024">
+        </div>
+      </div>
+      <div id="pin-fields" class="credential-fields" hidden>
+        <div>
+          <label for="pin">Touchscreen PIN (at least 4 digits)</label>
+          <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+                 maxlength="1024" autocomplete="new-password" aria-describedby="pin-help">
+          <p id="pin-help" class="field-help">Unlocks only the local touchscreen, not remote browser access or security settings. Locks at startup, manually or after 5 minutes idle. Leave both fields blank to keep an existing PIN.</p>
+        </div>
+        <div>
+          <label for="pin-confirm">Confirm new touchscreen PIN</label>
+          <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+                 maxlength="1024" autocomplete="new-password">
+        </div>
+      </div>
+      <div id="current-row">
+        <label id="current-label" for="current">Web administrator password</label>
+        <input id="current" type="password" autocomplete="current-password" maxlength="1024" required>
+      </div>
+    </section>
+    <section id="review-section" class="setup-section" hidden aria-labelledby="review-heading">
+      <h2 id="review-heading">Review &amp; save</h2>
+      <p id="review"></p>
+      <p id="save-help" class="notice"></p>
+    </section>
+    <button id="submit" class="btn-primary" type="submit" disabled>Log in</button>
+    <button id="disable" class="btn-ghost" type="button" hidden>Turn password protection off...</button>
+  </form>
+  <p id="status" class="status-message" role="status" aria-live="polite" tabindex="-1"></p>
+  <button id="reload-page" class="btn-ghost" type="button" hidden>Reload security page</button>
   <button id="logout" class="btn-ghost" type="button" hidden>Log out of this browser</button>
-  <p id="status" class="status-message" role="status" aria-live="polite"></p>
+  <details id="connection-help" class="security-help" hidden>
+    <summary>Why does my browser show a certificate warning?</summary>
+    <p>This printer generates its own HTTPS certificate. The connection is encrypted, but your browser does not automatically trust the printer's identity. The warning is separate from whether password protection is enabled.</p>
+    <p>Verify that you are connecting to your actual printer, and verify its certificate fingerprint through a trusted channel before trusting the certificate on your device. Do not ignore a changed certificate unexpectedly. Ask your administrator for help if you are unsure.</p>
+    <p>Remote security settings always use HTTPS to keep passwords encrypted. With protection Off, ordinary interface browsing can still use HTTP; HTTP is not encrypted.</p>
+  </details>
   <footer class="security-footer"><a href="/">Return to interface</a></footer>
 </main>
 <script>
 (() => {
   const el = id => document.getElementById(id);
   const settings = location.pathname === '/auth/settings';
+  const names = {off:'Off', basic:'Basic', lockdown:'Lockdown'};
   let enabled = false;
   let state = {};
   let busy = false;
+  let loaded = false;
+  let readiness = null;
   async function request(path, data) {
     const response = await fetch('/auth/' + path, {
-      method: data ? 'POST' : 'GET',
-      headers: data ? {'Content-Type':'application/json'} : {},
-      body: data ? JSON.stringify(data) : undefined,
+      method:data ? 'POST' : 'GET',
+      headers:data ? {'Content-Type':'application/json'} : {},
+      body:data ? JSON.stringify(data) : undefined,
       cache:'no-store'
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Password request failed');
+    let result;
+    try { result = await response.json(); }
+    catch { throw new Error('The printer returned an unreadable response. Check your connection and reload this page.'); }
+    if (!response.ok) throw new Error(result.error || 'The printer could not complete this request. Try again.');
     return result;
+  }
+  function enteringLockdown() {
+    return el('mode').value === 'lockdown' && state.mode !== 'lockdown';
   }
   function render() {
     const mode = el('mode').value;
-    el('heading').textContent = settings ? 'Printer security' : 'Printer login';
+    const lockdown = mode === 'lockdown';
+    const entering = enteringLockdown();
+    el('security-page').classList.toggle('settings-card', settings);
+    el('heading').textContent = settings ? 'Printer security' : 'Welcome back';
     el('description').textContent = settings
-      ? (enabled ? 'The current administrator password is required to change mode, password or PIN. Leave new credentials blank to keep them.'
-        : 'Protection is optional and currently disabled. Choose a mode and set an administrator password.')
-      : 'Enter the printer interface password.';
-    el('warning').hidden = !settings;
-    el('warning').textContent = mode === 'lockdown'
-      ? 'Lockdown blocks direct API/camera ports and other incoming services and disables remote desktop and KlipperScreen. Set a non-default pi password below and TEST SSH login first; existing SSH keys still work. The touchscreen uses a separate PIN and locks after 5 minutes idle. Host policy changes take effect after reboot; finish any print before rebooting.'
-      : mode === 'basic'
-        ? 'Basic protects the web interfaces only. The touchscreen stays unlocked and direct API/camera access can bypass this password.'
-        : 'Off disables interface authentication and leaves ordinary HTTP available. Security settings still use HTTPS to protect credentials. Do not expose the printer to the Internet.';
-    el('mode-row').hidden = !settings;
-    el('ssh-section').hidden = !settings;
-    el('ssh-admin-row').hidden = !enabled;
-    el('ssh-admin').required = settings && enabled;
+      ? 'Choose who can use this printer. We will guide you through the steps for your chosen protection.'
+      : 'Enter the web administrator password to open your printer interface.';
+    for (const id of ['overview', 'mode-row', 'ssh-section', 'review-section', 'connection-help',
+                      'credentials-heading', 'credentials-help']) el(id).hidden = !settings;
+    el('current-mode').textContent = names[state.mode];
+    el('applied-mode').textContent = state.applied_mode === 'lockdown' ? 'Lockdown restrictions active' : 'Standard access';
+    el('next-step').textContent = entering
+      ? !readiness?.ready ? 'Next: complete the printer checks in step 2.'
+        : !el('ssh-tested').checked ? 'Next: test SSH login and confirm it in step 2.'
+          : 'Next: set your web password and touchscreen PIN, then review and save.'
+      : mode !== state.mode ? `You selected ${names[mode]}. Review your credentials and save to apply this choice.`
+        : state.reboot_required ? 'Next: finish any print, then reboot to apply the saved network and touchscreen changes.'
+          : enabled ? 'Protection is configured. You can update your credentials or choose a different mode below.'
+            : 'No interface password is set. Choose Basic or Lockdown below to begin setup.';
+    el('next-link').href = entering && (!readiness?.ready || !el('ssh-tested').checked)
+      ? '#ssh-section' : mode === 'off' && !enabled ? '#mode-row' : '#credentials-section';
+    el('next-link').hidden = state.reboot_required && mode === state.mode;
     el('pending').hidden = !settings || !state.reboot_required;
-    el('pending').textContent = `Host policy pending reboot: applied ${state.applied_mode}; requested ${state.mode}. Network and kiosk restrictions switch together at reboot.`;
+    el('pending').textContent = `Reboot needed: ${names[state.mode]} is saved, but network and touchscreen restrictions have not switched yet. Finish your print before rebooting.`;
+    el('warning').textContent = {
+      off:'No password is needed to use either browser interface. Only use this on a trusted network.',
+      basic:'A simple browser password, with no change to the touchscreen or direct slicer/API connections. This does not secure every connection to the printer.',
+      lockdown:'Complete the recovery-access step first. This also protects the touchscreen and restricts network services; a reboot is needed when entering or leaving this mode.'
+    }[mode];
+    el('ssh-heading').textContent = lockdown ? '2. Prepare recovery access' : 'Optional: pi account password';
+    el('ssh-intro').textContent = lockdown
+      ? 'Recovery access lets an administrator reach the printer if browser or touchscreen access is unavailable. A non-default pi password is required. Check the printer, then test SSH login yourself.'
+      : 'You can change the pi account password here in any mode. This is separate from browser protection. It is required to be non-default before enabling Lockdown.';
+    el('readiness').textContent = readiness === null
+      ? state.mode === 'lockdown'
+        ? 'Lockdown is already configured. You can run a fresh recovery-access check here at any time.'
+        : 'Not checked. Use "Check Lockdown requirements" to find out what still needs attention.'
+      : readiness.ready
+        ? 'Printer checks passed: the pi password is non-default and SSH/service prerequisites are ready. '
+          + (el('ssh-tested').checked ? 'SSH login confirmed by you.' : 'A successful SSH login still needs to be tested by you.')
+        : 'Action needed: ' + readiness.error;
+    el('readiness').dataset.state = readiness === null ? 'pending' : readiness.ready ? 'ready' : 'blocked';
+    el('ssh-admin-row').hidden = !enabled || (!lockdown && !el('ssh-details').open);
+    el('ssh-admin').required = settings && enabled;
+    for (const id of ['readiness', 'check-readiness', 'ssh-test-help']) el(id).hidden = !lockdown;
+    el('ssh-test-row').hidden = !entering;
+    const host = location.hostname?.replace(/^\[|\]$/g, '');
+    el('ssh-command').textContent = host && host !== 'localhost' && host !== '127.0.0.1' && host !== '::1'
+      ? `ssh pi@${host}` : 'ssh pi@PRINTER_ADDRESS';
+    el('credentials-heading').textContent = settings
+      ? `${lockdown ? '3' : '2'}. ${mode === 'off' ? 'Confirm your choice' : 'Set your access credentials'}` : 'Sign in';
+    el('credentials-help').textContent = mode === 'off'
+      ? enabled ? 'Enter the current web administrator password to turn browser protection off.' : 'No credentials are required while protection is Off.'
+      : 'Keep these credentials somewhere safe. The web password, pi account password and touchscreen PIN have different jobs.';
     el('new-fields').hidden = !settings || mode === 'off';
     el('new').disabled = el('confirm').disabled = !settings || mode === 'off';
     el('new').required = settings && mode !== 'off' && !enabled;
     el('confirm').required = el('new').required || !!el('new').value;
-    el('pin-fields').hidden = !settings || mode !== 'lockdown';
-    el('pin').disabled = el('pin-confirm').disabled = !settings || mode !== 'lockdown';
-    el('pin').required = settings && mode === 'lockdown' && !state.has_pin;
+    el('pin-fields').hidden = !settings || !lockdown;
+    el('pin').disabled = el('pin-confirm').disabled = !settings || !lockdown;
+    el('pin').required = settings && lockdown && !state.has_pin;
     el('pin-confirm').required = el('pin').required || !!el('pin').value;
     el('current-row').hidden = settings && !enabled;
     el('current').required = !settings || enabled;
+    el('current-label').textContent = settings ? 'Current web administrator password (required to save)' : 'Web administrator password';
+    el('review-heading').textContent = `${lockdown ? '4' : '3'}. Review & save`;
+    const switchingHostPolicy = (mode === 'lockdown') !== (state.applied_mode === 'lockdown');
+    el('review').textContent = (mode === 'off'
+      ? 'Browser password protection will be off. Anyone who can reach the printer can use both interfaces. '
+      : `Save ${names[mode]} protection. Browser password changes take effect immediately; other browser sessions will need to sign in again. `)
+      + (switchingHostPolicy
+        ? 'Network and touchscreen policy switch after a reboot; wait until the printer is idle before rebooting.'
+        : 'No network or touchscreen policy reboot is needed.');
+    el('save-help').textContent = entering && !readiness?.ready
+      ? 'Before saving: complete the printer checks in step 2.'
+      : entering && !el('ssh-tested').checked
+        ? 'Before saving: test SSH login, then tick the confirmation in step 2.'
+        : 'Ready to save. Your changes will not reboot the printer automatically.';
     el('disable').hidden = !settings || !enabled;
     el('logout').hidden = !enabled;
-    el('submit').textContent = settings ? 'Save security settings' : 'Log in';
-    el('submit').disabled = false;
+    el('submit').textContent = busy ? 'Please wait...' : settings ? `Save ${names[mode]} protection` : 'Log in';
+    el('submit').disabled = busy || !loaded || (settings && entering && (!readiness?.ready || !el('ssh-tested').checked));
+    el('mode').disabled = busy || !loaded;
+    el('reload-page').hidden = loaded || busy;
+    for (const id of ['ssh-submit', 'check-readiness', 'disable', 'logout']) el(id).disabled = busy || !loaded;
   }
-  async function act(action) {
+  function message(id, text, error = false) {
+    el(id).textContent = text;
+    el(id).dataset.state = error ? 'blocked' : 'ready';
+    el(id).focus();
+  }
+  async function act(action, status = 'status') {
     if (busy) return;
     busy = true;
-    el('status').textContent = '';
+    el(status).textContent = '';
+    render();
     try { await action(); }
-    catch (error) { el('status').textContent = error.message; }
-    finally { busy = false; }
+    catch (error) { message(status, error.message, true); }
+    finally { busy = false; render(); }
   }
+  async function checkReadiness(current) {
+    readiness = null;
+    try {
+      readiness = await request('readiness', {current});
+    } catch (error) {
+      readiness = {ready:false, error:'Could not check the printer. ' + error.message};
+      throw error;
+    } finally { render(); }
+    if (!readiness.ready) el('ssh-details').open = true;
+    return readiness.ready;
+  }
+  el('check-readiness').addEventListener('click', () => {
+    if (enabled && !el('ssh-admin').reportValidity()) return;
+    act(async () => {
+      await checkReadiness(el('ssh-admin').value);
+      message('ssh-status', readiness.ready ? 'Printer checks passed. Next, test SSH login using the instructions above.' : readiness.error, !readiness.ready);
+    }, 'ssh-status');
+  });
   el('form').addEventListener('submit', event => {
     event.preventDefault();
     act(async () => {
       if (settings) {
         const mode = el('mode').value;
-        if (mode !== 'off' && el('new').value !== el('confirm').value) throw new Error('New passwords do not match');
-        if (mode === 'lockdown' && el('pin').value !== el('pin-confirm').value) throw new Error('New PINs do not match');
-        await request('password', {current:el('current').value,
-                                  new:mode === 'off' ? '' : el('new').value,
+        if (mode !== 'off' && el('new').value !== el('confirm').value) throw new Error('New web passwords do not match. Enter the same password in both fields.');
+        if (mode === 'lockdown' && el('pin').value !== el('pin-confirm').value) throw new Error('New PINs do not match. Enter the same PIN in both fields.');
+        if (enteringLockdown()) {
+          if (!el('ssh-tested').checked) throw new Error('Complete step 2: test SSH login and tick the confirmation before saving.');
+          if (!await checkReadiness(el('current').value)) throw new Error('Complete step 2 before saving: ' + readiness.error);
+        }
+        if (mode === 'off' && enabled && !confirm('Turn browser password protection off? Anyone who can reach the printer will be able to use both interfaces. Network and touchscreen changes may need a reboot.')) return;
+        await request('password', {current:el('current').value, new:mode === 'off' ? '' : el('new').value,
                                   mode, pin:mode === 'lockdown' ? el('pin').value : ''});
-        state = await request('status');
-        enabled = state.enabled;
         el('form').reset();
+        el('ssh-form').reset();
+        try { state = await request('status'); }
+        catch (error) {
+          loaded = false;
+          throw new Error('Your security settings were saved, but their status could not be refreshed. Reload this page before making more changes. ' + error.message);
+        }
+        enabled = state.enabled;
         el('mode').value = state.mode;
         render();
-        el('status').textContent = 'Settings saved. Sessions were invalidated.'
-          + (state.reboot_required ? ' Reboot after finishing any print to apply the host policy.' : '');
+        message('status', `${names[state.mode]} protection saved. Other browser sessions were signed out.`
+          + (state.reboot_required ? ' Next: finish any print, then reboot to apply network and touchscreen changes.' : ' No reboot is needed.'));
       } else {
         await request('login', {password:el('current').value});
         location.replace('/');
       }
     });
   });
-  el('disable').addEventListener('click', () => act(async () => {
-    if (!el('current').reportValidity()) return;
-    if (!confirm('Disable password protection for both web interfaces?')) return;
-    await request('password', {current:el('current').value, disable:true});
-    enabled = false;
-    state = await request('status');
-    el('form').reset();
+  el('disable').addEventListener('click', () => {
     el('mode').value = 'off';
     render();
-    el('status').textContent = 'Password protection disabled.';
-  }));
+    el('current').focus();
+  });
   el('ssh-form').addEventListener('submit', event => {
     event.preventDefault();
     act(async () => {
-      if (el('ssh-new').value !== el('ssh-confirm').value) throw new Error('New pi passwords do not match');
+      if (el('ssh-new').value !== el('ssh-confirm').value) throw new Error('New pi passwords do not match. Enter the same password in both fields.');
       await request('ssh-password', {current:el('ssh-admin').value,
                                     ssh_current:el('ssh-current').value, ssh_new:el('ssh-new').value});
       el('ssh-form').reset();
-      el('status').textContent = 'pi password changed. Existing SSH keys still work. Test a new SSH connection before enabling Lockdown.';
-    });
+      el('ssh-tested').checked = false;
+      readiness = null;
+      message('ssh-status', 'pi password changed. Existing SSH keys still work. Next: check Lockdown requirements again and test a new SSH login using the new password.');
+    }, 'ssh-status');
   });
   el('logout').addEventListener('click', () => act(async () => {
     await request('logout', {});
     location.replace('/auth/login');
   }));
-  for (const id of ['mode', 'new', 'pin']) el(id).addEventListener('input', render);
+  el('mode').addEventListener('change', () => {
+    el('ssh-details').open = enteringLockdown() && !readiness?.ready;
+    el('ssh-test-help').open = enteringLockdown();
+    render();
+  });
+  el('ssh-details').addEventListener('toggle', render);
+  el('reload-page').addEventListener('click', () => location.reload());
+  for (const id of ['new', 'pin', 'ssh-tested']) el(id).addEventListener('input', render);
   act(async () => {
     state = await request('status');
     enabled = state.enabled;
+    loaded = true;
     if (!settings && state.local && state.mode === 'lockdown') {
       location.replace('/auth/kiosk'); return;
     }
