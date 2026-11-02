@@ -422,7 +422,7 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   assert.equal(wizard.byId('setup-eyebrow').textContent, 'OPEN-BOX SETUP');
   assert.equal(wizard.byId('setup-back').hidden, true);
   assert.match(wizard.byId('page').innerHTML, /openbox-welcome/);
-  assert.match(wizard.byId('page').innerHTML, /Dream BIG<br><span>Print HUGE<\/span>/);
+  assert.match(wizard.byId('page').innerHTML, /Think big\.<br><span>Print huge\.<\/span>/);
   assert.match(wizard.byId('page').innerHTML, /<img class="openbox-welcome-image" src="\/img\/openbox-gigabot-4\.png" width="768" height="768"/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /<svg/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-qr-placeholder/);

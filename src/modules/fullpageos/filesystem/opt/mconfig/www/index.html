@@ -408,21 +408,23 @@
   body.openbox-welcome-screen .pages { max-width: none; padding: 0 }
   .openbox-welcome-screen .openbox-welcome {
     min-height: 100vh; min-height: 100dvh; margin: 0; border-radius: 0;
-    padding: clamp(16px, 3vw, 32px); gap: 12px 24px;
+    padding: clamp(16px, 2vw, 32px); gap: 12px 24px;
     grid-template-rows: auto 1fr auto auto auto;
   }
   .openbox-welcome-screen .setup-header { display: none }
   .openbox-welcome-screen .openbox-welcome-copy { grid-column: 1; grid-row: 1 / 3 }
   #openbox-welcome-title:focus { outline: none }
-  .openbox-welcome-screen .openbox-welcome h2 { font-size: clamp(32px, 4vw, 52px) }
-  .openbox-welcome-screen .openbox-welcome-copy p { margin: 10px 0 }
-  .openbox-welcome-screen .openbox-welcome-route { margin: 16px 0 }
+  .openbox-welcome-screen .openbox-welcome h2 { font-size: clamp(48px, 7vw, 100px); line-height: 1.02 }
+  .openbox-welcome-screen .openbox-kicker { font-size: 13px }
+  .openbox-welcome-screen .openbox-welcome-copy p { margin: 10px 0; font-size: 16px }
+  .openbox-welcome-screen .openbox-welcome-copy .hint { font-size: 14px }
+  .openbox-welcome-screen .openbox-welcome-route { margin: 16px 0; font-size: 14px }
   .openbox-welcome-screen .openbox-welcome-image { grid-column: 2; grid-row: 1 / 5; max-width: min(100%, calc(100dvh - 128px), 600px) }
   .openbox-welcome-screen #setup-preview-notice { grid-column: 1; grid-row: 3; margin: 0 }
   .openbox-welcome-screen .setup-status { grid-column: 1; grid-row: 4; margin: 0 }
   .openbox-welcome-screen .setup-status:empty { display: none }
   .openbox-welcome-screen .setup-actions { grid-column: 1 / -1; grid-row: 5; margin: 0 }
-  .openbox-welcome-screen .setup-actions button { min-height: 48px; min-width: 120px }
+  .openbox-welcome-screen .setup-actions button { min-height: 48px; min-width: 120px; font-size: 16px }
   @keyframes openbox-arrive { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
   .openbox-slide { display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1.4fr); gap: 24px; margin: 20px 0 }
   .openbox-slide figure { margin: 0 }
