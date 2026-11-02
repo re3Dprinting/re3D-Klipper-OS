@@ -75,6 +75,7 @@
   }
 
   async function render() {
+    previewNotice.hidden = !preview || step === 'welcome';
     document.body.classList.remove('openbox-welcome-screen');
     setupContainer.insertBefore(setupHeader, networkChoices);
     setupContainer.insertBefore(previewNotice, networkChoices);

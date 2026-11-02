@@ -614,10 +614,11 @@ test('developer preview opens from System and never schedules setup, changes set
   const system = fs.readFileSync(path.join(www, 'tabs', 'system.html'), 'utf8');
   assert.match(system, /id="openbox-preview-link" href="\/\?setup=1&amp;flow=openbox&amp;preview=1" target="_blank" rel="noopener"/);
   const wizard = await mount({saved: 'completed', openBox: true, preview: true});
-  assert.equal(wizard.byId('setup-preview-notice').hidden, false);
+  assert.equal(wizard.byId('setup-preview-notice').hidden, true);
   assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
     [['/cgi-bin/get_machine_type.sh', 'GET']]);
   await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-preview-notice').hidden, false);
   await wizard.click('setup-next');
   await wizard.selectNetwork('connect');
   assert.deepEqual(wizard.loads, ['network']);
