@@ -151,6 +151,9 @@ function element() {
     addEventListener(name, fn) { this.listeners[name] = fn; },
     querySelectorAll() { return []; },
     querySelector() { return this.radio || (this.radio = element()); },
+    prepend(...nodes) { this.prepended = nodes; },
+    append(...nodes) { this.appended = nodes; },
+    insertBefore(node) { (this.inserted || (this.inserted = [])).push(node); },
     setAttribute() {}, removeAttribute() {}, focus() {}
   };
 }
@@ -167,6 +170,8 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
   byId('setup-network-offline').value = 'offline';
   byId('setup-network-offline').checked = false;
   const state = { step: saved, failure, flashing };
+  byId('page').parentElement = element();
+  const bodyClasses = new Set();
   const requests = [];
   const loads = [];
   const events = {};
@@ -174,7 +179,9 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
     location: { search: (openBox ? '?setup=1&flow=openbox' : '?setup=1') + (preview ? '&preview=1' : ''), hostname: 'printer.local', href: '' },
     URLSearchParams, console,
     window: { scrollTo() {}, addEventListener(name, fn) { events[name] = fn; } },
-    document: { getElementById: byId, body: { classList: { add() {} } } },
+    document: { getElementById: byId, body: { classList: {
+      add(name) { bodyClasses.add(name); }, remove(name) { bodyClasses.delete(name); }
+    } } },
     cleanupTabArtifacts() {}, currentTab: null,
     loadTab: async name => { loads.push(name); return true; },
     fetch: async (url, options = {}) => {
@@ -205,7 +212,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
     await byId(`setup-network-${mode}`).listeners.change();
     await settle();
   }
-  return { byId, state, requests, loads, events, context, click, selectNetwork, settle };
+  return { byId, state, requests, loads, events, context, click, selectNetwork, settle, bodyClasses };
 }
 
 async function mountDisplay() {
@@ -451,6 +458,29 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
     ['/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/get_machine_type.sh', '/cgi-bin/setup.py', '/cgi-bin/reboot.sh']);
   const writes = wizard.requests.filter(r => r.options.method === 'POST' && r.url.endsWith('setup.py'));
   assert.deepEqual(writes.map(r => JSON.parse(r.options.body).step), ['openbox', 'completed']);
+});
+
+test('welcome keeps its heading, notices and live buttons on the full-screen card and restores them on exit', async () => {
+  const wizard = await mount({openBox: true, preview: true});
+  const {byId, bodyClasses} = wizard;
+  const card = byId('page').querySelector('.openbox-welcome');
+  assert.equal(bodyClasses.has('openbox-welcome-screen'), true);
+  assert.deepEqual(card.prepended, [byId('setup-header')]);
+  assert.deepEqual(card.appended, [byId('setup-preview-notice'), byId('setup-status'), byId('setup-actions')]);
+  await wizard.click('setup-next');
+  assert.equal(bodyClasses.has('openbox-welcome-screen'), false);
+  assert.deepEqual(byId('page').parentElement.appended, [byId('setup-status'), byId('setup-actions')]);
+  assert.deepEqual(byId('page').parentElement.inserted.slice(-2),
+    [byId('setup-header'), byId('setup-preview-notice')]);
+  await wizard.click('setup-back');
+  assert.equal(bodyClasses.has('openbox-welcome-screen'), true);
+  await wizard.click('setup-skip');
+  assert.equal(wizard.context.location.href, '/#system');
+  const normal = await mount();
+  assert.equal(normal.bodyClasses.has('openbox-welcome-screen'), false);
+  const failed = await mount({openBox: true, preview: true, machineStatus: 500});
+  assert.equal(failed.bodyClasses.has('openbox-welcome-screen'), false);
+  assert.match(failed.byId('setup-status').textContent, /Unable to load/);
 });
 
 test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {

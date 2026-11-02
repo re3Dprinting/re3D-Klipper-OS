@@ -27,6 +27,10 @@
   const skip = byId('setup-skip');
   const status = byId('setup-status');
   const page = byId('page');
+  const setupHeader = byId('setup-header');
+  const previewNotice = byId('setup-preview-notice');
+  const actions = byId('setup-actions');
+  const setupContainer = page.parentElement;
   const networkChoices = byId('setup-network-choice');
   const networkInputs = [byId('setup-network-connect'), byId('setup-network-offline')];
   let step = steps[0];
@@ -71,6 +75,10 @@
   }
 
   async function render() {
+    document.body.classList.remove('openbox-welcome-screen');
+    setupContainer.insertBefore(setupHeader, networkChoices);
+    setupContainer.insertBefore(previewNotice, networkChoices);
+    setupContainer.append(status, actions);
     const index = steps.indexOf(step);
     byId('setup-title').textContent = titles[index];
     byId('setup-description').textContent = descriptions[index];
@@ -120,6 +128,10 @@
           <img class="openbox-welcome-image" src="/img/openbox-${welcomeMachine.image}.png" width="${welcomeMachine.width}" height="${welcomeMachine.height}"
             alt="${welcomeMachine.name} printer">
         </div>`;
+        const welcomeCard = page.querySelector('.openbox-welcome');
+        welcomeCard.prepend(setupHeader);
+        welcomeCard.append(previewNotice, status, actions);
+        document.body.classList.add('openbox-welcome-screen');
       } else if (step === 'precautions') {
         page.innerHTML = `<div class="card">
           <div class="card-title">Before your first print</div>

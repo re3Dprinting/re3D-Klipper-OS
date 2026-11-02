@@ -404,6 +404,29 @@
   .openbox-welcome p { max-width: 430px; color: var(--muted) }
   .openbox-welcome-route { display: flex; flex-wrap: wrap; gap: 16px; margin: 24px 0; font-size: 12px; color: var(--fg) }
   .openbox-welcome-image { display: block; width: 100%; height: auto; object-fit: contain; max-width: 330px; justify-self: center; border-radius: var(--radius-sm); animation: openbox-arrive .8s .15s ease-out both }
+  body.openbox-welcome-screen .app { max-width: none }
+  body.openbox-welcome-screen .pages { max-width: none; padding: 0 }
+  .openbox-welcome-screen .openbox-welcome {
+    min-height: 100vh; min-height: 100dvh; margin: 0; border-radius: 0;
+    padding: clamp(16px, 3vw, 32px); gap: 12px 24px;
+    grid-template-rows: auto 1fr auto auto auto;
+  }
+  .openbox-welcome-screen .setup-header { grid-column: 1 / -1; margin: 0 }
+  .openbox-welcome-screen .setup-header h1 { margin: 0; font-size: clamp(20px, 3vw, 28px) }
+  .openbox-welcome-screen .setup-header .brand-logo,
+  .openbox-welcome-screen #setup-eyebrow,
+  .openbox-welcome-screen #setup-progress,
+  .openbox-welcome-screen #setup-description { display: none }
+  .openbox-welcome-screen .openbox-welcome-copy { grid-column: 1; grid-row: 2 }
+  .openbox-welcome-screen .openbox-welcome h2 { font-size: clamp(32px, 4vw, 52px) }
+  .openbox-welcome-screen .openbox-welcome-copy p { margin: 10px 0 }
+  .openbox-welcome-screen .openbox-welcome-route { margin: 16px 0 }
+  .openbox-welcome-screen .openbox-welcome-image { grid-column: 2; grid-row: 2; max-width: min(100%, 48vh, 400px) }
+  .openbox-welcome-screen #setup-preview-notice { grid-column: 1 / -1; grid-row: 3; margin: 0 }
+  .openbox-welcome-screen .setup-status { grid-column: 1 / -1; grid-row: 4; margin: 0 }
+  .openbox-welcome-screen .setup-status:empty { display: none }
+  .openbox-welcome-screen .setup-actions { grid-column: 1 / -1; grid-row: 5; margin: 0 }
+  .openbox-welcome-screen .setup-actions button { min-height: 48px; min-width: 120px }
   @keyframes openbox-arrive { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
   .openbox-slide { display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1.4fr); gap: 24px; margin: 20px 0 }
   .openbox-slide figure { margin: 0 }
@@ -420,6 +443,11 @@
     .setup-choices { grid-template-columns: 1fr }
     .openbox-slide, .openbox-welcome { grid-template-columns: 1fr }
     .openbox-welcome-image { max-width: 240px }
+    .openbox-welcome-screen .openbox-welcome { grid-template-rows: auto auto auto auto auto auto }
+    .openbox-welcome-screen .openbox-welcome-image { grid-column: 1; grid-row: 3; max-width: min(100%, 24vh, 200px) }
+    .openbox-welcome-screen #setup-preview-notice { grid-row: 4 }
+    .openbox-welcome-screen .setup-status { grid-row: 5 }
+    .openbox-welcome-screen .setup-actions { grid-row: 6 }
     .openbox-slide figure { max-width: 220px }
   }
   @media (prefers-reduced-motion: reduce) {
