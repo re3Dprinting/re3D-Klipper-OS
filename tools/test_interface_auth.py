@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, PropertyMock, patch
 
 
 FILESYSTEM = Path(__file__).resolve().parents[1] / "src/modules/fullpageos/filesystem"
@@ -53,6 +53,60 @@ class AuthTests(unittest.TestCase):
         status, _, cookie = self.request("password", {"new": PASSWORD})
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
+
+    def test_security_reboot_requires_an_admin_session_and_pending_policy(self):
+        cookie = self.enable()
+        with patch.object(auth, "request_reboot", return_value=(200, {"ok": True})) as reboot:
+            self.assertEqual(self.request("reboot", {}, cookie=cookie)[0], 409)
+            with patch.object(auth.AuthState, "reboot_required", new_callable=PropertyMock, return_value=True):
+                self.assertEqual(self.request("reboot", {})[0], 403)
+                self.assertEqual(self.request("reboot", {}, address="127.0.0.1")[0], 403)
+                pin = "re3d_kiosk=" + self.state.session(kiosk=True)
+                self.assertEqual(self.request("reboot", {}, cookie=pin)[0], 403)
+                reboot.assert_not_called()
+                self.assertEqual(self.request("reboot", {}, cookie=cookie)[0], 200)
+                reboot.assert_called_once()
+
+    def test_security_reboot_errors_and_origin_are_explicit(self):
+        with patch.object(auth.AuthState, "reboot_required", new_callable=PropertyMock, return_value=True), \
+                patch.object(auth, "request_reboot", side_effect=OSError("Printer offline")) as reboot:
+            self.assertEqual(self.request("reboot", {}, Origin="https://attacker.example")[0], 403)
+            self.assertEqual(self.request("reboot", {}, **{"X-Forwarded-Proto": "http"})[0], 426)
+            reboot.assert_not_called()
+            with self.assertLogs(level="ERROR"):
+                status, body, _ = self.request("reboot", {})
+            self.assertEqual(status, 500)
+            self.assertIn("Could not verify", body["error"])
+
+    def test_reboot_checks_printer_state_and_only_requests_an_idle_host_reboot(self):
+        for print_state, idle_state, expected in (
+                ("printing", "Printing", 409), ("paused", "Ready", 409),
+                ("standby", "Printing", 409), ("complete", "Idle", 200), ("standby", "Ready", 200)):
+            with self.subTest(print_state=print_state, idle_state=idle_state):
+                status_response = Mock(status=200)
+                status_response.read.return_value = json.dumps({"result": {"status": {
+                    "print_stats": {"state": print_state}, "idle_timeout": {"state": idle_state}}}}).encode()
+                reboot_response = Mock(status=200)
+                reboot_response.read.return_value = b'{"result":"ok"}'
+                connection = Mock()
+                connection.getresponse.side_effect = [status_response, reboot_response]
+                with patch.object(auth.http.client, "HTTPConnection", return_value=connection):
+                    self.assertEqual(auth.request_reboot()[0], expected)
+                if expected == 200:
+                    connection.request.assert_any_call("POST", "/machine/reboot")
+                else:
+                    self.assertEqual(connection.request.call_count, 1)
+                connection.close.assert_called_once()
+
+    def test_invalid_printer_status_never_triggers_reboot(self):
+        for data in ({}, {"result": {"status": {}}}, {"result": None}, None):
+            connection = Mock()
+            response = Mock(status=200)
+            response.read.return_value = json.dumps(data).encode()
+            connection.getresponse.return_value = response
+            with patch.object(auth.http.client, "HTTPConnection", return_value=connection):
+                self.assertRaises(ValueError, auth.request_reboot)
+            self.assertEqual(connection.request.call_count, 1)
 
     def test_readiness_checks_require_admin_confirmation_and_use_existing_prerequisites(self):
         with patch.object(auth, "lockdown_readiness", return_value={"ready": False, "error": "Change pi password"}) as check:

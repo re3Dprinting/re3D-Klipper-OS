@@ -73,6 +73,35 @@ def change_ssh_password(old, new):
     return result.pop("status"), result
 
 
+def request_reboot():
+    connection = http.client.HTTPConnection("127.0.0.1", 7125, timeout=5)
+    try:
+        connection.request("GET", "/printer/objects/query?print_stats&idle_timeout")
+        response = connection.getresponse()
+        data = json.loads(response.read(8192))
+        if (response.status != 200 or not isinstance(data, dict)
+                or not isinstance(data.get("result"), dict)
+                or not isinstance(data["result"].get("status"), dict)):
+            raise ValueError("Printer status could not be checked")
+        status = data["result"]["status"]
+        if not isinstance(status.get("print_stats"), dict) or not isinstance(status.get("idle_timeout"), dict):
+            raise ValueError("Printer status is incomplete")
+        print_state = status.get("print_stats", {}).get("state")
+        idle_state = status.get("idle_timeout", {}).get("state")
+        if print_state in ("printing", "paused") or idle_state == "Printing":
+            return 409, {"error": "The printer is busy or a print is paused. Finish or cancel the print and wait until the printer is idle before rebooting."}
+        if print_state not in ("standby", "complete", "cancelled", "error") or idle_state not in ("Idle", "Ready"):
+            raise ValueError("Printer idle state could not be verified")
+        connection.request("POST", "/machine/reboot")
+        response = connection.getresponse()
+        data = json.loads(response.read(8192))
+        if response.status != 200 or not isinstance(data, dict) or data.get("result") != "ok":
+            raise ValueError("The host reboot request was not accepted")
+        return 200, {"ok": True}
+    finally:
+        connection.close()
+
+
 class AuthState:
     def __init__(self, path):
         self.path = Path(path)
@@ -304,7 +333,10 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.post(data)
         except (OSError, http.client.HTTPException, ValueError):
             logging.exception("Could not apply authentication settings")
-            error = ("Could not check Lockdown requirements. Check that the Configurator service is running, then try again."
+            error = ("Could not verify that the printer is idle or confirm the reboot request. "
+                     "Check the printer connection before trying again; your saved settings are unchanged."
+                     if self.path == "/auth/reboot"
+                     else "Could not check Lockdown requirements. Check that the Configurator service is running, then try again."
                      if self.path == "/auth/readiness"
                      else "Could not save settings or verify prerequisites; settings were not changed")
             self.reply(500, {"error": error})
@@ -341,7 +373,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.state.revoke_connections()
             self.reply(200, {"ok": True}, cookie="")
             return
-        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness"):
+        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness", "/auth/reboot"):
             self.reply(404, {"error": "Not found"})
             return
         address = self.headers.get("X-Real-IP", "")
@@ -352,6 +384,15 @@ class AuthHandler(BaseHTTPRequestHandler):
             return
         if not self.state.attempt("readiness:" + address if self.path == "/auth/readiness" else address):
             self.reply(429, {"error": "Too many password attempts. Wait 60 seconds and try again."})
+            return
+        if self.path == "/auth/reboot":
+            if self.state.record is not None and self.token() not in self.state.sessions:
+                self.reply(403, {"error": "Sign in with the web administrator password before rebooting"})
+            elif not self.state.reboot_required:
+                self.reply(409, {"error": "These security settings do not require a reboot"})
+            else:
+                status, result = request_reboot()
+                self.reply(status, result)
             return
         if self.path == "/auth/login":
             if self.local and self.state.mode == "lockdown":

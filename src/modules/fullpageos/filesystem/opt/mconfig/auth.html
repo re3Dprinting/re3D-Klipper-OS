@@ -22,6 +22,7 @@
     <a id="next-link" href="#mode-row">Go to the next step</a>
   </section>
   <p id="pending" class="notice" role="status" hidden></p>
+  <button id="reboot-open" class="btn-ghost" type="button" hidden>Apply saved changes: reboot...</button>
 
   <section id="mode-row" class="setup-section" hidden aria-labelledby="mode-heading">
     <h2 id="mode-heading">1. Choose your protection</h2>
@@ -148,6 +149,17 @@
   </details>
   <footer class="security-footer"><a href="/">Return to interface</a></footer>
 </main>
+<dialog id="reboot-dialog" aria-labelledby="reboot-heading" aria-describedby="reboot-description">
+  <h2 id="reboot-heading">Settings saved. Reboot to finish?</h2>
+  <p id="reboot-description">Your network and touchscreen changes need a printer computer restart. Rebooting interrupts printer control and disconnects this browser.</p>
+  <p class="notice">Finish or cancel any print first. Do not reboot during printing, movement or maintenance. The printer's status will be checked before the reboot request is sent.</p>
+  <div class="dialog-actions">
+    <button id="reboot-later" class="btn-ghost" type="button" autofocus>Reboot later</button>
+    <button id="reboot-confirm" class="btn-primary" type="button">Reboot now</button>
+  </div>
+  <p id="reboot-status" class="status-message" role="status" aria-live="polite" tabindex="-1"></p>
+  <button id="reboot-reload" class="btn-ghost" type="button" hidden>Reload after the printer restarts</button>
+</dialog>
 <script>
 (() => {
   const el = id => document.getElementById(id);
@@ -158,6 +170,7 @@
   let busy = false;
   let loaded = false;
   let readiness = null;
+  let rebootRequested = false;
   async function request(path, data) {
     const response = await fetch('/auth/' + path, {
       method:data ? 'POST' : 'GET',
@@ -200,6 +213,12 @@
     el('next-link').hidden = state.reboot_required && mode === state.mode;
     el('pending').hidden = !settings || !state.reboot_required;
     el('pending').textContent = `Reboot needed: ${names[state.mode]} is saved, but network and touchscreen restrictions have not switched yet. Finish your print before rebooting.`;
+    el('reboot-open').hidden = !settings || !state.reboot_required;
+    el('reboot-open').disabled = busy || rebootRequested;
+    el('reboot-confirm').disabled = busy || rebootRequested;
+    el('reboot-confirm').textContent = rebootRequested ? 'Reboot requested' : busy ? 'Checking printer...' : 'Reboot now';
+    el('reboot-later').textContent = rebootRequested ? 'Close' : 'Reboot later';
+    el('reboot-reload').hidden = !rebootRequested;
     el('warning').textContent = {
       off:'No password is needed to use either browser interface. Only use this on a trusted network.',
       basic:'A simple browser password, with no change to the touchscreen or direct slicer/API connections. This does not secure every connection to the printer.',
@@ -322,6 +341,7 @@
         render();
         message('status', `${names[state.mode]} protection saved. Other browser sessions were signed out.`
           + (state.reboot_required ? ' Next: finish any print, then reboot to apply network and touchscreen changes.' : ' No reboot is needed.'));
+        if (state.reboot_required) el('reboot-dialog').showModal();
       } else {
         await request('login', {password:el('current').value});
         location.replace('/');
@@ -369,6 +389,15 @@
     render();
   });
   el('ssh-details').addEventListener('toggle', render);
+  el('reboot-open').addEventListener('click', () => el('reboot-dialog').showModal());
+  el('reboot-later').addEventListener('click', () => el('reboot-dialog').close());
+  el('reboot-reload').addEventListener('click', () => location.reload());
+  el('reboot-confirm').addEventListener('click', () => act(async () => {
+    if (rebootRequested) return;
+    await request('reboot', {});
+    rebootRequested = true;
+    message('reboot-status', 'Reboot requested. Wait for the printer to restart, then reload this page. You may need to sign in again.');
+  }, 'reboot-status'));
   el('reload-page').addEventListener('click', () => location.reload());
   for (const id of ['new', 'pin', 'ssh-tested']) el(id).addEventListener('input', render);
   act(async () => {

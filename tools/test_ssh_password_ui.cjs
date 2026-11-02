@@ -21,6 +21,7 @@ async function fixture(mode, pathname = '/auth/settings') {
     if (!elements.has(id)) elements.set(id, {
       value: '', hidden: false, required: false, textContent: '', checked:false,
       dataset:{}, classList:{toggle() {}}, focus() {}, reportValidity() { return true; },
+      showModal() { this.open = true; }, close() { this.open = false; },
       addEventListener(event, callback) { this[event] = callback; },
       reset() {
         const names = id === 'ssh-form' ? ['ssh-current', 'ssh-new', 'ssh-confirm', 'ssh-admin']
@@ -120,6 +121,7 @@ test('Lockdown explains and gates both machine prerequisites and a real SSH logi
   assert.equal(f.calls.at(-2)[0], '/auth/password');
   assert.match(f.element('status').textContent, /finish any print, then reboot/);
   assert.equal(f.element('pending').hidden, false);
+  assert.equal(f.element('reboot-dialog').open, true);
 });
 
 test('stale readiness and failed checks cannot be mistaken for permission to enable Lockdown', async () => {
@@ -205,4 +207,38 @@ test('login remains a simple password form, without setup controls', async () =>
   assert.deepEqual(f.redirects, ['/']);
   const off = await fixture('off', '/auth/login');
   assert.deepEqual(off.redirects, ['/']);
+});
+
+test('reboot prompt is shown only when needed and reboot later never sends a reboot request', async () => {
+  const basic = await fixture('basic');
+  await basic.save();
+  assert.notEqual(basic.element('reboot-dialog').open, true);
+  const f = await fixture('lockdown');
+  f.chooseMode('basic');
+  await f.save();
+  assert.equal(f.element('reboot-dialog').open, true);
+  f.element('reboot-later').click();
+  assert.equal(f.element('reboot-dialog').open, false);
+  assert.equal(f.element('reboot-open').hidden, false);
+  assert.equal(f.calls.some(([url]) => url === '/auth/reboot'), false);
+  f.element('reboot-open').click();
+  assert.equal(f.element('reboot-dialog').open, true);
+  f.element('reboot-confirm').click();
+  await flush();
+  assert.deepEqual(f.calls.at(-1), ['/auth/reboot', {}]);
+  assert.match(f.element('reboot-status').textContent, /Reboot requested/);
+  assert.equal(f.element('reboot-confirm').disabled, true);
+  assert.equal(f.element('reboot-reload').hidden, false);
+});
+
+test('failed reboot requests remain visible and do not claim the printer is restarting', async () => {
+  const f = await fixture('lockdown');
+  f.chooseMode('off');
+  await f.save();
+  f.fail();
+  f.element('reboot-confirm').click();
+  await flush();
+  assert.equal(f.element('reboot-status').dataset.state, 'blocked');
+  assert.equal(f.element('reboot-confirm').disabled, false);
+  assert.equal(f.element('reboot-reload').hidden, true);
 });
