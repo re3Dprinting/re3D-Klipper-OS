@@ -41,9 +41,26 @@ class PasswordTests(unittest.TestCase):
     def test_system_rejection_is_reported_without_password_output(self):
         with patch.object(helper, "shadow_record", return_value=["pi", "$hash"]), \
                 patch.object(helper, "matches", return_value=True), \
+                patch.object(helper.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 1, "", "chpasswd: pam_chauthtok() failed: Authentication token manipulation error\n"
+                    "old password $hash")), \
+                self.assertLogs(level="ERROR") as logs:
+            status, body = helper.change_password({"old": "old", "new": "password"})
+        self.assertEqual(status, 500)
+        self.assertIn("service logs", body["error"])
+        message = " ".join(logs.output)
+        self.assertIn("Authentication token manipulation error", message)
+        for secret in ("old", "password", "$hash"):
+            self.assertNotIn(secret, message.split(": ", 1)[-1])
+        self.assertNotIn("\n", message)
+
+    def test_missing_system_error_details_are_explicit(self):
+        with patch.object(helper, "shadow_record", return_value=["pi", "$hash"]), \
+                patch.object(helper, "matches", return_value=True), \
                 patch.object(helper.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)), \
-                self.assertLogs(level="ERROR"):
+                self.assertLogs(level="ERROR") as logs:
             self.assertEqual(helper.change_password({"old": "old", "new": "password"})[0], 500)
+        self.assertIn("chpasswd supplied no error details", logs.output[0])
 
     def test_readiness_rejects_default_locked_and_expired_accounts(self):
         for hashed, expired, default in (("!locked", "", False), ("", "", False),

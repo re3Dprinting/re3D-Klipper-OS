@@ -67,8 +67,13 @@ def change_password(data):
     result = subprocess.run(["chpasswd"], input=f"pi:{new}\n", text=True,
                             capture_output=True, timeout=15)
     if result.returncode:
-        logging.error("System password update failed (exit %s)", result.returncode)
-        return 500, {"error": "The system rejected the pi password change"}
+        detail = result.stderr or "chpasswd supplied no error details"
+        for secret in sorted({old, new, hashed}, key=len, reverse=True):
+            detail = detail.replace(secret, "[redacted]")
+        detail = "".join(char if char.isprintable() else " " for char in detail)[:1024]
+        logging.error("System password update failed (exit %s): %s", result.returncode, detail)
+        return 500, {"error": "The system rejected the pi password change. "
+                             "Check re3d-ssh-password.service logs for the system error"}
     return 200, {"ok": True}
 
 
