@@ -416,7 +416,7 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   assert.equal(wizard.byId('setup-back').hidden, true);
   assert.match(wizard.byId('page').innerHTML, /openbox-welcome/);
   assert.match(wizard.byId('page').innerHTML, /Print huge/);
-  assert.match(wizard.byId('page').innerHTML, /<img class="openbox-welcome-image" src="\/img\/openbox-gigabot-4\.png" width="378" height="448"/);
+  assert.match(wizard.byId('page').innerHTML, /<img class="openbox-welcome-image" src="\/img\/openbox-gigabot-4\.png" width="768" height="768"/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /<svg/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-qr-placeholder/);
   assert.match(wizard.byId('setup-progress').innerHTML, /1\. Welcome/);
@@ -455,12 +455,12 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
 
 test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {
   const machines = [
-    ['Gigabot 4', 'gigabot-4', 378, 448],
-    ['Gigabot 4 XLT', 'gigabot-4-xlt', 403, 505],
-    ['Terabot 4', 'terabot-4', 463, 648],
-    ['GigabotX 2', 'gigabotx-2', 346, 490],
-    ['GigabotX XLT 2', 'gigabotx-2-xlt', 369, 552],
-    ['TerabotX 2', 'terabotx-2', 462, 652]
+    ['Gigabot 4', 'gigabot-4', 768, 768],
+    ['Gigabot 4 XLT', 'gigabot-4-xlt', 768, 768],
+    ['Terabot 4', 'terabot-4', 768, 768],
+    ['GigabotX 2', 'gigabotx-2', 768, 768],
+    ['GigabotX XLT 2', 'gigabotx-2-xlt', 768, 768],
+    ['TerabotX 2', 'terabotx-2', 768, 768]
   ];
   const machineTab = fs.readFileSync(path.join(www, 'tabs', 'machine.html'), 'utf8');
   assert.deepEqual([...machineTab.matchAll(/data-type="([^"]+)"/g)].map(match => match[1]).sort(),
@@ -470,8 +470,8 @@ test('welcome uses each configured machine and its local cropped artwork in setu
     assert.equal(artwork.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
     assert.equal(artwork.readUInt32BE(16), width);
     assert.equal(artwork.readUInt32BE(20), height);
-    assert.equal(artwork[25], image === 'terabot-4' ? 6 : 2,
-      'Only Terabot 4 uses transparent artwork; other models retain their light background');
+    assert.equal(artwork[25], 6,
+      'All supplied welcome illustrations retain their RGBA transparency');
     for (const preview of [false, true]) {
       const wizard = await mount({openBox: true, preview, machineType: `${name}\n`});
       assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
@@ -555,8 +555,8 @@ test('precautions photo is local, QR is a placeholder, and welcome motion is fin
   assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8');
   const welcome = fs.readFileSync(path.join(www, 'img', 'openbox-gigabot-4.png'));
   assert.equal(welcome.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
-  assert.equal(welcome.readUInt32BE(16), 378);
-  assert.equal(welcome.readUInt32BE(20), 448);
+  assert.equal(welcome.readUInt32BE(16), 768);
+  assert.equal(welcome.readUInt32BE(20), 768);
   assert.match(source, /\/img\/openbox-bed-locks\.jpg/);
   assert.match(source, /QR code placeholder, not scannable/);
   assert.doesNotMatch(source, /Draft guide|Operations will provide|unpacking slides are placeholders/);

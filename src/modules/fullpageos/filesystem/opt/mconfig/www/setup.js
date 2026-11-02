@@ -94,12 +94,12 @@
       if (step === 'welcome') {
         if (!welcomeMachine) {
           const machines = new Map([
-            ['Gigabot 4', {image: 'gigabot-4', width: 378, height: 448}],
-            ['Gigabot 4 XLT', {image: 'gigabot-4-xlt', width: 403, height: 505}],
-            ['Terabot 4', {image: 'terabot-4', width: 463, height: 648}],
-            ['GigabotX 2', {image: 'gigabotx-2', width: 346, height: 490}],
-            ['GigabotX XLT 2', {image: 'gigabotx-2-xlt', width: 369, height: 552}],
-            ['TerabotX 2', {image: 'terabotx-2', width: 462, height: 652}]
+            ['Gigabot 4', {image: 'gigabot-4', width: 768, height: 768}],
+            ['Gigabot 4 XLT', {image: 'gigabot-4-xlt', width: 768, height: 768}],
+            ['Terabot 4', {image: 'terabot-4', width: 768, height: 768}],
+            ['GigabotX 2', {image: 'gigabotx-2', width: 768, height: 768}],
+            ['GigabotX XLT 2', {image: 'gigabotx-2-xlt', width: 768, height: 768}],
+            ['TerabotX 2', {image: 'terabotx-2', width: 768, height: 768}]
           ]);
           const response = await fetch('/cgi-bin/get_machine_type.sh', {cache: 'no-store'});
           if (!response.ok) throw new Error(`Unable to load the configured machine (${response.status}). Reload to retry.`);
