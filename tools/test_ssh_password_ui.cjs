@@ -14,6 +14,7 @@ async function fixture(mode, pathname = '/auth/settings') {
   const calls = [];
   const redirects = [];
   let failure = false;
+  let readinessFailure = false;
   let readiness = {ready:true};
   const state = {enabled:mode !== 'off', mode, applied_mode:mode, has_pin:mode === 'lockdown'};
   function element(id) {
@@ -36,14 +37,15 @@ async function fixture(mode, pathname = '/auth/settings') {
     async fetch(url, options) {
       const body = options.body ? JSON.parse(options.body) : undefined;
       calls.push([url, body]);
+      const failed = failure || (readinessFailure && url === '/auth/readiness');
       if (!failure && url === '/auth/password') {
         state.mode = body.mode;
         state.enabled = body.mode !== 'off';
         state.reboot_required = (body.mode === 'lockdown') !== (state.applied_mode === 'lockdown');
       }
       return {
-        ok: !failure,
-        json: async () => failure ? {error:'Current pi password is incorrect'}
+        ok: !failed,
+        json: async () => failed ? {error:'Current pi password is incorrect'}
           : url === '/auth/status' ? {...state}
             : url === '/auth/readiness' ? readiness : {ok:true}
       };
@@ -51,6 +53,7 @@ async function fixture(mode, pathname = '/auth/settings') {
   });
   await flush();
   return {element, calls, redirects, state, fail() { failure = true; },
+    failReadiness() { readinessFailure = true; },
     setReadiness(value) { readiness = value; },
     chooseMode(value) { element('mode').value = value; element('mode').change(); },
     async check() { element('check-readiness').click(); await flush(); },
@@ -70,7 +73,7 @@ test('pi password form is available in all modes with separate administrator con
     f.element('ssh-current').value = 'raspberry';
     f.element('ssh-new').value = f.element('ssh-confirm').value = 'new pi password';
     await f.submit();
-    assert.deepEqual(f.calls.at(-1), ['/auth/ssh-password', {
+    assert.deepEqual(f.calls.find(([url]) => url === '/auth/ssh-password'), ['/auth/ssh-password', {
       current: 'web password', ssh_current: 'raspberry', ssh_new: 'new pi password'
     }]);
     assert.equal(f.element('ssh-current').value, '');
@@ -136,16 +139,47 @@ test('stale readiness and failed checks cannot be mistaken for permission to ena
   assert.equal(f.element('readiness').dataset.state, 'blocked');
 });
 
-test('changing the pi password invalidates the previous recovery check and login confirmation', async () => {
-  const f = await fixture('off');
+test('changing the pi password reruns checks with administrator confirmation but requires a fresh SSH login test', async () => {
+  const f = await fixture('basic');
   f.chooseMode('lockdown');
   await f.check();
   f.element('ssh-tested').checked = true;
+  f.element('ssh-admin').value = 'web password';
   f.element('ssh-new').value = f.element('ssh-confirm').value = 'new pi password';
   await f.submit();
+  assert.deepEqual(f.calls.at(-1), ['/auth/readiness', {current:'web password'}]);
+  assert.equal(f.element('ssh-admin').value, '');
   assert.equal(f.element('ssh-tested').checked, false);
   assert.equal(f.element('submit').disabled, true);
-  assert.equal(f.element('readiness').dataset.state, 'pending');
+  assert.equal(f.element('readiness').dataset.state, 'ready');
+  assert.match(f.element('save-help').textContent, /test SSH login/);
+  assert.match(f.element('ssh-status').textContent, /Printer checks passed/);
+  f.element('ssh-tested').checked = true;
+  f.element('ssh-tested').input();
+  assert.equal(f.element('submit').disabled, false);
+});
+
+test('a remaining prerequisite explains why saving is blocked after a successful password change', async () => {
+  const f = await fixture('off');
+  f.chooseMode('lockdown');
+  f.setReadiness({ready:false, error:'Enable ssh.service before Lockdown'});
+  f.element('ssh-new').value = f.element('ssh-confirm').value = 'new pi password';
+  await f.submit();
+  assert.equal(f.element('submit').disabled, true);
+  assert.match(f.element('ssh-status').textContent, /pi password changed.*Enable ssh.service/);
+  assert.match(f.element('save-help').textContent, /Enable ssh.service/);
+});
+
+test('a failed follow-up check does not imply the password change failed or require changing it again', async () => {
+  const f = await fixture('off');
+  f.chooseMode('lockdown');
+  f.failReadiness();
+  f.element('ssh-new').value = f.element('ssh-confirm').value = 'new pi password';
+  await f.submit();
+  assert.equal(f.element('submit').disabled, true);
+  assert.equal(f.element('readiness').dataset.state, 'blocked');
+  assert.match(f.element('ssh-status').textContent, /pi password changed, but the follow-up check failed/);
+  assert.match(f.element('ssh-status').textContent, /do not need to change the password again/);
 });
 
 test('Basic, Off and existing Lockdown credential updates do not require new recovery setup', async () => {

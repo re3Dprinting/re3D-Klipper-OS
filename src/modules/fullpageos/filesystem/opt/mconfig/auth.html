@@ -250,7 +250,9 @@
         ? 'Network and touchscreen policy switch after a reboot; wait until the printer is idle before rebooting.'
         : 'No network or touchscreen policy reboot is needed.');
     el('save-help').textContent = entering && !readiness?.ready
-      ? 'Before saving: complete the printer checks in step 2.'
+      ? readiness === null
+        ? 'Before saving: run the printer checks using "Check Lockdown requirements" in step 2.'
+        : 'Before saving: resolve the step 2 check. ' + readiness.error
       : entering && !el('ssh-tested').checked
         ? 'Before saving: test SSH login, then tick the confirmation in step 2.'
         : 'Ready to save. Your changes will not reboot the printer automatically.';
@@ -335,12 +337,26 @@
     event.preventDefault();
     act(async () => {
       if (el('ssh-new').value !== el('ssh-confirm').value) throw new Error('New pi passwords do not match. Enter the same password in both fields.');
-      await request('ssh-password', {current:el('ssh-admin').value,
+      const current = el('ssh-admin').value;
+      await request('ssh-password', {current,
                                     ssh_current:el('ssh-current').value, ssh_new:el('ssh-new').value});
       el('ssh-form').reset();
       el('ssh-tested').checked = false;
       readiness = null;
-      message('ssh-status', 'pi password changed. Existing SSH keys still work. Next: check Lockdown requirements again and test a new SSH login using the new password.');
+      if (el('mode').value === 'lockdown') {
+        el('ssh-test-help').open = true;
+        try { await checkReadiness(current); }
+        catch {
+          message('ssh-status', 'pi password changed, but the follow-up check failed. '
+            + readiness.error + ' Use "Check Lockdown requirements" to retry; you do not need to change the password again.', true);
+          return;
+        }
+        message('ssh-status', readiness.ready
+          ? 'pi password changed. Printer checks passed. Next: test a new SSH login with the new password, then tick the SSH login confirmation below the instructions.'
+          : 'pi password changed, but Lockdown still needs attention: ' + readiness.error, !readiness.ready);
+      } else {
+        message('ssh-status', 'pi password changed. Existing SSH keys still work. Test a new SSH login using the new password before closing your current session.');
+      }
     }, 'ssh-status');
   });
   el('logout').addEventListener('click', () => act(async () => {
