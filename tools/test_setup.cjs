@@ -494,6 +494,23 @@ test('full-screen welcome artwork spans the content area while actions remain on
   assert.match(setup, /byId\(step === 'welcome' \? 'openbox-welcome-title' : 'setup-title'\)\.focus\(\)/);
 });
 
+test('compact landscape setup saves header space without affecting welcome or ordinary tabs', () => {
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  const compact = index.split('@media (min-width: 600px) and (max-height: 700px) {')[1]
+    ?.split('@media (max-height: 500px)')[0];
+  assert.ok(compact, 'Touchscreen layout must be limited to short, landscape-sized screens');
+  assert.match(compact, /body\.guided-setup:not\(\.openbox-welcome-screen\) \.pages \{ padding: 16px 24px \}/);
+  assert.match(compact, /\.guided-setup:not\(\.openbox-welcome-screen\) \.setup-header \{\s*display: grid; grid-template-columns: auto 1fr auto;/);
+  assert.match(compact, /\.guided-setup \.setup-progress \{ margin: 0;/);
+  assert.match(compact, /\.guided-setup button \{ min-height: 44px \}/);
+  assert.match(compact, /\.guided-setup \.tog \{ width: 44px; height: 44px;/);
+  assert.match(compact, /\.guided-setup \.setup-status:empty \{ display: none \}/);
+  assert.match(compact, /\.guided-setup #out-machine \{ grid-column: 1; grid-row: 3;/);
+  assert.match(compact, /\.guided-setup \.setup-preview \{ height: 120px \}/);
+  assert.match(compact, /\.guided-setup \.wifi-list \{ max-height: 112px \}/);
+  assert.doesNotMatch(compact, /overflow:\s*hidden|position:\s*fixed/);
+});
+
 test('setup uses the updated brand palette and locally bundled Lato', () => {
   const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
   assert.match(index, /--brand: #FFD400;/);
