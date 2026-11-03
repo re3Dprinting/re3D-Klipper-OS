@@ -200,9 +200,11 @@
       }
       if (openBox && step === 'precautions') {
         page.innerHTML += `<aside class="card openbox-guide" aria-label="Full getting started guide">
-          <div class="openbox-qr-placeholder" role="img" aria-label="QR code placeholder, not scannable">QR code<br>coming soon</div>
+          <img class="openbox-guide-qr" src="/img/getting-started-qr.png" width="147" height="147"
+            alt="QR code for Gigabot Getting Started Guides">
           <div><div class="card-title">The full guide, on your phone</div>
-            <p>Online guide link coming soon. This QR placeholder is not scannable; use your supplied Getting Started Guide for now.</p>
+            <p>Scan to find the Getting Started Guide for your printer. Read the full guide before operating your printer.</p>
+            <p><a href="https://re3d.zendesk.com/hc/en-us/articles/360038324771-Gigabot-Getting-Started-Guides" target="_blank" rel="noopener noreferrer">Open Getting Started Guides</a></p>
           </div>
         </aside>`;
       }

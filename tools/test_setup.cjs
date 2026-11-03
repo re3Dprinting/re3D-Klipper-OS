@@ -429,7 +429,7 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   assert.match(wizard.byId('page').innerHTML, /Dream BIG\.<br><span>Print HUGE\.<\/span>/);
   assert.match(wizard.byId('page').innerHTML, /<img class="openbox-welcome-image" src="\/img\/openbox-gigabot-4\.png" width="768" height="768"/);
   assert.doesNotMatch(wizard.byId('page').innerHTML, /<svg/);
-  assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-qr-placeholder/);
+  assert.doesNotMatch(wizard.byId('page').innerHTML, /openbox-guide-qr/);
   assert.match(wizard.byId('setup-progress').innerHTML, /1\. Welcome/);
   assert.match(wizard.byId('setup-progress').innerHTML, /2\. Precautions/);
   assert.match(wizard.byId('setup-progress').innerHTML, /4\. Finish/);
@@ -444,7 +444,9 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   assert.match(wizard.byId('page').innerHTML, /openbox-bed-locks\.jpg/);
   assert.match(wizard.byId('page').innerHTML, /within 24 hours/);
   assert.match(wizard.byId('page').innerHTML, /at least two people/);
-  assert.match(wizard.byId('page').innerHTML, /QR placeholder is not scannable/);
+  assert.match(wizard.byId('page').innerHTML, /src="\/img\/getting-started-qr\.png" width="147" height="147"/);
+  assert.match(wizard.byId('page').innerHTML, /href="https:\/\/re3d\.zendesk\.com\/hc\/en-us\/articles\/360038324771-Gigabot-Getting-Started-Guides" target="_blank" rel="noopener noreferrer"/);
+  assert.doesNotMatch(wizard.byId('page').innerHTML, /placeholder|coming soon|not scannable/);
   assert.match(wizard.byId('page').innerHTML, /Never bypass the ground pin/);
   assert.match(wizard.byId('page').innerHTML, /does not perform those procedures/);
   await wizard.click('setup-next');
@@ -618,7 +620,7 @@ test('open-box initialization and completion failures remain explicit and do not
   assert.equal(wizard.requests.some(r => r.url.endsWith('reboot.sh')), false);
 });
 
-test('precautions photo is local, QR is a placeholder, and welcome motion is finite and optional', () => {
+test('precautions photo and scannable QR are local, and welcome motion is finite and optional', () => {
   const source = fs.readFileSync(path.join(www, 'setup.js'), 'utf8');
   const image = fs.readFileSync(path.join(www, 'img', 'openbox-bed-locks.jpg'));
   assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8');
@@ -627,9 +629,16 @@ test('precautions photo is local, QR is a placeholder, and welcome motion is fin
   assert.equal(welcome.readUInt32BE(16), 768);
   assert.equal(welcome.readUInt32BE(20), 768);
   assert.match(source, /\/img\/openbox-bed-locks\.jpg/);
-  assert.match(source, /QR code placeholder, not scannable/);
+  const qr = fs.readFileSync(path.join(www, 'img', 'getting-started-qr.png'));
+  assert.equal(qr.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(qr.readUInt32BE(16), 147);
+  assert.equal(qr.readUInt32BE(20), 147);
+  assert.match(source, /\/img\/getting-started-qr\.png/);
+  assert.match(source, /alt="QR code for Gigabot Getting Started Guides"/);
   assert.doesNotMatch(source, /Draft guide|Operations will provide|unpacking slides are placeholders/);
   const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  assert.match(index, /\.openbox-guide-qr \{[^}]*width: 147px; height: 147px; background: #fff/);
+  assert.doesNotMatch(index + source, /openbox-qr-placeholder|QR placeholder is not scannable/);
   assert.match(index, /@keyframes openbox-arrive/);
   assert.match(index, /\.openbox-welcome-image \{[^}]*width: 100%; height: auto; object-fit: contain/);
   assert.match(index, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.openbox-welcome-copy[^}]+animation: none/);
