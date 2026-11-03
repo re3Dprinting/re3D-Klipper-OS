@@ -494,6 +494,19 @@ test('full-screen welcome artwork spans the content area while actions remain on
   assert.match(setup, /byId\(step === 'welcome' \? 'openbox-welcome-title' : 'setup-title'\)\.focus\(\)/);
 });
 
+test('setup uses the updated brand palette and locally bundled Lato', () => {
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  assert.match(index, /--brand: #FFD400;/);
+  assert.match(index, /--fg:\s+#FFFFFF;/);
+  assert.match(index, /--muted: #bcbec0;/);
+  assert.match(index, /font: 14px\/1\.5 Lato, Roboto, Arial, sans-serif/);
+  assert.match(index, /src: url\("\/fonts\/Lato-Regular\.ttf"\) format\("truetype"\)/);
+  assert.ok(fs.statSync(path.join(www, 'fonts', 'Lato-Regular.ttf')).size > 0);
+  assert.match(fs.readFileSync(path.join(www, 'fonts', 'OFL.txt'), 'utf8'), /SIL OPEN FONT LICENSE Version 1\.1/);
+  assert.match(index, /padding: 40px; gap: 12px 24px/);
+  assert.match(index, /border: none; background: radial-gradient\(ellipse at 90% 50%, rgba\(57,59,62,\.3\), transparent 65%\), #181b20/);
+});
+
 test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {
   const machines = [
     ['Gigabot 4', 'gigabot-4', 768, 768],

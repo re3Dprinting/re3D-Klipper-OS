@@ -11,14 +11,21 @@
 <meta http-equiv="Expires" content="0">
 
 <style>
+  @font-face {
+    font-family: Lato;
+    src: url("/fonts/Lato-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+  }
   /* ── Design Tokens ──────────────────────────────────────────────────────── */
   :root {
     /* Shared yellow palette for selection accents and primary actions. */
-    --brand: #E7C547;
+    --brand: #FFD400;
     --brand-600: #EFD56D;
     --brand-700: #CEB147;
     --brand-800: #B59839;
-    --brand-dim: rgba(231,197,71,.08);
+    --brand-dim: rgba(255,212,0,.08);
     --accent: var(--brand);
     --action: var(--brand);
     --action-hover: var(--brand-600);
@@ -37,8 +44,8 @@
     --border-2: #494D54;
 
     /* Text */
-    --fg:    #EEF0F3;
-    --muted: #ACAFB8;
+    --fg:    #FFFFFF;
+    --muted: #bcbec0;
     --dim:   #999DA6;
 
     /* Status */
@@ -58,7 +65,7 @@
     --shadow-lg: 0 24px 64px rgba(0,0,0,.55);
 
     /* Focus */
-    --focus-ring: 0 0 0 3px rgba(231,197,71,.4);
+    --focus-ring: 0 0 0 3px rgba(255,212,0,.4);
 
     /* Legacy aliases — used by tabs */
     --panel:       var(--surface-2);
@@ -85,7 +92,7 @@
   body {
     background: var(--bg);
     color: var(--fg);
-    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+    font: 14px/1.5 Lato, Roboto, Arial, sans-serif;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
@@ -396,7 +403,7 @@
   .setup-choices small { display: block; color: var(--muted) }
   .setup-preview { display: grid; align-content: center; justify-items: center; gap: 6px; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: var(--surface-0); border: 1px dashed var(--border-2); border-radius: var(--radius-xs); color: var(--muted) }
   img.setup-preview { height: auto; border-style: solid }
-  .openbox-welcome { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: 24px; background: radial-gradient(ellipse at 90% 50%, var(--brand-dim), transparent 65%), var(--surface-1) }
+  .openbox-welcome { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: 24px; border: none; background: radial-gradient(ellipse at 90% 50%, rgba(57,59,62,.3), transparent 65%), #181b20 }
   .openbox-welcome-copy { animation: openbox-arrive .7s ease-out both }
   .openbox-kicker { color: var(--brand); font-size: 11px; font-weight: 700; letter-spacing: .16em }
   .openbox-welcome h2 { margin: 12px 0; font-size: clamp(36px, 5vw, 58px); line-height: 1.08; letter-spacing: -.04em }
@@ -408,7 +415,7 @@
   body.openbox-welcome-screen .pages { max-width: none; padding: 0 }
   .openbox-welcome-screen .openbox-welcome {
     min-height: 100vh; min-height: 100dvh; margin: 0; border-radius: 0;
-    padding: clamp(16px, 2vw, 32px); gap: 12px 24px;
+    padding: 40px; gap: 12px 24px;
     grid-template-rows: auto 1fr auto auto auto;
   }
   .openbox-welcome-screen .setup-header { display: none }
@@ -437,11 +444,14 @@
   .openbox-qr-placeholder { display: grid; place-content: center; width: 96px; height: 96px; border: 2px dashed var(--border-2); border-radius: var(--radius-sm); color: var(--muted); text-align: center; font-size: 12px }
   .setup-choice-tagline { font-weight: 600 }
   .setup-choices p { margin: 8px 0 0; color: var(--muted); line-height: 1.6 }
+  @media (max-height: 500px) {
+    .openbox-welcome-screen .openbox-welcome { padding: 24px }
+  }
   @media (max-width: 599px) {
     .setup-choices { grid-template-columns: 1fr }
     .openbox-slide, .openbox-welcome { grid-template-columns: 1fr }
     .openbox-welcome-image { max-width: 240px }
-    .openbox-welcome-screen .openbox-welcome { grid-template-rows: auto auto auto auto auto auto }
+    .openbox-welcome-screen .openbox-welcome { padding: 16px; grid-template-rows: auto auto auto auto auto auto }
     .openbox-welcome-screen .openbox-welcome-image { grid-column: 1; grid-row: 3; max-width: min(100%, 24vh, 200px) }
     .openbox-welcome-screen #setup-preview-notice { grid-row: 4 }
     .openbox-welcome-screen .setup-status { grid-row: 5 }
