@@ -127,7 +127,7 @@ test('report dark palette matches the workspace while preserving light mode and 
   const token = (source, name) => source.match(new RegExp(`--${name}:\\s*([^;]+);`))[1];
   for (const [reportToken, workspaceToken] of Object.entries({
     brand: 'brand', 'brand-600': 'brand-600', 'brand-700': 'brand-700',
-    'brand-800': 'brand-800', bg: 'bg', 'bg-card': 'surface-1', fg: 'fg',
+    'brand-800': 'brand-800', bg: 'bg', 'bg-card': 'surface-1', fg: 'fg', 'gray-050': 'fg',
     'gray-300': 'muted', 'gray-400': 'dim',
   })) {
     assert.equal(token(report, reportToken), token(styles, workspaceToken), reportToken);

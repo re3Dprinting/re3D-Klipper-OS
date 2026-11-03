@@ -19,7 +19,7 @@
     --re3d-surface-3: #2c3034;
     --re3d-border: #32353A;
     --re3d-border-2: #494D54;
-    --re3d-fg: #FFFFFF;
+    --re3d-fg: #F2F2F2;
     --re3d-muted: #bcbec0;
     --re3d-dim: #B6BBC5;
     --re3d-radius: 10px;
@@ -32,6 +32,18 @@
     font-family: Lato, Roboto, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     color-scheme: dark;
+}
+
+.theme--dark.v-sheet,
+.theme--dark.v-alert,
+.theme--dark.v-btn,
+.theme--dark.v-icon {
+    color: var(--re3d-fg);
+}
+
+.v-application.theme--dark .white--text {
+    color: var(--re3d-fg) !important;
+    caret-color: var(--re3d-fg) !important;
 }
 
 .v-application.theme--dark .text-h1,

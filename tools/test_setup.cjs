@@ -497,7 +497,7 @@ test('full-screen welcome artwork spans the content area while actions remain on
 test('setup uses the updated brand palette and locally bundled Lato', () => {
   const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
   assert.match(index, /--brand: #FFD400;/);
-  assert.match(index, /--fg:\s+#FFFFFF;/);
+  assert.match(index, /--fg:\s+#F2F2F2;/);
   assert.match(index, /--muted: #bcbec0;/);
   assert.match(index, /font: 14px\/1\.5 Lato, Roboto, Arial, sans-serif/);
   assert.match(index, /src: url\("\/fonts\/Lato-Regular\.ttf"\) format\("truetype"\)/);

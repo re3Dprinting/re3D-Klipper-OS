@@ -67,6 +67,19 @@ class MainsailThemeTests(unittest.TestCase):
             r'\.theme--dark\.v-navigation-drawer \.v-list-item__title\s*\{([^}]+)\}', theme)[1]
         self.assertNotIn('opacity:', title)
 
+    def test_soft_foreground_also_covers_status_surfaces_and_white_text_utilities(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        self.assertIn('--re3d-fg: #F2F2F2;', theme)
+        surfaces = re.search(
+            r'\.theme--dark\.v-sheet,\s*\.theme--dark\.v-alert,\s*'
+            r'\.theme--dark\.v-btn,\s*\.theme--dark\.v-icon\s*\{([^}]+)\}', theme)[1]
+        self.assertIn('color: var(--re3d-fg);', surfaces)
+        self.assertNotIn('background', surfaces)
+        utility = re.search(
+            r'\.v-application\.theme--dark \.white--text\s*\{([^}]+)\}', theme)[1]
+        self.assertIn('color: var(--re3d-fg) !important;', utility)
+        self.assertIn('caret-color: var(--re3d-fg) !important;', utility)
+
     def test_industrial_geometry_headers_and_label_casing(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
 
