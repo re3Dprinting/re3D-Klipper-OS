@@ -17,14 +17,25 @@ class MainsailThemeTests(unittest.TestCase):
         configurator = (FILESYSTEM / 'opt/mconfig/www/index.html').read_text(encoding='utf-8')
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         for token in ['brand', 'bg', 'surface-0', 'surface-1', 'surface-2', 'surface-3',
-                      'border', 'border-2']:
+                      'border', 'border-2', 'fg', 'muted']:
             with self.subTest(token=token):
                 expected = re.search(r'--' + token + r':\s*([^;]+);', configurator)[1]
                 actual = re.search(r'--re3d-' + token + r':\s*([^;]+);', theme)[1]
                 self.assertEqual(actual, expected)
         for deposition in ['fff', 'fgf']:
             defaults = json.loads((SOURCE / deposition / '.theme/default.json').read_text())
-            self.assertEqual(defaults['uiSettings']['primary'], '#E7C547')
+            self.assertEqual(defaults['uiSettings']['primary'], '#FFD400')
+
+    def test_fonts_are_local_and_include_the_redistribution_license(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        self.assertIn('src: url("Lato-Regular.ttf") format("truetype");', theme)
+        self.assertIn('font-family: Lato, Roboto, Arial, sans-serif;', theme)
+        font = (FILESYSTEM / 'opt/mconfig/www/fonts/Lato-Regular.ttf').read_bytes()
+        for deposition in ['fff', 'fgf']:
+            assets = SOURCE / deposition / '.theme'
+            self.assertEqual((assets / 'Lato-Regular.ttf').read_bytes(), font)
+            self.assertIn('SIL OPEN FONT LICENSE Version 1.1',
+                          (assets / 'OFL.txt').read_text())
 
     def test_text_contrast_keeps_readable_hierarchy(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
@@ -56,6 +67,19 @@ class MainsailThemeTests(unittest.TestCase):
             r'\.theme--dark\.v-navigation-drawer \.v-list-item__title\s*\{([^}]+)\}', theme)[1]
         self.assertNotIn('opacity:', title)
 
+    def test_soft_foreground_also_covers_status_surfaces_and_white_text_utilities(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        self.assertIn('--re3d-fg: #F2F2F2;', theme)
+        surfaces = re.search(
+            r'\.theme--dark\.v-sheet,\s*\.theme--dark\.v-alert,\s*'
+            r'\.theme--dark\.v-btn,\s*\.theme--dark\.v-icon\s*\{([^}]+)\}', theme)[1]
+        self.assertIn('color: var(--re3d-fg);', surfaces)
+        self.assertNotIn('background', surfaces)
+        utility = re.search(
+            r'\.v-application\.theme--dark \.white--text\s*\{([^}]+)\}', theme)[1]
+        self.assertIn('color: var(--re3d-fg) !important;', utility)
+        self.assertIn('caret-color: var(--re3d-fg) !important;', utility)
+
     def test_industrial_geometry_headers_and_label_casing(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
 
@@ -85,6 +109,27 @@ class MainsailThemeTests(unittest.TestCase):
         opacity = float(re.search(r'opacity:\s*([\d.]+);', pattern)[1])
         self.assertEqual(opacity, .8)
         self.assertIn('pointer-events: none;', pattern)
+
+    def test_sidebar_selection_uses_a_tinted_tile_instead_of_an_edge_bar(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        scope = '.theme--dark.v-navigation-drawer '
+
+        def declarations(selector):
+            return re.search(re.escape(scope + selector) + r'\s*\{([^}]+)\}', theme)[1]
+
+        active = declarations('.v-list-item--active')
+        self.assertIn('background: rgba(255,212,0,.1);', active)
+        self.assertIn('border-inline: 0 !important;', active)
+        self.assertIn('box-shadow: none;', active)
+        self.assertIn('background: rgba(255,212,0,.16);',
+                      declarations('.v-list-item--active:hover'))
+        self.assertIn('border-radius: var(--re3d-radius-sm);',
+                      declarations('.v-list-item:not(.sidebar-logo)'))
+        self.assertIn('color: var(--re3d-brand);',
+                      declarations('.v-list-item--active .v-icon'))
+        self.assertIn('opacity: 0;', declarations('.v-list-item--active::before'))
+        self.assertIn('box-shadow: inset var(--re3d-focus) !important;', theme)
+        self.assertNotIn('inset 2px 0 0 var(--re3d-brand)', theme)
 
     def test_toolhead_preserves_compact_controls_and_segmented_offsets(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
@@ -140,6 +185,9 @@ class MainsailThemeTests(unittest.TestCase):
                             namespace['common_setup_printer'](SOURCE / deposition, board, platform)
                             self.assertEqual((theme / 'mainsail.css').read_bytes(),
                                              (SOURCE / 'common/mainsail.css').read_bytes())
+                            self.assertEqual((theme / 'Lato-Regular.ttf').read_bytes(),
+                                             (SOURCE / deposition / '.theme/Lato-Regular.ttf').read_bytes())
+                            self.assertTrue((theme / 'OFL.txt').is_file())
                             custom = (theme / 'custom.css').read_text()
                             imports = re.findall(r'@import url\("([^"]+)"\);', custom)
                             self.assertEqual(imports, ['update_manager.css', 'mainsail.css'])
@@ -147,7 +195,7 @@ class MainsailThemeTests(unittest.TestCase):
                                 self.assertTrue((theme / imported).is_file())
                             for label in labels:
                                 self.assertIn('content: "' + label + '"', custom)
-                            self.assertIn(' v1.4.3-35', custom)
+                            self.assertIn(' v1.4.3-34', custom)
 
     def test_updater_deploys_theme_generator_and_common_assets(self):
         update = (ROOT / 'tools/re3d-os-update.sh').read_text(encoding='utf-8')

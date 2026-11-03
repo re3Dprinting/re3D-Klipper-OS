@@ -5,8 +5,7 @@
 
 set -euo pipefail
 
-echo "Content-Type: text/plain"
-echo
+trap 'printf "Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nUnable to save machine options.\n" ' ERR
 
 CONFIG_FILE="/home/pi/printer_data/config/.master.cfg"
 
@@ -15,7 +14,8 @@ BODY=""
 if [[ "${REQUEST_METHOD:-}" == "POST" ]]; then
   read -r -N "${CONTENT_LENGTH:-0}" BODY || true
 else
-  echo "Expected POST." ; exit 1
+  printf 'Status: 405 Method Not Allowed\r\nContent-Type: text/plain\r\n\r\nExpected POST.\n'
+  exit 1
 fi
 
 # URL-decode helper
@@ -33,14 +33,15 @@ raw_type="$(get_param type)"
 TYPE="$(urldecode "${raw_type:-}")"
 
 if [[ -z "${TYPE}" ]]; then
-  echo "Missing 'type' field." ; exit 1
+  printf "Status: 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nMissing type field.\n"
+  exit 1
 fi
 
 # Call the core setter (accepts names or numbers)
 if out="$(/usr/local/bin/set_machine_type "$TYPE" 2>&1)"; then
-  echo "$out"
+  :
 else
-  echo "$out"
+  printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n%s\n' "$out"
   exit 1
 fi
 
@@ -64,3 +65,5 @@ if [[ -f "$CONFIG_FILE" ]]; then
   patch_flag "mesh_compensation"
   patch_flag "slice_microswiss_hotends"
 fi
+
+printf 'Content-Type: text/plain\r\n\r\n%s\n' "$out"

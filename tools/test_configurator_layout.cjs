@@ -85,3 +85,53 @@ test('maintenance attention banners use charcoal fills, not olive-producing yell
     assert.doesNotMatch(screen, /rgba\(231,\s*197,\s*71,/, file);
   }
 });
+
+test('cards share the borderless charcoal treatment without changing control boundaries', () => {
+  assert.match(rule('.card'), /border:\s*none;/);
+  assert.match(rule('.card'), /background-image:\s*var\(--card-highlight\)/);
+  assert.match(rule('input, select'), /border:\s*1px solid var\(--border-2\)/);
+  assert.match(styles, /--brand-600:\s*#FFE04D/);
+  assert.match(styles, /--brand-700:\s*#E6BF00/);
+});
+
+test('standalone screens and switcher use offline Lato with Roboto fallback', () => {
+  const filesystem = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'filesystem');
+  for (const [file, font] of [
+    ['home/pi/wait.html', '../../opt/mconfig/www/fonts/Lato-Regular.ttf'],
+    ['opt/mconfig/www/tabs/updating.html', '/fonts/Lato-Regular.ttf'],
+    ['opt/mconfig/www/tabs/report.html', '/fonts/Lato-Regular.ttf'],
+    ['home/pi/url-switcher/options.html', 'Lato-Regular.ttf'],
+  ]) {
+    const screen = fs.readFileSync(path.join(filesystem, file), 'utf8');
+    assert.ok(screen.includes(`url("${font}")`), file);
+    assert.match(screen, /(?:font-family:\s*|font:\s*14px\/1\.5\s+)Lato,\s*Roboto,\s*Arial,\s*sans-serif/, file);
+    const resolved = font.startsWith('/') ?
+      path.join(filesystem, 'opt/mconfig/www', font) :
+      path.resolve(path.dirname(path.join(filesystem, file)), font);
+    assert.ok(fs.statSync(resolved).size > 0, `${file}: font exists`);
+    assert.doesNotMatch(screen, /fonts\.googleapis\.com|fonts\.gstatic\.com/, file);
+  }
+  const switcher = path.join(filesystem, 'home/pi/url-switcher');
+  const manifest = JSON.parse(fs.readFileSync(path.join(switcher, 'manifest.json'), 'utf8'));
+  assert.ok(manifest.web_accessible_resources.some(entry => entry.resources.includes('Lato-Regular.ttf')));
+  assert.match(fs.readFileSync(path.join(switcher, 'inject.css'), 'utf8'),
+    /chrome-extension:\/\/__MSG_@@extension_id__\/Lato-Regular\.ttf/);
+  assert.match(fs.readFileSync(path.join(switcher, 'OFL.txt'), 'utf8'), /SIL OPEN FONT LICENSE Version 1\.1/);
+  const updater = fs.readFileSync(path.join(__dirname, 're3d-os-update.sh'), 'utf8');
+  assert.ok(updater.includes('"${SRC_URL_SWITCHER}/" "${DST_URL_SWITCHER}/"'));
+});
+
+test('report dark palette matches the workspace while preserving light mode and technical fonts', () => {
+  const report = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules',
+    'fullpageos', 'filesystem', 'opt', 'mconfig', 'www', 'tabs', 'report.html'), 'utf8');
+  const token = (source, name) => source.match(new RegExp(`--${name}:\\s*([^;]+);`))[1];
+  for (const [reportToken, workspaceToken] of Object.entries({
+    brand: 'brand', 'brand-600': 'brand-600', 'brand-700': 'brand-700',
+    'brand-800': 'brand-800', bg: 'bg', 'bg-card': 'surface-1', fg: 'fg', 'gray-050': 'fg',
+    'gray-300': 'muted', 'gray-400': 'dim',
+  })) {
+    assert.equal(token(report, reportToken), token(styles, workspaceToken), reportToken);
+  }
+  assert.match(report, /body\.theme-light\s*\{[^}]*--card-highlight:none;/);
+  assert.match(report, /\.kv-mono\s*\{\s*font-family:ui-monospace/);
+});

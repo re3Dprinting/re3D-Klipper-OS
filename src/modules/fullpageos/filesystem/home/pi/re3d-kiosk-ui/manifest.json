@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "re3D Kiosk UI",
+  "version": "1.0.0",
+  "description": "Hide the Mainsail Upload & Print shortcut in the printer's kiosk browser only.",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "css": ["mainsail.css"],
+      "run_at": "document_start"
+    }
+  ]
+}
