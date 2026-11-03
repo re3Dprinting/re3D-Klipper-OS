@@ -53,6 +53,7 @@ SRC_SETUP="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/co
 SRC_SHELL_CMDS="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands"
 SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
 SRC_URL_SWITCHER="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/url-switcher"
+SRC_KIOSK_UI="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/re3d-kiosk-ui"
 SRC_BED_CYCLING="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/gcodes/Bed Cycling"
 
 # Target locations on the LIVE system
@@ -66,6 +67,7 @@ DST_SHELL_CMDS="/usr/local/bin"
 DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
 DST_URL_SWITCHER="/home/pi/url-switcher"
+DST_KIOSK_UI="/home/pi/re3d-kiosk-ui"
 DST_BED_CYCLING="/home/pi/printer_data/gcodes/Bed Cycling"
 
 # ---------- Start ----------
@@ -129,6 +131,10 @@ if [ -d "${SRC_URL_SWITCHER}" ]; then
   log "${LOG_TAG} Syncing display switcher UI and bundled font..."
   rsync -a --checksum --chown=pi:pi "${SRC_URL_SWITCHER}/" "${DST_URL_SWITCHER}/"
 fi
+
+log "${LOG_TAG} Deploying touchscreen-only Mainsail controls..."
+install -d -m 0755 -o pi -g pi "${DST_KIOSK_UI}"
+install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"
 
 # ---------- 1b) Recovery monitor daemon ----------
 SRC_RECOVERY_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/recovery_monitor.py"

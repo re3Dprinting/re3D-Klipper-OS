@@ -3,12 +3,12 @@
 xscreensaver -nosplash &
 
 # Standard behavior - runs chrome
-chromium-browser --kiosk --touch-events=enabled --disable-pinch --noerrdialogs --disable-session-crashed-bubble --disable-application-cache --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' --disable-component-update --overscroll-history-navigation=0 --disable-features=TranslateUI --app=$(/home/pi/scripts/get_url) --enable-features=OverlayScrollbar --load-extension=/home/pi/virtual_keyboard --no-first-run --force-device-scale-factor=1.1
+chromium-browser --kiosk --touch-events=enabled --disable-pinch --noerrdialogs --disable-session-crashed-bubble --disable-application-cache --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' --disable-component-update --overscroll-history-navigation=0 --disable-features=TranslateUI --app=$(/home/pi/scripts/get_url) --enable-features=OverlayScrollbar --load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui --no-first-run --force-device-scale-factor=1.1
 exit;
 
 # Remove the two lines above to enable signage mode - refresh the browser whenever errors are seen in log
 
-chromium-browser --enable-logging --log-level=2 --v=0 --kiosk --touch-events=enabled --disable-pinch --noerrdialogs --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' --disable-session-crashed-bubble --disable-component-update --overscroll-history-navigation=0 --disable-features=TranslateUI --app=$(head -n 1 /boot/fullpageos.txt | sed -e "s/{serial}/${SERIAL}/g") &
+chromium-browser --enable-logging --log-level=2 --v=0 --kiosk --touch-events=enabled --disable-pinch --noerrdialogs --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' --disable-session-crashed-bubble --disable-component-update --overscroll-history-navigation=0 --disable-features=TranslateUI --load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui --app=$(head -n 1 /boot/fullpageos.txt | sed -e "s/{serial}/${SERIAL}/g") &
 
 export logfile="/home/pi/.config/chromium/chrome_debug.log"
 

@@ -746,7 +746,7 @@
         "displayCancelPrint": true,
         "lockSlidersOnTouchDevices": true,
         "navigationStyle": "iconsOnly",
-        "boolHideUploadAndPrintButton": true,
+        "boolHideUploadAndPrintButton": false,
         "displayZOffsetStandby": false,
         "confirmOnEmergencyStop": false,
         "confirmOnPowerDeviceChange": false,
