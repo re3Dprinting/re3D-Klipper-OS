@@ -97,6 +97,27 @@ class MainsailThemeTests(unittest.TestCase):
         self.assertEqual(opacity, .8)
         self.assertIn('pointer-events: none;', pattern)
 
+    def test_sidebar_selection_uses_a_tinted_tile_instead_of_an_edge_bar(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        scope = '.theme--dark.v-navigation-drawer '
+
+        def declarations(selector):
+            return re.search(re.escape(scope + selector) + r'\s*\{([^}]+)\}', theme)[1]
+
+        active = declarations('.v-list-item--active')
+        self.assertIn('background: rgba(255,212,0,.1);', active)
+        self.assertIn('border-inline: 0 !important;', active)
+        self.assertIn('box-shadow: none;', active)
+        self.assertIn('background: rgba(255,212,0,.16);',
+                      declarations('.v-list-item--active:hover'))
+        self.assertIn('border-radius: var(--re3d-radius-sm);',
+                      declarations('.v-list-item:not(.sidebar-logo)'))
+        self.assertIn('color: var(--re3d-brand);',
+                      declarations('.v-list-item--active .v-icon'))
+        self.assertIn('opacity: 0;', declarations('.v-list-item--active::before'))
+        self.assertIn('box-shadow: inset var(--re3d-focus) !important;', theme)
+        self.assertNotIn('inset 2px 0 0 var(--re3d-brand)', theme)
+
     def test_toolhead_preserves_compact_controls_and_segmented_offsets(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         scope = '.v-application.theme--dark .toolhead-control-panel '
