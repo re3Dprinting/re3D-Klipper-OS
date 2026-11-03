@@ -750,7 +750,7 @@
         "displayZOffsetStandby": false,
         "confirmOnEmergencyStop": false,
         "confirmOnPowerDeviceChange": false,
-        "primary": "#E7C547",
+        "primary": "#FFD400",
         "hideUpdateWarnings": false,
         "disableFanAnimation": true
       },

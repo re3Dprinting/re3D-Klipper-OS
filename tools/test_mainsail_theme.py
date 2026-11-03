@@ -17,14 +17,25 @@ class MainsailThemeTests(unittest.TestCase):
         configurator = (FILESYSTEM / 'opt/mconfig/www/index.html').read_text(encoding='utf-8')
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         for token in ['brand', 'bg', 'surface-0', 'surface-1', 'surface-2', 'surface-3',
-                      'border', 'border-2']:
+                      'border', 'border-2', 'fg', 'muted']:
             with self.subTest(token=token):
                 expected = re.search(r'--' + token + r':\s*([^;]+);', configurator)[1]
                 actual = re.search(r'--re3d-' + token + r':\s*([^;]+);', theme)[1]
                 self.assertEqual(actual, expected)
         for deposition in ['fff', 'fgf']:
             defaults = json.loads((SOURCE / deposition / '.theme/default.json').read_text())
-            self.assertEqual(defaults['uiSettings']['primary'], '#E7C547')
+            self.assertEqual(defaults['uiSettings']['primary'], '#FFD400')
+
+    def test_fonts_are_local_and_include_the_redistribution_license(self):
+        theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
+        self.assertIn('src: url("Lato-Regular.ttf") format("truetype");', theme)
+        self.assertIn('font-family: Lato, Roboto, Arial, sans-serif;', theme)
+        font = (FILESYSTEM / 'opt/mconfig/www/fonts/Lato-Regular.ttf').read_bytes()
+        for deposition in ['fff', 'fgf']:
+            assets = SOURCE / deposition / '.theme'
+            self.assertEqual((assets / 'Lato-Regular.ttf').read_bytes(), font)
+            self.assertIn('SIL OPEN FONT LICENSE Version 1.1',
+                          (assets / 'OFL.txt').read_text())
 
     def test_text_contrast_keeps_readable_hierarchy(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
@@ -140,6 +151,9 @@ class MainsailThemeTests(unittest.TestCase):
                             namespace['common_setup_printer'](SOURCE / deposition, board, platform)
                             self.assertEqual((theme / 'mainsail.css').read_bytes(),
                                              (SOURCE / 'common/mainsail.css').read_bytes())
+                            self.assertEqual((theme / 'Lato-Regular.ttf').read_bytes(),
+                                             (SOURCE / deposition / '.theme/Lato-Regular.ttf').read_bytes())
+                            self.assertTrue((theme / 'OFL.txt').is_file())
                             custom = (theme / 'custom.css').read_text()
                             imports = re.findall(r'@import url\("([^"]+)"\);', custom)
                             self.assertEqual(imports, ['update_manager.css', 'mainsail.css'])

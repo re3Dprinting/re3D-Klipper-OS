@@ -22,22 +22,24 @@
   :root {
     /* Shared yellow palette for selection accents and primary actions. */
     --brand: #FFD400;
-    --brand-600: #EFD56D;
-    --brand-700: #CEB147;
-    --brand-800: #B59839;
+    --brand-600: #FFE04D;
+    --brand-700: #E6BF00;
+    --brand-800: #BFA000;
     --brand-dim: rgba(255,212,0,.08);
     --accent: var(--brand);
     --action: var(--brand);
     --action-hover: var(--brand-600);
     --action-pressed: var(--brand-700);
-    --on-action: #21190C;
+    --on-action: #181b20;
 
     /* Neutral charcoal layers */
     --bg:        #121314;
-    --surface-0: #17181A;
-    --surface-1: #1F2023;
-    --surface-2: #292B2F;
-    --surface-3: #383B40;
+    --surface-0: #14171b;
+    --surface-1: #181b20;
+    --surface-2: #23272c;
+    --surface-3: #2c3034;
+    --surface-hover: #393b3e;
+    --card-highlight: radial-gradient(ellipse at 90% 50%, rgba(57,59,62,.3), transparent 65%);
 
     /* Borders — visible but not glaring */
     --border:   #32353A;
@@ -251,10 +253,11 @@
   .content.single { display: grid; gap: 24px }
   .out:empty { display: none }
   .card {
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius);
     min-width: 0;
     background: var(--surface-1);
+    background-image: var(--card-highlight);
     padding: var(--pad);
     box-shadow: var(--shadow-sm);
   }
@@ -311,7 +314,7 @@
     transition: background .15s, transform .1s;
     white-space: nowrap;
   }
-  button:hover, .btn:hover { background: #45494F }
+  button:hover, .btn:hover { background: var(--surface-hover) }
   button:active, .btn:active { background: var(--surface-2); transform: translateY(1px) }
   button:focus-visible, .btn:focus-visible { outline: none; box-shadow: var(--focus-ring) }
   button:disabled { opacity: .45; cursor: not-allowed; transform: none; pointer-events: none }
@@ -403,7 +406,7 @@
   .setup-choices small { display: block; color: var(--muted) }
   .setup-preview { display: grid; align-content: center; justify-items: center; gap: 6px; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: var(--surface-0); border: 1px dashed var(--border-2); border-radius: var(--radius-xs); color: var(--muted) }
   img.setup-preview { height: auto; border-style: solid }
-  .openbox-welcome { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: 24px; border: none; background: radial-gradient(ellipse at 90% 50%, rgba(57,59,62,.3), transparent 65%), #181b20 }
+  .openbox-welcome { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: 24px; border: none; background: var(--card-highlight), var(--surface-1) }
   .openbox-welcome-copy { animation: openbox-arrive .7s ease-out both }
   .openbox-kicker { color: var(--brand); font-size: 11px; font-weight: 700; letter-spacing: .16em }
   .openbox-welcome h2 { margin: 12px 0; font-size: clamp(36px, 5vw, 58px); line-height: 1.08; letter-spacing: -.04em }

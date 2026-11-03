@@ -52,6 +52,7 @@ SRC_RELOAD="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/c
 SRC_SETUP="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/setup_printer.py"
 SRC_SHELL_CMDS="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands"
 SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
+SRC_URL_SWITCHER="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/url-switcher"
 SRC_BED_CYCLING="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/gcodes/Bed Cycling"
 
 # Target locations on the LIVE system
@@ -64,6 +65,7 @@ DST_SETUP="/home/pi/printer_data/config/src/setup_printer.py"
 DST_SHELL_CMDS="/usr/local/bin"
 DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
+DST_URL_SWITCHER="/home/pi/url-switcher"
 DST_BED_CYCLING="/home/pi/printer_data/gcodes/Bed Cycling"
 
 # ---------- Start ----------
@@ -121,6 +123,11 @@ chmod 0755 "${DST_MCONFIG}/cgi-bin/setup.py"
 if [ -f "${SRC_WAIT_HTML}" ]; then
   rsync -a --checksum "${SRC_WAIT_HTML}" "${DST_WAIT_HTML}"
   chown pi:pi "${DST_WAIT_HTML}" 2>/dev/null || true
+fi
+
+if [ -d "${SRC_URL_SWITCHER}" ]; then
+  log "${LOG_TAG} Syncing display switcher UI and bundled font..."
+  rsync -a --checksum --chown=pi:pi "${SRC_URL_SWITCHER}/" "${DST_URL_SWITCHER}/"
 fi
 
 # ---------- 1b) Recovery monitor daemon ----------

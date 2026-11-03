@@ -504,7 +504,8 @@ test('setup uses the updated brand palette and locally bundled Lato', () => {
   assert.ok(fs.statSync(path.join(www, 'fonts', 'Lato-Regular.ttf')).size > 0);
   assert.match(fs.readFileSync(path.join(www, 'fonts', 'OFL.txt'), 'utf8'), /SIL OPEN FONT LICENSE Version 1\.1/);
   assert.match(index, /padding: 40px; gap: 12px 24px/);
-  assert.match(index, /border: none; background: radial-gradient\(ellipse at 90% 50%, rgba\(57,59,62,\.3\), transparent 65%\), #181b20/);
+  assert.match(index, /--card-highlight: radial-gradient\(ellipse at 90% 50%, rgba\(57,59,62,\.3\), transparent 65%\)/);
+  assert.match(index, /border: none; background: var\(--card-highlight\), var\(--surface-1\)/);
 });
 
 test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {

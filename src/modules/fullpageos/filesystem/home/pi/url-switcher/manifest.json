@@ -17,7 +17,7 @@
   "options_page": "options.html",
   "web_accessible_resources": [
     {
-      "resources": ["config.json"],
+      "resources": ["config.json", "Lato-Regular.ttf"],
       "matches": ["<all_urls>"]
     }
   ]

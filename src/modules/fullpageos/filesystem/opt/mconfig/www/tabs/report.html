@@ -6,20 +6,25 @@
 <title>Calibration &amp; Print Report</title>
 
 <style>
+  @font-face{
+    font-family:Lato;
+    src:url("/fonts/Lato-Regular.ttf") format("truetype");
+    font-style:normal;font-weight:400;font-display:swap;
+  }
   /* ── Local style-guide tokens (mirrors Configurator theme) ─────────────── */
   :root{
-    --brand:#E7C547;
-    --brand-600:#EFD56D;
-    --brand-700:#CEB147;
-    --brand-800:#B59839;
+    --brand:#FFD400;
+    --brand-600:#FFE04D;
+    --brand-700:#E6BF00;
+    --brand-800:#BFA000;
     color-scheme:dark;
 
     --white:#FFFFFF;
-    --gray-050:#F2F2F2;
+    --gray-050:#FFFFFF;
     --gray-100:#E6E6E6;
     --gray-200:#D9D9D9;
-    --gray-300:#CCCCCC;
-    --gray-400:#B3B3B3;
+    --gray-300:#bcbec0;
+    --gray-400:#999DA6;
     --gray-500:#999999;
     --gray-600:#808080;
     --gray-700:#666666;
@@ -27,9 +32,11 @@
     --gray-900:#333333;
 
     --bg:#121314;
-    --bg-card:#1F2023;
+    --bg-card:#181b20;
+    --surface-0:#14171b;
     --border:#32353A;
-    --fg:#EEF0F3;
+    --fg:#FFFFFF;
+    --card-highlight:radial-gradient(ellipse at 90% 50%,rgba(57,59,62,.3),transparent 65%);
   }
 
   * ,*::before,*::after{box-sizing:border-box;}
@@ -37,7 +44,7 @@
   body{
     margin:0;
     padding:16px 20px 24px;
-    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-family:Lato,Roboto,Arial,sans-serif;
     background:var(--bg);
     color:var(--gray-050);
   }
@@ -51,6 +58,7 @@
     --brand-800:#C7AA69;
     --bg:#F5F5F5;
     --bg-card:#FFFFFF;
+    --card-highlight:none;
     --border:#DDDDDD;
     --fg:#111111;
 
@@ -79,8 +87,9 @@
 
   .report-card{
     background:var(--bg-card);
+    background-image:var(--card-highlight);
     border-radius:16px;
-    border:1px solid var(--border);
+    border:none;
     padding:24px;
     display:flex;
     flex-direction:column;
@@ -89,6 +98,7 @@
   }
 
   body.theme-light .report-card{
+    border:1px solid var(--border);
     box-shadow:0 4px 10px rgba(0,0,0,0.08);
   }
 
@@ -120,7 +130,7 @@
     border:1px solid var(--border);
     font-size:11px;
     color:var(--gray-200);
-    background:#050609;
+    background:var(--surface-0);
   }
 
   body.theme-light .pill{
@@ -270,7 +280,7 @@
     display:flex;
     flex-direction:column;
     gap:4px;
-    background:rgba(5,6,9,0.85);
+    background:var(--surface-0);
   }
 
   body.theme-light .extruder-slot{
@@ -355,7 +365,7 @@
   }
 
   .metric-block{
-    background:#050609;
+    background:var(--surface-0);
     border-radius:8px;
     padding:6px 8px;
     border:1px solid var(--border);
@@ -397,7 +407,7 @@
     height:10px;
     border-radius:999px;
     overflow:hidden;
-    background:#050609;
+    background:var(--surface-0);
     border:1px solid var(--border);
   }
   body.theme-light .status-bar{
