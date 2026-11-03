@@ -158,7 +158,7 @@ function element() {
   };
 }
 
-async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false, preview = false,
+async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false, legacyPreview = false,
   machineType = 'Gigabot 4', machineStatus = 200 } = {}) {
   const elements = new Map();
   const byId = id => {
@@ -176,7 +176,11 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
   const loads = [];
   const events = {};
   const context = {
-    location: { search: (openBox ? '?setup=1&flow=openbox' : '?setup=1') + (preview ? '&preview=1' : ''), hostname: 'printer.local', href: '' },
+    location: {
+      search: (openBox ? '?setup=1&flow=openbox' : '?setup=1') + (legacyPreview ? '&preview=1' : ''),
+      hostname: 'printer.local', href: '',
+      replace(href) { this.href = href; this.replaced = true; }
+    },
     URLSearchParams, console,
     window: { scrollTo() {}, addEventListener(name, fn) { events[name] = fn; } },
     document: { getElementById: byId, body: { classList: {
@@ -460,25 +464,24 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   assert.deepEqual(writes.map(r => JSON.parse(r.options.body).step), ['openbox', 'completed']);
 });
 
-test('welcome keeps its heading, notices and live buttons on the full-screen card and restores them on exit', async () => {
-  const wizard = await mount({openBox: true, preview: true});
+test('welcome keeps its heading and live buttons on the full-screen card and restores them on exit', async () => {
+  const wizard = await mount({openBox: true});
   const {byId, bodyClasses} = wizard;
   const card = byId('page').querySelector('.openbox-welcome');
   assert.equal(bodyClasses.has('openbox-welcome-screen'), true);
   assert.deepEqual(card.prepended, [byId('setup-header')]);
-  assert.deepEqual(card.appended, [byId('setup-preview-notice'), byId('setup-status'), byId('setup-actions')]);
+  assert.deepEqual(card.appended, [byId('setup-status'), byId('setup-actions')]);
   await wizard.click('setup-next');
   assert.equal(bodyClasses.has('openbox-welcome-screen'), false);
   assert.deepEqual(byId('page').parentElement.appended, [byId('setup-status'), byId('setup-actions')]);
-  assert.deepEqual(byId('page').parentElement.inserted.slice(-2),
-    [byId('setup-header'), byId('setup-preview-notice')]);
+  assert.equal(byId('page').parentElement.inserted.at(-1), byId('setup-header'));
   await wizard.click('setup-back');
   assert.equal(bodyClasses.has('openbox-welcome-screen'), true);
   await wizard.click('setup-skip');
-  assert.equal(wizard.context.location.href, '/#system');
+  assert.equal(wizard.context.location.href, 'http://printer.local:80/');
   const normal = await mount();
   assert.equal(normal.bodyClasses.has('openbox-welcome-screen'), false);
-  const failed = await mount({openBox: true, preview: true, machineStatus: 500});
+  const failed = await mount({openBox: true, machineStatus: 500});
   assert.equal(failed.bodyClasses.has('openbox-welcome-screen'), false);
   assert.match(failed.byId('setup-status').textContent, /Unable to load/);
 });
@@ -525,7 +528,7 @@ test('setup uses the updated brand palette and locally bundled Lato', () => {
   assert.match(index, /border: none; background: var\(--card-highlight\), var\(--surface-1\)/);
 });
 
-test('welcome uses each configured machine and its local cropped artwork in setup and preview', async () => {
+test('welcome uses each configured machine and its local cropped artwork', async () => {
   const machines = [
     ['Gigabot 4', 'gigabot-4', 768, 768],
     ['Gigabot 4 XLT', 'gigabot-4-xlt', 768, 768],
@@ -544,21 +547,15 @@ test('welcome uses each configured machine and its local cropped artwork in setu
     assert.equal(artwork.readUInt32BE(20), height);
     assert.equal(artwork[25], 6,
       'All supplied welcome illustrations retain their RGBA transparency');
-    for (const preview of [false, true]) {
-      const wizard = await mount({openBox: true, preview, machineType: `${name}\n`});
-      assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
-      assert.ok(wizard.byId('page').innerHTML.includes(`src="/img/openbox-${image}.png" width="${width}" height="${height}"`));
-      assert.ok(wizard.byId('page').innerHTML.includes(`alt="${name} printer"`));
-      assert.ok(wizard.byId('page').innerHTML.includes(`Your ${name} is configured.`));
-      await wizard.click('setup-next');
-      await wizard.click('setup-back');
-      assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
-      assert.equal(wizard.requests.filter(r => r.url.endsWith('get_machine_type.sh')).length, 1);
-      if (preview) {
-        assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
-          [['/cgi-bin/get_machine_type.sh', 'GET']]);
-      }
-    }
+    const wizard = await mount({openBox: true, machineType: `${name}\n`});
+    assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
+    assert.ok(wizard.byId('page').innerHTML.includes(`src="/img/openbox-${image}.png" width="${width}" height="${height}"`));
+    assert.ok(wizard.byId('page').innerHTML.includes(`alt="${name} printer"`));
+    assert.ok(wizard.byId('page').innerHTML.includes(`Your ${name} is configured.`));
+    await wizard.click('setup-next');
+    await wizard.click('setup-back');
+    assert.equal(wizard.byId('setup-title').textContent, `Welcome to your ${name}`);
+    assert.equal(wizard.requests.filter(r => r.url.endsWith('get_machine_type.sh')).length, 1);
   }
 });
 
@@ -569,12 +566,12 @@ test('machine lookup failures and unknown names are explicit rather than showing
     {machineType: '', error: /Unsupported configured machine/},
     {machineType: '<img src=x onerror=alert(1)>', error: /Unsupported configured machine/}
   ]) {
-    const wizard = await mount({openBox: true, preview: true, ...options});
+    const wizard = await mount({openBox: true, ...options});
     assert.equal(wizard.byId('setup-next').disabled, true);
     assert.match(wizard.byId('setup-status').textContent, options.error);
     assert.doesNotMatch(wizard.byId('page').innerHTML, /<img/);
     assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
-      [['/cgi-bin/get_machine_type.sh', 'GET']]);
+      [['/cgi-bin/setup.py', 'GET'], ['/cgi-bin/setup.py', 'POST'], ['/cgi-bin/get_machine_type.sh', 'GET']]);
   }
 });
 
@@ -641,33 +638,24 @@ test('precautions photo is local, QR is a placeholder, and welcome motion is fin
   assert.doesNotMatch(welcomeStyles, /brightness\(/);
 });
 
-test('developer preview opens from System and never schedules setup, changes settings, or reboots', async () => {
+test('developer preview is removed and retired links return to System without setup side effects', async () => {
   const system = fs.readFileSync(path.join(www, 'tabs', 'system.html'), 'utf8');
-  assert.match(system, /id="openbox-preview-link" href="\/\?setup=1&amp;flow=openbox&amp;preview=1" target="_blank" rel="noopener"/);
-  const wizard = await mount({saved: 'completed', openBox: true, preview: true});
-  assert.equal(wizard.byId('setup-preview-notice').hidden, true);
-  assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
-    [['/cgi-bin/get_machine_type.sh', 'GET']]);
-  await wizard.click('setup-next');
-  assert.equal(wizard.byId('setup-preview-notice').hidden, false);
-  await wizard.click('setup-next');
-  await wizard.selectNetwork('connect');
-  assert.deepEqual(wizard.loads, ['network']);
-  assert.equal(wizard.byId('page').inert, true);
-  await wizard.click('setup-next');
-  assert.equal(wizard.byId('page').inert, false);
-  assert.equal(wizard.byId('setup-next').textContent, 'Finish preview');
-  await wizard.click('setup-next');
-  assert.equal(wizard.context.location.href, '/#system');
-  assert.deepEqual(wizard.requests.map(r => [r.url, r.options.method || 'GET']),
-    [['/cgi-bin/get_machine_type.sh', 'GET']]);
-  assert.equal(wizard.state.step, 'completed');
-  const exited = await mount({saved: 'openbox', openBox: true, preview: true});
-  await exited.click('setup-skip');
-  assert.equal(exited.context.location.href, '/#system');
-  assert.equal(exited.state.step, 'openbox');
-  assert.deepEqual(exited.requests.map(r => [r.url, r.options.method || 'GET']),
-    [['/cgi-bin/get_machine_type.sh', 'GET']]);
+  const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
+  const source = fs.readFileSync(path.join(www, 'setup.js'), 'utf8');
+  assert.doesNotMatch(system, /openbox-preview-link|Developer preview|preview=1/);
+  assert.doesNotMatch(index, /setup-preview-notice|Developer preview/);
+  assert.doesNotMatch(source, /previewNotice|Finish preview|page\.inert/);
+  for (const openBox of [false, true]) {
+    for (const saved of ['completed', 'openbox']) {
+      const wizard = await mount({saved, openBox, legacyPreview: true});
+      assert.equal(wizard.context.location.href, '/#system');
+      assert.equal(wizard.context.location.replaced, true);
+      assert.equal(wizard.state.step, saved);
+      assert.deepEqual(wizard.requests, []);
+      assert.deepEqual(wizard.loads, []);
+      assert.equal(wizard.bodyClasses.size, 0);
+    }
+  }
 });
 
 test('System schedules open-box setup only after confirmation, without rebooting, and shows failures', async () => {

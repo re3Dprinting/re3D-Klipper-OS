@@ -430,7 +430,6 @@
   .openbox-welcome-screen .openbox-welcome-copy .hint { font-size: 14px }
   .openbox-welcome-screen .openbox-welcome-route { margin: 16px 0; font-size: 14px }
   .openbox-welcome-screen .openbox-welcome-image { grid-column: 2; grid-row: 1 / 5; max-width: min(100%, calc(100dvh - 128px), 600px) }
-  .openbox-welcome-screen #setup-preview-notice { grid-column: 1; grid-row: 3; margin: 0 }
   .openbox-welcome-screen .setup-status { grid-column: 1; grid-row: 4; margin: 0 }
   .openbox-welcome-screen .setup-status:empty { display: none }
   .openbox-welcome-screen .setup-actions { grid-column: 1 / -1; grid-row: 5; margin: 0 }
@@ -465,7 +464,6 @@
     .guided-setup .setup-status:empty { display: none }
     .guided-setup:not(.openbox-welcome-screen) .setup-actions { margin-top: 12px }
     .guided-setup button { min-height: 44px }
-    .guided-setup #setup-preview-notice { margin: 0 0 8px }
     .guided-setup .setup-choices { gap: 12px; margin: 8px 0 }
     .guided-setup .setup-choices label { gap: 8px; padding: 12px; grid-template-rows: auto auto 1fr }
     .guided-setup .setup-choice-heading { font-size: 16px }
@@ -507,7 +505,6 @@
     .openbox-welcome-image { max-width: 240px }
     .openbox-welcome-screen .openbox-welcome { padding: 16px; grid-template-rows: auto auto auto auto auto auto }
     .openbox-welcome-screen .openbox-welcome-image { grid-column: 1; grid-row: 3; max-width: min(100%, 24vh, 200px) }
-    .openbox-welcome-screen #setup-preview-notice { grid-row: 4 }
     .openbox-welcome-screen .setup-status { grid-row: 5 }
     .openbox-welcome-screen .setup-actions { grid-row: 6 }
     .openbox-slide figure { max-width: 220px }
@@ -553,7 +550,6 @@
       <h1 id="setup-title" tabindex="-1">Guided Setup</h1>
       <p id="setup-description"></p>
     </header>
-    <p id="setup-preview-notice" class="hint" hidden>Developer preview: setup status and printer settings are not changed. Network controls are read-only, and Finish does not reboot.</p>
     <header class="page-header">
       <div class="page-eyebrow">Machine configuration</div>
       <h1 class="page-title" id="page-title">Machine</h1>

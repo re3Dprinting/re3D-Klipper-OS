@@ -1,7 +1,12 @@
 (() => {
-  if (new URLSearchParams(location.search).get('setup') !== '1') return;
-  const openBox = new URLSearchParams(location.search).get('flow') === 'openbox';
-  const preview = openBox && new URLSearchParams(location.search).get('preview') === '1';
+  const params = new URLSearchParams(location.search);
+  if (params.get('setup') !== '1') return;
+  // Retired preview links must never start a live setup session.
+  if (params.has('preview')) {
+    location.replace('/#system');
+    return;
+  }
+  const openBox = params.get('flow') === 'openbox';
   window.re3dSetup = true;
   document.body.classList.add('guided-setup');
   document.title = openBox ? 'Open-box Setup - re:3D' : 'Guided Setup - re:3D';
@@ -28,7 +33,6 @@
   const status = byId('setup-status');
   const page = byId('page');
   const setupHeader = byId('setup-header');
-  const previewNotice = byId('setup-preview-notice');
   const actions = byId('setup-actions');
   const setupContainer = page.parentElement;
   const networkChoices = byId('setup-network-choice');
@@ -42,7 +46,6 @@
 
   for (const id of ['setup-header', 'setup-status', 'setup-actions']) byId(id).hidden = false;
   if (openBox) byId('setup-eyebrow').textContent = 'OPEN-BOX SETUP';
-  byId('setup-preview-notice').hidden = !preview;
   const labels = openBox ? ['Welcome', 'Precautions', 'Network', 'Finish'] : ['Machine', 'Network', 'Display', 'Finish'];
   byId('setup-progress').innerHTML = steps.map((name, index) =>
     `<li data-step="${name}">${index + 1}. ${labels[index]}</li>`).join('');
@@ -53,7 +56,7 @@
     back.disabled = busy || !initialized;
     back.hidden = step === steps[0];
     skip.disabled = busy || !initialized;
-    next.textContent = step === 'finish' ? (preview ? 'Finish preview' : 'Finish & reboot') : 'Continue';
+    next.textContent = step === 'finish' ? 'Finish & reboot' : 'Continue';
     networkInputs.forEach(input => { input.disabled = busy || !initialized; });
   }
 
@@ -75,18 +78,12 @@
   }
 
   async function render() {
-    previewNotice.hidden = !preview || step === 'welcome';
     document.body.classList.remove('openbox-welcome-screen');
     setupContainer.insertBefore(setupHeader, networkChoices);
-    setupContainer.insertBefore(previewNotice, networkChoices);
     setupContainer.append(status, actions);
     const index = steps.indexOf(step);
     byId('setup-title').textContent = titles[index];
     byId('setup-description').textContent = descriptions[index];
-    if (preview && step === 'finish') {
-      byId('setup-description').textContent = 'Finish returns to System without changing setup status or rebooting.';
-    }
-    page.inert = preview && step === 'network';
     networkChoices.hidden = step !== 'network';
     byId('setup-network-offline-note').hidden = step !== 'network' || networkMode !== 'offline';
     byId('setup-progress').querySelectorAll('li').forEach(item => {
@@ -131,7 +128,7 @@
         </div>`;
         const welcomeCard = page.querySelector('.openbox-welcome');
         welcomeCard.prepend(setupHeader);
-        welcomeCard.append(previewNotice, status, actions);
+        welcomeCard.append(status, actions);
         document.body.classList.add('openbox-welcome-screen');
       } else if (step === 'precautions') {
         page.innerHTML = `<div class="card">
@@ -191,7 +188,7 @@
       } else if (step === 'finish') {
         page.innerHTML = openBox ? `<div class="card">
           <div class="card-title">Finish open-box setup</div>
-          <p>${preview ? 'Finish preview returns to System without rebooting or changing setup status.' : 'Finish &amp; reboot closes this guide and opens the printer interface already configured by operations.'}</p>
+          <p>Finish &amp; reboot closes this guide and opens the printer interface already configured by operations.</p>
           <p>Confirm all shipping restraints and packaging have been removed. Read the full guide and complete the required pre-print checks before operating the printer.</p>
           <p>Your machine and display settings have not been changed by this guide.</p>
         </div>` : `<div class="card">
@@ -235,10 +232,6 @@
       throw new Error('Choose a network mode before continuing.');
     }
     if (step === 'finish') {
-      if (preview) {
-        location.href = '/#system';
-        return;
-      }
       await setSetupState('completed');
       const response = await fetch('/cgi-bin/reboot.sh', {method: 'POST'});
       if (!response.ok) throw new Error(`Setup saved, but reboot failed (${response.status}). Retry Finish or reboot manually.`);
@@ -265,7 +258,7 @@
   }));
 
   skip.addEventListener('click', () => {
-    location.href = preview ? '/#system' : `http://${location.hostname}:80/`;
+    location.href = `http://${location.hostname}:80/`;
   });
 
   networkInputs.forEach(input => {
@@ -303,11 +296,6 @@
 
   controls();
   act(async () => {
-    if (preview) {
-      await render();
-      initialized = true;
-      return;
-    }
     const state = await request('/cgi-bin/setup.py');
     if (state.flashing) throw new Error('Finish firmware flashing and power-cycle the printer before setup.');
     if (!openBox && state.step === 'openbox') {
