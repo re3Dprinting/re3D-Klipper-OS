@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +80,22 @@ class PolicyTests(unittest.TestCase):
         settings = json.loads(policy.CHROME_POLICIES[0].read_text())
         self.assertEqual(settings["DeveloperToolsAvailability"], 2)
         self.assertEqual(settings["URLBlocklist"], ["*"])
+        self.assertEqual(settings["URLAllowlist"],
+                         ["http://.localhost:80/", "http://.localhost:8081/"])
+        # Match the exact-host, scheme, port and path-prefix semantics of these Chromium filters.
+        def allowed(url):
+            target = urlsplit(url)
+            return any(target.scheme == rule.scheme
+                       and target.hostname == rule.hostname.removeprefix(".")
+                       and (target.port or (80 if target.scheme == "http" else 443)) == rule.port
+                       and (target.path or "/").startswith(rule.path)
+                       for rule in map(urlsplit, settings["URLAllowlist"]))
+        for url in ("http://localhost/auth/kiosk", "http://localhost/", "http://localhost/auth/settings",
+                    "http://localhost:8081/", "http://localhost:8081/auth/kiosk-client.js"):
+            self.assertTrue(allowed(url), url)
+        for url in ("https://localhost/", "http://localhost:7125/", "http://localhost:8085/",
+                    "http://sub.localhost/", "http://192.168.1.57/", "https://example.com/"):
+            self.assertFalse(allowed(url), url)
         self.assertEqual(settings["IncognitoModeAvailability"], 1)
         if os.name != "nt":
             self.assertEqual(policy.CHROME_POLICIES[0].stat().st_mode & 0o777, 0o644)

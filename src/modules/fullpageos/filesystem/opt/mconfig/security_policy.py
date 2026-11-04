@@ -180,7 +180,8 @@ def apply(mode):
             "PasswordManagerEnabled": False, "PrintingEnabled": False,
             "DownloadRestrictions": 3, "AllowFileSelectionDialogs": False,
             "URLBlocklist": ["*"],
-            "URLAllowlist": ["http://localhost:80/*", "http://localhost:8081/*"],
+            # Chromium uses path prefixes, not glob patterns; the dot requires an exact host.
+            "URLAllowlist": ["http://.localhost:80/", "http://.localhost:8081/"],
         }
         for path in CHROME_POLICIES:
             write(path, json.dumps(policies))
