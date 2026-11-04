@@ -155,6 +155,27 @@ a:hover { color: var(--brand) }
 .status-message:focus { outline: 2px solid var(--brand); outline-offset: 3px }
 #credentials-section:first-child { padding-top: 0; border-top: 0 }
 .settings-card #credentials-section { padding-top: 22px; border-top: 1px solid var(--border) }
+.settings-card .security-brand { margin-bottom: 12px }
+.settings-card h1 { font-size: 24px }
+.settings-card #description { margin-bottom: 12px; font-size: 13px }
+.settings-card .security-overview { gap: 6px 12px; margin: 12px 0; padding: 10px 12px }
+.settings-card .setup-section { padding: 12px 0; margin: 0 }
+.settings-card .setup-section h2 { margin-bottom: 8px; font-size: 16px }
+.settings-card #credentials-section { padding-top: 12px }
+.settings-card .setup-section > p { margin-bottom: 8px; font-size: 12px }
+.settings-card .setup-section > div + div,
+.settings-card .setup-section .credential-fields + div { margin-top: 12px }
+.settings-card .security-help { margin: 4px 0 }
+.settings-card .security-help p { margin: 6px 0 10px }
+.settings-card #ssh-heading { font-size: 16px }
+.settings-card #ssh-section:not([open]) { padding: 0 }
+.settings-card form, .settings-card .credential-fields { gap: 10px }
+.settings-card .mode-explanation { margin-top: 8px; padding: 8px 10px }
+.settings-card #save-help { margin: 0; padding: 8px 10px }
+.settings-card .security-footer { margin-top: 14px; padding-top: 12px }
+@media (min-width: 600px) {
+  .settings-card .credential-fields { grid-template-columns: repeat(2, minmax(0,1fr)); align-items: start }
+}
 dialog {
   width: min(520px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);

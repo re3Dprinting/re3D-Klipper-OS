@@ -103,10 +103,12 @@ test('Lockdown explains and gates both machine prerequisites and a real SSH logi
   f.chooseMode('lockdown');
   assert.equal(f.element('submit').disabled, true);
   assert.match(f.element('save-help').textContent, /printer checks/);
-  assert.equal(f.element('ssh-details').open, true);
+  assert.equal(f.element('ssh-section').open, true);
+  assert.notEqual(f.element('ssh-details').open, true);
   f.setReadiness({ready:false, error:'Set a non-default pi password first'});
   await f.check();
   assert.equal(f.element('readiness').dataset.state, 'blocked');
+  assert.equal(f.element('ssh-details').open, true);
   assert.match(f.element('readiness').textContent, /non-default/);
   assert.equal(f.element('submit').disabled, true);
   f.setReadiness({ready:true});
@@ -241,4 +243,22 @@ test('failed reboot requests remain visible and do not claim the printer is rest
   assert.equal(f.element('reboot-status').dataset.state, 'blocked');
   assert.equal(f.element('reboot-confirm').disabled, false);
   assert.equal(f.element('reboot-reload').hidden, true);
+});
+
+test('compact setup keeps optional help collapsed but exposes required recovery and save blockers', async () => {
+  const f = await fixture('basic');
+  assert.equal(f.element('ssh-section').open, false);
+  assert.equal(f.element('next-link').hidden, true);
+  f.chooseMode('lockdown');
+  assert.equal(f.element('ssh-section').open, true);
+  assert.notEqual(f.element('ssh-details').open, true);
+  assert.notEqual(f.element('ssh-test-help').open, true);
+  assert.equal(f.element('save-help').hidden, false);
+  assert.match(f.element('save-help').textContent, /printer checks/);
+  f.element('ssh-section').open = false;
+  f.element('next-link').click();
+  assert.equal(f.element('ssh-section').open, true);
+  f.chooseMode('basic');
+  assert.equal(f.element('ssh-section').open, false);
+  assert.match(html, /<\/details>\s*<p id="save-help"/);
 });
