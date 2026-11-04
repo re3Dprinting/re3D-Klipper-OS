@@ -146,12 +146,16 @@ def restore_desktops():
         SERVICE_BACKUP.unlink()
 
 
+def prepare_ssh_runtime():
+    SSH_RUNTIME.mkdir(parents=True, exist_ok=True, mode=0o755)
+    SSH_RUNTIME.chmod(0o755)
+
+
 def apply(mode):
     if mode == "lockdown":
         # Until prerequisites and the SSH effective configuration are verified, expose no TCP services.
         set_firewall(quarantine=True)
-        SSH_RUNTIME.mkdir(parents=True, exist_ok=True, mode=0o755)
-        SSH_RUNTIME.chmod(0o755)
+        prepare_ssh_runtime()
         write(SSH_CONFIG, SSH_OPTIONS)
         result = ssh_readiness()
         if not result["ready"]:
@@ -190,13 +194,15 @@ def apply(mode):
     else:
         if mode not in ("off", "basic"):
             raise ValueError("Invalid security mode")
-        if table_exists():
-            run("nft", "delete", "table", "inet", "re3d_lockdown")
         if SSH_CONFIG.exists() or SSH_UNIT.exists():
+            # Validate the restored configuration before removing the working recovery setup.
+            prepare_ssh_runtime()
+            run("/usr/sbin/sshd", "-t")
             SSH_CONFIG.unlink(missing_ok=True)
             SSH_UNIT.unlink(missing_ok=True)
-            run("/usr/sbin/sshd", "-t")
             run("systemctl", "daemon-reload")
+        if table_exists():
+            run("nft", "delete", "table", "inet", "re3d_lockdown")
         for path in CHROME_POLICIES:
             path.unlink(missing_ok=True)
         MARKER.unlink(missing_ok=True)

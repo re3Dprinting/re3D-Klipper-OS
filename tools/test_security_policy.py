@@ -121,6 +121,43 @@ class PolicyTests(unittest.TestCase):
         with patch.object(policy, "run", return_value=result):
             self.assertRaises(RuntimeError, policy.table_exists)
 
+    def test_leaving_lockdown_after_cold_boot_creates_runtime_before_validating_and_removing_overrides(self):
+        for mode in ("basic", "off"):
+            with self.subTest(mode=mode):
+                policy.write(policy.SSH_CONFIG, policy.SSH_OPTIONS)
+                policy.write(policy.SSH_UNIT, "[Service]\n")
+                if policy.SSH_RUNTIME.exists():
+                    policy.SSH_RUNTIME.rmdir()
+                def result(*args, **kwargs):
+                    if args == ("/usr/sbin/sshd", "-t"):
+                        self.assertTrue(policy.SSH_RUNTIME.is_dir())
+                        self.assertTrue(policy.SSH_CONFIG.exists())
+                        self.assertTrue(policy.SSH_UNIT.exists())
+                    elif args == ("systemctl", "daemon-reload"):
+                        self.assertFalse(policy.SSH_CONFIG.exists())
+                        self.assertFalse(policy.SSH_UNIT.exists())
+                    return subprocess.CompletedProcess(args, 0, "", "")
+                with patch.object(policy, "table_exists", return_value=False), \
+                        patch.object(policy, "run", side_effect=result), \
+                        patch.object(policy, "restore_desktops"):
+                    policy.apply(mode)
+                self.assertEqual((policy.RUNTIME / "mode").read_text().strip(), mode)
+
+    def test_failed_restored_ssh_validation_preserves_recovery_configuration(self):
+        policy.write(policy.SSH_CONFIG, policy.SSH_OPTIONS)
+        policy.write(policy.SSH_UNIT, "[Service]\n")
+        policy.write(policy.MARKER, "lockdown")
+        with patch.object(policy, "run", side_effect=subprocess.CalledProcessError(255, ["sshd", "-t"])), \
+                patch.object(policy, "table_exists") as firewall, \
+                patch.object(policy, "restore_desktops") as restore:
+            self.assertRaises(subprocess.CalledProcessError, policy.apply, "basic")
+        self.assertTrue(policy.SSH_CONFIG.exists())
+        self.assertTrue(policy.SSH_UNIT.exists())
+        self.assertTrue(policy.MARKER.exists())
+        self.assertFalse((policy.RUNTIME / "mode").exists())
+        firewall.assert_not_called()
+        restore.assert_not_called()
+
     def test_readiness_requires_enabled_ssh_and_nondefault_password(self):
         def result(*args, **kwargs):
             if args == ("systemctl", "is-enabled", "ssh.service"):
