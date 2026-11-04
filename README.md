@@ -6,6 +6,10 @@ A [CustomPiOS](https://github.com/guysoft/CustomPiOS) built on top of [FullPageO
 
 Every new commit an image is created, streamlining development and removing the need to go through the entire build chain. 
 
+## To change touchscreen display methods: 
+* Mainsail → KlipperScreen: Open Configurator → System → Display Mode, then select KlipperScreen. The printer will reboot into KlipperScreen.
+* KlipperScreen → Mainsail: Open Macros and run switch_to_mainsail.
+
 ## Making custom edits is simple: 
 * Fork this repository
 * Commit changes
