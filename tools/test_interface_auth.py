@@ -358,11 +358,27 @@ class AuthTests(unittest.TestCase):
         self.enable()
         status, css, _ = self.request("security.css")
         self.assertEqual(status, 200)
-        self.assertIn(b"--brand: #E7C547", css)
+        self.assertIn(b"--brand: #FFD400", css)
         self.assertNotIn(PASSWORD.encode(), css)
         status, logo, _ = self.request("logo.png")
         self.assertEqual(status, 200)
         self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_lato_font_loads_without_an_admin_or_pin_session_in_lockdown(self):
+        self.lockdown()
+        self.state.sessions.clear()
+        font = (ASSETS / "www/fonts/Lato-Regular.ttf").read_bytes()
+        for address, proto in (("192.168.1.2", "https"), ("127.0.0.1", "http")):
+            with self.subTest(address=address):
+                status, body, cookie = self.request("fonts/Lato-Regular.ttf", address=address,
+                                                    **{"X-Forwarded-Proto": proto})
+                self.assertEqual(status, 200)
+                self.assertEqual(body, font)
+                self.assertIsNone(cookie)
+                self.assertEqual(self.request("check", address=address,
+                                              **{"X-Forwarded-Proto": proto})[0], 401)
+        for path in ("fonts/OFL.txt", "fonts/../auth_server.py", "fonts/%2e%2e/auth_server.py"):
+            self.assertEqual(self.request(path)[0], 404)
 
     def test_http_is_available_when_off_but_remote_credentials_require_tls(self):
         self.assertEqual(self.request("check", **{"X-Forwarded-Proto": "http"})[0], 204)

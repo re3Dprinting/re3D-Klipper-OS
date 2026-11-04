@@ -27,7 +27,18 @@ test('security palette matches both Configurator and Mainsail brand, surfaces, a
     assert.equal(token(css, name), token(configurator, name));
   }
   assert.match(css, /color-scheme: dark/);
-  assert.match(css, /system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell/);
+  assert.match(css, /font: 14px\/1\.5 Lato, Roboto, Arial, sans-serif/);
+});
+
+test('security screens reuse the bundled local Lato font and redistribution license', () => {
+  assert.match(css, /@font-face\s*\{[^}]*font-family: Lato;[^}]*src: url\("\/auth\/fonts\/Lato-Regular\.ttf"\) format\("truetype"\);[^}]*font-weight: 400;[^}]*font-display: swap;/);
+  assert.doesNotMatch(css, /https?:\/\//);
+  const font = fs.readFileSync(path.join(assets, 'www', 'fonts', 'Lato-Regular.ttf'));
+  const mainsailFont = fs.readFileSync(path.join(filesystem, 'home', 'pi', 'printer_data',
+    'config', 'src', 'fff', '.theme', 'Lato-Regular.ttf'));
+  assert.deepEqual(font, mainsailFont);
+  assert.match(fs.readFileSync(path.join(assets, 'www', 'fonts', 'OFL.txt'), 'utf8'),
+    /SIL OPEN FONT LICENSE Version 1\.1/);
 });
 
 test('login, settings, and PIN screens share authenticated-independent styling and existing branding', () => {

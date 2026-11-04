@@ -1,23 +1,31 @@
+@font-face {
+  font-family: Lato;
+  src: url("/auth/fonts/Lato-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   /* Match the Configurator tokens and the shared Mainsail charcoal/yellow palette. */
-  --brand: #E7C547;
-  --brand-600: #EFD56D;
-  --brand-700: #CEB147;
-  --on-action: #21190C;
+  --brand: #FFD400;
+  --brand-600: #FFE04D;
+  --brand-700: #E6BF00;
+  --on-action: #181b20;
   --bg: #121314;
-  --surface-0: #17181A;
-  --surface-1: #1F2023;
-  --surface-2: #292B2F;
-  --surface-3: #383B40;
+  --surface-0: #14171b;
+  --surface-1: #181b20;
+  --surface-2: #23272c;
+  --surface-3: #2c3034;
   --border: #32353A;
   --border-2: #494D54;
-  --fg: #EEF0F3;
-  --muted: #ACAFB8;
+  --fg: #F2F2F2;
+  --muted: #bcbec0;
   --dim: #999DA6;
   --warn: #f97316;
   --radius: 16px;
   --radius-sm: 10px;
-  --focus-ring: 0 0 0 3px rgba(231,197,71,.4);
+  --focus-ring: 0 0 0 3px rgba(255,212,0,.4);
   color-scheme: dark;
 }
 
@@ -31,7 +39,7 @@ body {
   place-items: center;
   background: var(--bg);
   color: var(--fg);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+  font: 14px/1.5 Lato, Roboto, Arial, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }

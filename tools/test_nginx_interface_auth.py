@@ -271,6 +271,18 @@ class NginxAuthTests(unittest.TestCase):
                     self.assertEqual(self.request(port, path, local=True)[0], 200)
         self.assertEqual(self.request(self.https, "/_re3d_auth")[0], 404)
 
+    def test_bundled_lato_is_available_before_login_on_both_interfaces(self):
+        self.enable()
+        font = (ASSETS / "www/fonts/Lato-Regular.ttf").read_bytes()
+        for port in (self.http, self.https, self.config_http, self.config_https):
+            with self.subTest(port=port):
+                status, body, headers = self.request(port, "/auth/fonts/Lato-Regular.ttf")
+                self.assertEqual(status, 200)
+                self.assertEqual(body, font)
+                self.assertEqual(headers["Content-Type"], "font/ttf")
+                self.assertNotIn("Set-Cookie", headers)
+                self.assertEqual(self.request(port)[0], 302)
+
     def test_login_change_disable_and_local_management_through_nginx(self):
         self.enable()
         self.assertEqual(self.request(self.http, "/auth/password", {"disable": True}, local=True)[0], 403)

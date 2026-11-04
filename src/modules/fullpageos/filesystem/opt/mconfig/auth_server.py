@@ -366,6 +366,8 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.reply(200, body, "application/javascript")
             elif path == "/auth/security.css":
                 self.reply(200, (ROOT / "security.css").read_bytes(), "text/css; charset=utf-8")
+            elif path == "/auth/fonts/Lato-Regular.ttf":
+                self.reply(200, (ROOT / "www/fonts/Lato-Regular.ttf").read_bytes(), "font/ttf")
             elif path == "/auth/logo.png":
                 self.reply(200, (ROOT / "www/img/re3d-logo.png").read_bytes(), "image/png")
             elif path in ("/auth/login", "/auth/settings"):
