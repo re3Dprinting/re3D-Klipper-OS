@@ -2,9 +2,20 @@
 
 ### **This has fully replaced the [klipper_config](https://github.com/re3Dprinting/klipper_config) repository.**
 
-A [CustomPiOS](https://github.com/guysoft/CustomPiOS) built on top of [FullPageOS](https://github.com/guysoft/FullPageOS) (Debian Bookworm) which includes Klipper firmware and additional dependencies needed to operate the re:3D Gigabot printers.
+A ready-to-flash Raspberry Pi operating system built around re:3D's large-format filament (FFF) and pellet (FGF) printers. Beyond the Klipper stack, the built-in re:3D Configurator handles machine-specific configuration, calibration, recovery, and maintenance through a single interface.
 
-Every new commit an image is created, streamlining development and removing the need to go through the entire build chain. 
+Based on Debian Bookworm, [FullPageOS](https://github.com/guysoft/FullPageOS), and [CustomPiOS](https://github.com/guysoft/CustomPiOS), with fresh images built by GitHub Actions on every push.
+
+## Features
+
+* **One image across the printer lineup:** Profiles for Gigabot 4, Terabot 4, GigabotX 2, TerabotX 2, and Gigabot XLT variants. Supported hardware options generate the matching configuration instead of requiring hand-edited files.
+* **From first boot to printer control:** Guided Archimajor firmware flashing and machine setup, plus an optional customer open-box walkthrough. Choose re:3D-themed Mainsail or KlipperScreen for the touchscreen.
+* **Calibration with a record:** Built-in flow and pressure-advance tests save results by machine, material, extruder, and temperature, alongside calibration reports and print metrics.
+* **Tuning without the command-line workflow:** Interactive bed-leveling controls, live PID tuning, and accelerometer-based input shaping with graphs, saved runs, and recommendations.
+* **Interrupted-print recovery (beta):** A background monitor saves print progress. Generate recovery G-code from that record or a selected Z height, rather than automatically restarting the print.
+* **Connected or offline operation:** Configure Wi-Fi in the interface, or complete setup offline and load G-code from automatically mounted USB drives.
+* **Optional protection for shared printers:** Administrator authentication and a Lockdown mode with HTTPS, a separate touchscreen PIN, and restricted network services.
+* **Maintenance in one place:** Software/configuration updates without re-imaging, live system health, log analysis with suggested fixes, and print-history/G-code backup and restore.
 
 ## To change touchscreen display methods: 
 * Mainsail → KlipperScreen: Open Configurator → System → Display Mode, then select KlipperScreen. The printer will reboot into KlipperScreen.
@@ -17,20 +28,19 @@ Every new commit an image is created, streamlining development and removing the 
 
 
 ## Core Software Stack:
+* [re:3D Configurator](src/modules/fullpageos/filesystem/opt/mconfig/www): The integrated setup, calibration, and maintenance interface.
 * [Klipper](https://github.com/Klipper3d/klipper): The 3D-printer firmware.
 * [Moonraker](https://github.com/Arksine/moonraker): The API server for Klipper. 
-* [Mainsail](https://github.com/mainsail-crew/mainsail): User interface for Klipper. 
+* [Mainsail](https://github.com/mainsail-crew/mainsail): Browser-based printer control with a re:3D theme and Configurator navigation.
+* [KlipperScreen](https://github.com/KlipperScreen/KlipperScreen): An alternative touch-focused printer interface.
 * [Crowsnest](https://github.com/mainsail-crew/crowsnest): The webcam streamer wrapper.
-* [Beacon3D](https://github.com/beacon3d/beacon_klipper): Klipper module for the Beacon Eddy Current Scanner. 
+* [Beacon3D](https://github.com/beacon3d/beacon_klipper): Klipper integration for Beacon probing and supported accelerometer workflows.
 * [Chromium](https://github.com/chromium/chromium): The browser used to display Mainsail on the touchscreen. 
-* (WIP)
+
 ## Additional Software:
 * [Klipper shell commands](https://github.com/dw-0/kiauh/blob/master/resources/gcode_shell_command.py): Klipper plugin to allow shell commands to run from gcode. 
 * [Moonraker timelapse](https://github.com/mainsail-crew/moonraker-timelapse): Create timelapses of prints.
 * [Pi-usb-automount](https://github.com/fasteddy516/pi-usb-automount): Auto mounts USB drives with a symbolic link to /printer_data/gcodes.
-* [Automated firmware flashing](https://github.com/re3Dprinting/re3D-Klipper-OS/blob/devel/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands/flash_firmware.sh): Attempts to flash the microcontroller with Klipper firmware on first boot. 
-* [Multi-machine configuration](https://github.com/re3Dprinting/re3D-Klipper-OS/blob/devel/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/reload.py): Checks for printer type and uses the appropriate configuration files.
-* re:3D Configurator
 
 
 
@@ -75,6 +85,4 @@ https://github.com/user-attachments/assets/7c31e5cf-c50b-4039-a07f-7ec4125e9f1a
 
 
    
-
-
 
