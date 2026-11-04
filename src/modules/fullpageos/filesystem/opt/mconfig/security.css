@@ -171,6 +171,15 @@ dialog h2 { margin: 0 0 14px; font-size: 22px; line-height: 1.3 }
 #reboot-reload { margin-top: 16px }
 
 .pin-card { max-width: 420px; text-align: center }
+.kiosk-page { padding: 12px }
+.kiosk-page .pin-card {
+  display: grid;
+  grid-template-rows: auto auto minmax(0,1fr) auto;
+  max-width: none;
+  min-height: calc(100dvh - 24px);
+}
+.kiosk-page .pin-card form { grid-template-rows: auto auto minmax(0,1fr) auto }
+.kiosk-page #keys { grid-template-rows: repeat(4, minmax(48px,1fr)) }
 .pin-card .security-brand { justify-content: center }
 .pin-card h1 { font-size: 26px }
 .pin-card form { gap: 10px }
@@ -196,6 +205,7 @@ dialog h2 { margin: 0 0 14px; font-size: 22px; line-height: 1.3 }
 .toolbar-copy { display: flex; align-items: center; gap: 16px; min-width: 0 }
 .toolbar-copy .brand-logo { height: 26px }
 .toolbar-copy span { color: var(--muted); font-size: 12px }
+.toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap }
 #toolbar button { width: auto; flex-shrink: 0; min-width: 72px }
 iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; background: var(--bg) }
 
@@ -213,7 +223,7 @@ iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; back
     display: grid;
     grid-template-columns: minmax(0,.9fr) minmax(0,1.1fr);
     gap: 16px 28px;
-    max-width: 720px;
+    max-width: none;
     text-align: left;
   }
   .pin-card .security-brand { grid-column: 1; justify-content: flex-start; margin: 0 }
@@ -222,6 +232,12 @@ iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; back
   .pin-card form { grid-column: 2; grid-row: 1 / span 3 }
   .pin-card .status-message { grid-column: 1; align-self: end; margin: 0 }
   #keys button { min-height: 44px }
+  .kiosk-page .pin-card { padding: 20px; grid-template-rows: auto 1fr auto }
+  .kiosk-page .pin-card form { align-self: stretch; gap: 8px }
+  .kiosk-page #keys { grid-template-rows: repeat(4, minmax(44px,1fr)) }
+  .kiosk-page #keys button { font-size: 24px }
+  .kiosk-page #keys .key-action { font-size: 14px }
+  .kiosk-page #unlock { min-height: 52px }
 }
 @media (prefers-reduced-motion: reduce) {
   input, select, button { transition: none }

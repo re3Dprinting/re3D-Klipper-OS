@@ -8,7 +8,7 @@ const assets = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'files
 const source = fs.readFileSync(path.join(assets, 'kiosk.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture() {
+async function fixture(search = '') {
   const elements = new Map();
   const listeners = {};
   const intervals = new Map();
@@ -25,7 +25,8 @@ async function fixture() {
   }
   const context = {
     document:{getElementById:element},
-    location:{replace(url) { calls.push(['redirect', url]); }},
+    location:{search, replace(url) { calls.push(['redirect', url]); }},
+    URLSearchParams,
     performance:{now:() => now},
     addEventListener(event, callback) { listeners[event] = callback; },
     setInterval(callback, delay) { intervals.set(delay, callback); },
@@ -119,9 +120,68 @@ test('activity hook does not treat timers as user input and redirects direct kio
   vm.runInNewContext(client, context);
   assert.ok(hooks.some(([event]) => event === 'pointerdown'));
   assert.equal(messages.length, 0);
-  hooks[0][1]();
+  hooks.find(([event]) => event === 'pointerdown')[1]();
   assert.equal(messages.length, 1);
   context.top = context.self;
   vm.runInNewContext(client, context);
-  assert.equal(messages.at(-1), '/auth/kiosk');
+  assert.equal(messages.at(-1), 'http://localhost/auth/kiosk');
+  context.location.port = '8081';
+  vm.runInNewContext(client, context);
+  assert.equal(messages.at(-1), 'http://localhost/auth/kiosk?view=configurator');
+});
+
+test('Configurator navigation stays inside the unlocked wrapper and rejects untrusted requests', async () => {
+  const f = await fixture();
+  f.element('configurator').click();
+  assert.equal(f.element('printer').src, 'about:blank');
+  await f.unlock();
+  const message = {source:f.element('printer').contentWindow,
+    origin:'http://localhost', data:{type:'re3d-configurator'}};
+  f.listeners.message({...message, origin:'https://attacker.example'});
+  assert.equal(f.element('printer').src, '/');
+  f.listeners.message({...message, source:{}});
+  assert.equal(f.element('printer').src, '/');
+  f.listeners.message(message);
+  assert.equal(f.element('printer').src, 'http://localhost:8081/');
+  f.element('printer-control').click();
+  assert.equal(f.element('printer').src, '/');
+  f.element('configurator').click();
+  assert.equal(f.element('printer').src, 'http://localhost:8081/');
+  await f.element('lock-now').click();
+  assert.equal(f.element('printer').src, 'about:blank');
+});
+
+test('top-level Configurator handoff restores the intended page only after PIN unlock', async () => {
+  const f = await fixture('?view=configurator');
+  assert.equal(f.element('printer').src, 'about:blank');
+  await f.unlock();
+  assert.equal(f.element('printer').src, 'http://localhost:8081/');
+  const invalid = await fixture('?view=https://attacker.example');
+  await invalid.unlock();
+  assert.equal(invalid.element('printer').src, '/');
+});
+
+test('the Mainsail Configurator link requests embedded navigation instead of replacing the kiosk', () => {
+  const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
+  const hooks = new Map();
+  const messages = [];
+  vm.runInNewContext(client, {
+    location:{pathname:'/', href:'http://localhost/'}, URL,
+    top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
+    addEventListener(event, callback) { hooks.set(event, callback); }
+  });
+  let prevented = false;
+  hooks.get('click')({target:{closest() { return {href:'http://localhost/configurator/'}; }},
+    preventDefault() { prevented = true; }, stopImmediatePropagation() {}});
+  assert.equal(prevented, true);
+  assert.equal(messages[0][0].type, 're3d-configurator');
+  assert.equal(messages[0][1], 'http://localhost');
+});
+
+test('PIN layout uses the available screen and stretches the keypad on touchscreen displays', () => {
+  const html = fs.readFileSync(path.join(assets, 'kiosk.html'), 'utf8');
+  const css = fs.readFileSync(path.join(assets, 'security.css'), 'utf8');
+  assert.match(html, /<body class="kiosk-page">/);
+  assert.match(css, /\.kiosk-page \.pin-card \{[^}]*max-width: none;[^}]*min-height: calc\(100dvh - 24px\)/);
+  assert.match(css, /\.kiosk-page #keys \{ grid-template-rows: repeat\(4, minmax\(48px,1fr\)\)/);
 });

@@ -6,7 +6,7 @@
   <title>re:3D Touchscreen Lock</title>
   <link rel="stylesheet" href="/auth/security.css">
 </head>
-<body>
+<body class="kiosk-page">
 <main id="lock" class="security-card pin-card" aria-labelledby="pin-heading">
   <header class="security-brand">
     <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
@@ -36,7 +36,11 @@
       <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
       <span>Locks after 5 minutes idle</span>
     </div>
-    <button id="lock-now" class="btn-ghost" type="button">Lock</button>
+    <div class="toolbar-actions">
+      <button id="printer-control" class="btn-ghost" type="button">Printer</button>
+      <button id="configurator" class="btn-ghost" type="button">Configurator</button>
+      <button id="lock-now" class="btn-ghost" type="button">Lock</button>
+    </div>
   </div>
   <iframe id="printer" title="Printer control"></iframe>
 </section>
@@ -49,6 +53,14 @@
   let dirty = false;
   let reporting = false;
   let lastReport = -Infinity;
+  const initialView = new URLSearchParams(location.search).get('view') === 'configurator'
+    ? 'http://localhost:8081/' : '/';
+  function navigate(url) {
+    if (!unlocked) return;
+    el('printer').src = url;
+    lastActivity = performance.now();
+    reportActivity();
+  }
   async function request(path, data) {
     const response = await fetch('/auth/' + path, {
       method:data ? 'POST' : 'GET', cache:'no-store',
@@ -102,15 +114,22 @@
       lastReport = -Infinity;
       el('lock').hidden = true;
       el('screen').hidden = false;
-      el('printer').src = '/';
+      el('printer').src = initialView;
     } catch (error) { el('status').textContent = error.message; }
     finally { busy = false; }
   });
   el('lock-now').addEventListener('click', lock);
+  el('printer-control').addEventListener('click', () => navigate('/'));
+  el('configurator').addEventListener('click', () => navigate('http://localhost:8081/'));
   addEventListener('message', event => {
     if (event.source !== el('printer').contentWindow
         || !['http://localhost', 'http://localhost:8081'].includes(event.origin)
-        || event.data?.type !== 're3d-activity' || !unlocked) return;
+        || !unlocked) return;
+    if (event.data?.type === 're3d-configurator') {
+      navigate('http://localhost:8081/');
+      return;
+    }
+    if (event.data?.type !== 're3d-activity') return;
     lastActivity = performance.now();
     dirty = true;
     if (performance.now() - lastReport >= 1000) reportActivity();
