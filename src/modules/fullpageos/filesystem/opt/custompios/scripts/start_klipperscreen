@@ -10,8 +10,8 @@ MAX_FAILS=3
 FAIL_COUNT=0
 
 exec >> "$LOG" 2>&1
-if [ -f /etc/re3d-security/lockdown ]; then
-  echo "[$(date)] Lockdown: KlipperScreen is disabled."
+if [ -f /etc/re3d-security/lockdown ] || [ -f /run/re3d-airgap/enabled ]; then
+  echo "[$(date)] PIN-protected mode: KlipperScreen is disabled."
   exit 1
 fi
 echo "[$(date)] start_klipperscreen launched (pid $$)"

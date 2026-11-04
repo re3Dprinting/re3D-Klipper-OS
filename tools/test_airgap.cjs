@@ -13,7 +13,8 @@ const bash = process.env.BASH || (process.platform === 'win32'
   ? path.join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe') : 'bash');
 
 async function fixture(initial = {}, search = '') {
-  const state = {enabled: false, applied: false, reboot_required: false, local: true, has_password: true, ...initial};
+  const state = {enabled: false, applied: false, reboot_required: false, local: true,
+    has_password: true, has_pin: true, security_mode: 'basic', ...initial};
   const elements = new Map();
   const calls = [];
   let failure = '';
@@ -30,7 +31,10 @@ async function fixture(initial = {}, search = '') {
       const body = options.body ? JSON.parse(options.body) : undefined;
       calls.push({url, body});
       if (url === failure) return {ok: false, json: async () => ({error: 'Operation failed'})};
-      if (url === '/auth/password') state.has_password = true;
+      if (url === '/auth/password') {
+        state.has_password = true;
+        if (body.pin) state.has_pin = true;
+      }
       if (url === '/auth/airgap' && body) {
         state.enabled = body.enabled;
         state.reboot_required = state.enabled !== state.applied;
@@ -43,6 +47,7 @@ async function fixture(initial = {}, search = '') {
     async save(enabled, password = 'administrator') {
       el('enabled').checked = enabled;
       el('network-enabled').checked = !enabled;
+      el('enabled').change();
       el('password').value = password;
       await el('settings').submit({preventDefault() {}});
     }};
@@ -93,6 +98,51 @@ test('first enable creates a confirmed administrator password before saving isol
   assert.equal(f.el('return').href, 'http://localhost:8081/?setup=1&flow=openbox');
 });
 
+test('a missing shared PIN must be created and confirmed before enabling isolation', async () => {
+  const f = await fixture({has_pin: false});
+  await f.save(true);
+  assert.match(f.el('message').textContent, /matching touchscreen PINs/);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.el('pin-fields').hidden, false);
+  f.el('pin').value = '1234';
+  f.el('pin-confirm').value = '4321';
+  await f.save(true);
+  assert.equal(f.calls.length, 1);
+  f.el('pin').value = '1234';
+  f.el('pin-confirm').value = '1234';
+  await f.save(true);
+  assert.deepEqual(f.calls.slice(1).map(call => call.url), ['/auth/password', '/auth/airgap']);
+  assert.deepEqual(f.calls[1].body, {current: 'administrator', mode: 'basic', pin: '1234'});
+  assert.equal(f.el('pin').value, '');
+  assert.equal(f.el('pin-confirm').value, '');
+  assert.equal(f.el('pin-fields').hidden, true);
+});
+
+test('an existing Lockdown PIN is reused without a credential update', async () => {
+  const f = await fixture({has_pin: true, security_mode: 'lockdown'});
+  await f.save(true);
+  assert.equal(f.el('pin-fields').hidden, true);
+  assert.match(f.el('pin-help').textContent, /existing Lockdown touchscreen PIN/);
+  assert.deepEqual(f.calls.map(call => call.url), ['/auth/airgap', '/auth/airgap']);
+});
+
+test('initial password and missing PIN are created together using the shared credential API', async () => {
+  const f = await fixture({has_password: false, has_pin: false, security_mode: 'off'});
+  f.el('confirm').value = 'administrator';
+  f.el('pin').value = '5678';
+  f.el('pin-confirm').value = '5678';
+  await f.save(true);
+  assert.deepEqual(f.calls[1].body, {new: 'administrator', mode: 'basic', pin: '5678'});
+  assert.equal(f.calls.at(-1).url, '/auth/airgap');
+});
+
+test('disabling isolation does not require creating a missing PIN', async () => {
+  const f = await fixture({has_pin: false, enabled: true, applied: true});
+  await f.save(false);
+  assert.equal(f.el('pin').required, false);
+  assert.deepEqual(f.calls.map(call => call.url), ['/auth/airgap', '/auth/airgap']);
+});
+
 test('pending disable still reports isolation active and remote controls stay disabled', async () => {
   const f = await fixture({enabled: true, applied: true});
   await f.save(false);
@@ -110,8 +160,8 @@ test('helper failure does not display a successful save or leak passwords', asyn
   await f.save(true);
   assert.equal(f.el('message').textContent, 'Operation failed');
   assert.equal(f.el('password').value, '');
-  assert.equal(f.el('enabled').checked, false);
-  assert.equal(f.el('network-enabled').checked, true);
+  assert.equal(f.el('enabled').checked, true);
+  assert.equal(f.el('network-enabled').checked, false);
   assert.equal(f.el('reboot').hidden, true);
 });
 
@@ -185,6 +235,49 @@ test('network CGI guards reject both pending enable and pending disable before d
   }
 });
 
+test('air-gap display enforcement blocks KlipperScreen and preserves the saved preference', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-airgap-display-'));
+  const filesystem = path.join(assets, '..', '..');
+  const mapPaths = source => source
+    .replaceAll('/etc/re3d-airgap/enabled', './enabled')
+    .replaceAll('/run/re3d-airgap/enabled', './applied')
+    .replaceAll('/etc/re3d-display-mode', './mode');
+  try {
+    fs.writeFileSync(path.join(directory, 'mode'), 'klipperscreen');
+    const cgi = mapPaths(fs.readFileSync(path.join(assets, 'www', 'cgi-bin', 'set_display_mode.sh'), 'utf8'));
+    const macro = mapPaths(fs.readFileSync(path.join(filesystem, 'home', 'pi', 'printer_data', 'config',
+      'src', 'system_config', 'shell_commands', 'switch_display_mode.sh'), 'utf8'));
+    const body = 'mode=klipperscreen&reboot=defer';
+    for (const marker of ['enabled', 'applied']) {
+      fs.writeFileSync(path.join(directory, marker), '');
+      const response = spawnSync(bash, ['-c', cgi], {cwd: directory, input: body, encoding: 'utf8', timeout: 5000,
+        env: {...process.env, REQUEST_METHOD: 'POST', CONTENT_LENGTH: String(body.length)}});
+      assert.ifError(response.error);
+      assert.notEqual(response.status, 0);
+      assert.match(response.stdout, /409 Conflict/);
+      assert.match(response.stdout, /PIN-protected Mainsail/);
+      const command = spawnSync(bash, ['-c', macro, '--', 'klipperscreen'],
+        {cwd: directory, encoding: 'utf8', timeout: 5000});
+      assert.ifError(command.error);
+      assert.notEqual(command.status, 0);
+      assert.match(command.stderr, /PIN-protected Mainsail/);
+      assert.equal(fs.readFileSync(path.join(directory, 'mode'), 'utf8'), 'klipperscreen');
+      fs.unlinkSync(path.join(directory, marker));
+    }
+    fs.writeFileSync(path.join(directory, 'applied'), '');
+    const session = mapPaths(fs.readFileSync(path.join(filesystem, 'opt', 'custompios', 'scripts', 're3d-session'), 'utf8'))
+      .replace('exec >> "$LOG" 2>&1', ':')
+      .replace('exec cage -d -- /opt/custompios/scripts/start_chromium_browser', 'echo PIN-KIOSK; exit 0');
+    const result = spawnSync(bash, ['-c', session], {cwd: directory, encoding: 'utf8', timeout: 5000});
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /PIN-KIOSK/);
+    assert.equal(fs.readFileSync(path.join(directory, 'mode'), 'utf8'), 'klipperscreen');
+  } finally {
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+});
+
 test('new HTML and modified shell entry points parse with the existing runtimes', () => {
   assert.doesNotThrow(() => new vm.Script(script));
   const filesystem = path.join(assets, '..', '..');
@@ -196,6 +289,11 @@ test('new HTML and modified shell entry points parse with the existing runtimes'
       path.join(filesystem, 'home', 'pi', 'printer_data', 'config', 'src', 'system_config', 'shell_commands', name)),
     path.join(__dirname, 're3d-os-update.sh')
   ];
+  scripts.push(path.join(assets, 'www', 'cgi-bin', 'set_display_mode.sh'),
+    ...['re3d-session', 'start_chromium_browser', 'start_klipperscreen']
+      .map(name => path.join(filesystem, 'opt', 'custompios', 'scripts', name)),
+    path.join(filesystem, 'home', 'pi', 'printer_data', 'config', 'src',
+      'system_config', 'shell_commands', 'switch_display_mode.sh'));
   for (const filename of scripts) {
     const result = spawnSync(bash, ['-n'], {input: fs.readFileSync(filename), encoding: 'utf8', timeout: 5000});
     assert.ifError(result.error);

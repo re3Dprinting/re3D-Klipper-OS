@@ -18,6 +18,7 @@ ASSETS = FILESYSTEM / "opt/mconfig"
 spec = importlib.util.spec_from_file_location("airgap", ASSETS / "airgap.py")
 airgap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(airgap)
+require_pin = airgap.require_pin
 
 
 class AirgapTests(unittest.TestCase):
@@ -35,6 +36,7 @@ class AirgapTests(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.sync = patch.object(airgap, "sync_directory").start()
+        self.pin_check = patch.object(airgap, "require_pin").start()
         self.addCleanup(patch.stopall)
 
     def test_saving_is_persistent_but_does_not_apply_until_reboot(self):
@@ -73,6 +75,27 @@ class AirgapTests(unittest.TestCase):
             airgap.apply()
             run.assert_not_called()
         self.assertFalse(airgap.RULES.exists())
+
+    def test_boot_rejects_missing_pin_before_marking_isolation_applied(self):
+        airgap.ENABLED.parent.mkdir()
+        airgap.ENABLED.touch()
+        self.pin_check.side_effect = ValueError("Missing touchscreen PIN")
+        with patch.object(airgap, "radio_states", return_value={}), \
+                patch.object(airgap, "run", return_value=Mock(stdout='{"nftables": []}')) as run:
+            self.assertRaisesRegex(ValueError, "PIN", airgap.apply)
+            self.assertEqual(run.call_args_list[1].args, ("nft", "-f", "-"))
+        self.assertFalse(airgap.APPLIED.exists())
+
+    def test_boot_reads_the_existing_shared_pin_credential(self):
+        state = self.root / "password.json"
+        credential = {"salt": "00" * 32, "hash": "11" * 64}
+        with patch.object(sys, "path", [str(ASSETS), *sys.path]), \
+                patch.object(airgap, "AUTH_STATE", state):
+            self.assertRaisesRegex(ValueError, "PIN", require_pin)
+            state.write_text(json.dumps({**credential, "mode": "basic", "pin": None}))
+            self.assertRaisesRegex(ValueError, "PIN", require_pin)
+            state.write_text(json.dumps({**credential, "mode": "basic", "pin": credential}))
+            require_pin()
 
     def test_boot_blocks_ipv4_ipv6_and_forwarding_without_established_bypass(self):
         rules = airgap.firewall_rules()

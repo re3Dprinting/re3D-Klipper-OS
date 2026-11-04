@@ -23,6 +23,7 @@ DESKTOP_SERVICES = ("x11vnc.service", "wayvnc.service", "vncserver-x11-serviced.
                     "KlipperScreen.service")
 CHROME_POLICIES = (Path("/etc/chromium/policies/managed/re3d-lockdown.json"),
                    Path("/etc/chromium-browser/policies/managed/re3d-lockdown.json"))
+AIRGAP_APPLIED = Path("/run/re3d-airgap/enabled")
 SSH_OPTIONS = """# Managed by re3D security mode; restored on leaving Lockdown.
 Port 22
 UsePAM yes
@@ -151,6 +152,26 @@ def prepare_ssh_runtime():
     SSH_RUNTIME.chmod(0o755)
 
 
+def apply_touchscreen_policy(locked):
+    if locked:
+        stop_desktops()
+        policies = {
+            "DeveloperToolsAvailability": 2, "BrowserGuestModeEnabled": False,
+            "BrowserAddPersonEnabled": False, "IncognitoModeAvailability": 1,
+            "PasswordManagerEnabled": False, "PrintingEnabled": False,
+            "DownloadRestrictions": 3, "AllowFileSelectionDialogs": False,
+            "URLBlocklist": ["*"],
+            # Chromium uses path prefixes, not glob patterns; the dot requires an exact host.
+            "URLAllowlist": ["http://.localhost:80/", "http://.localhost:8081/"],
+        }
+        for path in CHROME_POLICIES:
+            write(path, json.dumps(policies))
+    else:
+        for path in CHROME_POLICIES:
+            path.unlink(missing_ok=True)
+        restore_desktops()
+
+
 def apply(mode):
     if mode == "lockdown":
         # Until prerequisites and the SSH effective configuration are verified, expose no TCP services.
@@ -177,18 +198,6 @@ def apply(mode):
         command = run("systemctl", "show", "-p", "ExecStart", "--value", "ssh.service").stdout
         if f"argv[]=/usr/sbin/sshd -D -f {SSH_CONFIG} ;" not in command:
             raise RuntimeError("An SSH service override prevents the Lockdown command")
-        stop_desktops()
-        policies = {
-            "DeveloperToolsAvailability": 2, "BrowserGuestModeEnabled": False,
-            "BrowserAddPersonEnabled": False, "IncognitoModeAvailability": 1,
-            "PasswordManagerEnabled": False, "PrintingEnabled": False,
-            "DownloadRestrictions": 3, "AllowFileSelectionDialogs": False,
-            "URLBlocklist": ["*"],
-            # Chromium uses path prefixes, not glob patterns; the dot requires an exact host.
-            "URLAllowlist": ["http://.localhost:80/", "http://.localhost:8081/"],
-        }
-        for path in CHROME_POLICIES:
-            write(path, json.dumps(policies))
         write(MARKER, "lockdown\n")
         set_firewall()
     else:
@@ -203,10 +212,8 @@ def apply(mode):
             run("systemctl", "daemon-reload")
         if table_exists():
             run("nft", "delete", "table", "inet", "re3d_lockdown")
-        for path in CHROME_POLICIES:
-            path.unlink(missing_ok=True)
         MARKER.unlink(missing_ok=True)
-        restore_desktops()
+    apply_touchscreen_policy(mode == "lockdown" or AIRGAP_APPLIED.exists())
     write(RUNTIME / "mode", mode + "\n")
 
 

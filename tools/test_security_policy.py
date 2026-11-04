@@ -24,7 +24,7 @@ class PolicyTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        for name in ("RUNTIME", "MARKER", "SSH_CONFIG", "SSH_UNIT", "SSH_RUNTIME", "SERVICE_BACKUP"):
+        for name in ("RUNTIME", "MARKER", "SSH_CONFIG", "SSH_UNIT", "SSH_RUNTIME", "SERVICE_BACKUP", "AIRGAP_APPLIED"):
             mock = patch.object(policy, name, self.root / name)
             mock.start()
             self.addCleanup(mock.stop)
@@ -44,6 +44,23 @@ class PolicyTests(unittest.TestCase):
                      policy.SSH_RUNTIME, policy.SERVICE_BACKUP, *policy.CHROME_POLICIES):
             self.assertFalse(path.exists(), str(path))
         run.assert_not_called()
+
+    def test_airgap_uses_kiosk_policy_without_lockdown_ssh_requirements(self):
+        policy.AIRGAP_APPLIED.touch()
+        with patch.object(policy, "table_exists", return_value=False), \
+                patch.object(policy, "ssh_readiness") as readiness, \
+                patch.object(policy, "stop_desktops") as desktops, \
+                patch.object(policy, "restore_desktops") as restore, \
+                patch.object(policy, "run") as run:
+            policy.apply("basic")
+        desktops.assert_called_once()
+        restore.assert_not_called()
+        readiness.assert_not_called()
+        run.assert_not_called()
+        self.assertTrue(policy.CHROME_POLICIES[0].exists())
+        self.assertFalse(policy.MARKER.exists())
+        self.assertFalse(policy.SSH_CONFIG.exists())
+        self.assertEqual((policy.RUNTIME / "mode").read_text().strip(), "basic")
 
     def test_ipv4_and_ipv6_default_deny_and_only_intended_ports(self):
         rules = policy.firewall_rules()

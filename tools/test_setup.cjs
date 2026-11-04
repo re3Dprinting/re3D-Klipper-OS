@@ -183,7 +183,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
     },
     URLSearchParams, console,
     window: { scrollTo() {}, addEventListener(name, fn) { events[name] = fn; } },
-    document: { getElementById: byId, body: { classList: {
+    document: { getElementById: byId, createElement: element, body: { classList: {
       add(name) { bodyClasses.add(name); }, remove(name) { bodyClasses.delete(name); }
     } } },
     cleanupTabArtifacts() {}, currentTab: null,
@@ -393,6 +393,20 @@ test('choosing air-gap does not pretend isolation was saved, and Connect cannot 
   wizard.state.failure = '/auth/airgap';
   await wizard.click('setup-next');
   assert.match(wizard.byId('setup-status').textContent, /Connection lost/);
+});
+
+test('air-gapped display step forces PIN-protected Mainsail without overwriting the saved preference', async () => {
+  const wizard = await mount({airgap: {enabled: true, applied: false}});
+  wizard.events['re3d-machine-result']({detail: {ok: true}});
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
+  assert.equal(wizard.byId('setup-status').textContent, '');
+  assert.match(wizard.byId('page').appended[0].textContent, /PIN-protected Mainsail/);
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Ready to finish');
+  assert.equal(wizard.requests.some(request => request.url.includes('set_display_mode.sh')), false);
 });
 
 test('manual launch and all previously saved steps start at Machine', async () => {

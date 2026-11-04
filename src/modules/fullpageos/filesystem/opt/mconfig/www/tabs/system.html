@@ -374,6 +374,7 @@
       <div class="sys-title">Air-gapped mode</div>
       <div class="sys-subtitle">Disable all external network interfaces, wireless radios and physical keyboards.
         Touchscreen controls, mainboard USB and USB drives remain available.
+        The touchscreen uses Mainsail with the shared Lockdown PIN; create a PIN if none exists.
         Changes require the administrator password on the touchscreen and a reboot.</div>
       <div class="btn-row"><a class="btn-ghost" href="/auth/airgap-settings">Air-gap settings</a></div>
     </div>
@@ -1022,12 +1023,16 @@
       if (!r.ok || !securityResponse.ok) throw new Error('Could not load display/security mode');
       const security = await securityResponse.json();
       displayLockedDown = security.mode === 'lockdown' || security.applied_mode === 'lockdown';
+      const airgapped = security.airgap_enabled || security.touchscreen_locked && security.mode !== 'lockdown';
+      displayLockedDown = displayLockedDown || airgapped;
       const mode = (await r.text()).trim();
       if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid display mode response');
       applyDisplayMode(displayLockedDown ? 'mainsail' : mode);
       if (displayLockedDown && modeHint) {
         modeHint.style.display = 'block';
-        modeHint.textContent = 'KlipperScreen is disabled in Lockdown. Change security mode and reboot first.';
+        modeHint.textContent = airgapped
+          ? 'Air-gapped mode requires PIN-protected Mainsail. Disable air-gapping and reboot to restore your saved display preference.'
+          : 'KlipperScreen is disabled in Lockdown. Change security mode and reboot first.';
       }
     } catch(error) {
       if (btnMainsail) btnMainsail.disabled = true;

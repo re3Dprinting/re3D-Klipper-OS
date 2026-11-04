@@ -39,7 +39,7 @@ flags=(
 )
 
 # ---------- One-time splash branch ----------
-if [[ -f /etc/re3d-security/lockdown ]]; then
+if [[ -f /etc/re3d-security/lockdown || -f /run/re3d-airgap/enabled ]]; then
   # A fresh kiosk profile cannot restore a previous PIN session or printer websocket.
   PROFILE="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/re3d-kiosk.XXXXXX")" || exit 1
   trap 'rm -r -- "$PROFILE"' EXIT

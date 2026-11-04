@@ -61,14 +61,16 @@ test('normal boot still honors a disabled HTTP check', () => {
   assert.deepEqual(launch({ disabled: true }), ['get_url', 'curl', 'browser']);
 });
 
-function launchBrowser({ wayland = '', display = '', firstboot = true, attempts = 1, lockdown = false } = {}) {
+function launchBrowser({ wayland = '', display = '', firstboot = true, attempts = 1, lockdown = false, airgap = false } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-browser-'));
   try {
     if (firstboot) fs.writeFileSync(path.join(directory, 'firstboot-splash'), '');
     if (lockdown) fs.writeFileSync(path.join(directory, 'lockdown'), '');
+    if (airgap) fs.writeFileSync(path.join(directory, 'airgap'), '');
     fs.writeFileSync(path.join(directory, 'wait.html'), '<html></html>');
     const script = browser
       .replaceAll('/etc/re3d-security/lockdown', './lockdown')
+      .replaceAll('/run/re3d-airgap/enabled', './airgap')
       .replaceAll('/etc/firstboot-splash', './firstboot-splash')
       .replaceAll('/tmp/', './')
       .replaceAll('/home/pi/.config/chromium-firstboot', './profile')
@@ -91,7 +93,7 @@ ${script}`,
         timeout: 3000
       });
       assert.ifError(result.error);
-      assert.equal(result.status, wayland || display ? (lockdown ? 7 : 0) : 1, result.stderr);
+      assert.equal(result.status, wayland || display ? (lockdown || airgap ? 7 : 0) : 1, result.stderr);
     }
     const read = name => fs.existsSync(path.join(directory, name))
       ? fs.readFileSync(path.join(directory, name), 'utf8') : '';
@@ -112,10 +114,18 @@ test('Lockdown launches the PIN wrapper with a fresh profile and preserves the t
   const result = launchBrowser({ wayland:'wayland-0', lockdown:true });
   assert.ok(result.args.includes('--app=http://localhost/auth/kiosk'));
   assert.ok(result.args.some(arg => arg.startsWith('--user-data-dir=')));
-  assert.ok(result.args.includes('--load-extension=/home/pi/virtual_keyboard'));
+  assert.ok(result.args.some(arg => arg.startsWith('--load-extension=')
+    && arg.slice('--load-extension='.length).split(',').includes('/home/pi/virtual_keyboard')));
   assert.ok(!result.args.includes('--incognito'));
   assert.deepEqual(result.profiles, []);
   assert.equal(result.markerExists, true);
+});
+
+test('air-gapped mode launches the same PIN wrapper and never the unprotected browser', () => {
+  const result = launchBrowser({wayland:'wayland-0', firstboot:false, airgap:true});
+  assert.ok(result.args.includes('--app=http://localhost/auth/kiosk'));
+  assert.ok(result.args.some(arg => arg.startsWith('--user-data-dir=')));
+  assert.deepEqual(result.profiles, []);
 });
 
 for (const firstboot of [true, false]) {

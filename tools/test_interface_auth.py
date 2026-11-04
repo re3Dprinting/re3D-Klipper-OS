@@ -61,6 +61,7 @@ class AuthTests(unittest.TestCase):
     def test_airgap_changes_require_a_local_administrator_password(self):
         self.assertEqual(self.request("airgap", {"enabled": True}, address="127.0.0.1")[0], 409)
         self.enable()
+        self.assertEqual(self.request("password", {"current": PASSWORD, "mode": "basic", "pin": "1234"})[0], 200)
         with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:
             self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD})[0], 403)
             self.assertEqual(self.request("airgap", {"enabled": True, "current": "wrong"},
@@ -89,7 +90,49 @@ class AuthTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(body, {"enabled": enabled, "applied": applied,
                                    "reboot_required": enabled != applied,
-                                   "local": True, "has_password": False})
+                                   "local": True, "has_password": False,
+                                   "has_pin": False, "security_mode": "off"})
+
+    def test_airgap_requires_a_shared_pin_and_reuses_it_without_replacing_credentials(self):
+        self.enable()
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD},
+                                          address="127.0.0.1")[0], 409)
+            change.assert_not_called()
+            self.assertEqual(self.request("password", {"current": PASSWORD, "mode": "basic", "pin": "1234"})[0], 200)
+            pin = self.state.record["pin"].copy()
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD},
+                                          address="127.0.0.1")[0], 200)
+            self.assertEqual(self.state.record["pin"], pin)
+            self.assertTrue(self.state.verify_pin("1234"))
+            self.assertEqual(self.state.mode, "basic")
+
+    def test_airgap_pin_protects_local_control_and_stays_required_until_reboot_after_disable(self):
+        self.enable()
+        self.request("password", {"current": PASSWORD, "mode": "basic", "pin": "1234"})
+        auth.AIRGAP_APPLIED.touch()
+        self.assertEqual(self.request("check", address="127.0.0.1")[0], 401)
+        status, _, cookie = self.request("pin", {"pin": "1234"}, address="127.0.0.1")
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("check", address="127.0.0.1", cookie=cookie)[0], 204)
+        self.assertTrue(self.request("status", address="127.0.0.1")[1]["touchscreen_locked"])
+        self.assertTrue(self.request("kiosk-status", address="127.0.0.1")[1]["touchscreen_locked"])
+        self.assertTrue(self.request("kiosk-client.js", address="127.0.0.1")[1])
+        self.assertEqual(self.request("lock", {}, address="127.0.0.1", cookie=cookie)[0], 200)
+        self.assertEqual(self.request("check", address="127.0.0.1", cookie=cookie)[0], 401)
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})):
+            self.assertEqual(self.request("airgap", {"enabled": False, "current": PASSWORD},
+                                          address="127.0.0.1")[0], 200)
+        self.assertTrue(self.state.touchscreen_locked)
+
+    def test_airgap_locked_screen_preserves_telemetry_and_emergency_stop(self):
+        self.enable()
+        auth.AIRGAP_APPLIED.touch()
+        with patch.object(auth, "kiosk_printer_status", return_value={"state": "printing"}), \
+                patch.object(auth, "kiosk_printer_request", return_value="ok"):
+            self.assertEqual(self.request("printer-status", address="127.0.0.1")[0], 200)
+            self.assertEqual(self.request("emergency-stop", {}, address="127.0.0.1")[0], 200)
+            self.assertEqual(self.request("printer-status")[0], 403)
 
     def test_airgap_changes_require_same_origin_and_strict_boolean(self):
         self.enable()

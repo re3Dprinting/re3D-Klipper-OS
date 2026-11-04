@@ -12,6 +12,8 @@
   <p>After reboot, all external network interfaces, Wi-Fi and Bluetooth are disabled.
     Physical keyboards are blocked. The touchscreen, on-screen keyboard, printer mainboard
     and USB drives remain available.</p>
+  <p>The touchscreen uses PIN-protected Mainsail while air-gapped. Its PIN is shared with
+    Lockdown mode; your saved display preference is retained for when you leave air-gapped mode.</p>
   <p>This is software-enforced isolation, not a substitute for unplugging Ethernet and removing
     wireless hardware where a physical air gap is required. USB drives can still transfer untrusted files.</p>
   <p id="state" role="status">Loading air-gap settings...</p>
@@ -33,6 +35,19 @@
     <div id="confirm-field" hidden>
       <label for="confirm">Confirm new administrator password</label>
       <input id="confirm" type="password" autocomplete="new-password" maxlength="1024">
+    </div>
+    <p id="pin-help"></p>
+    <div id="pin-fields" class="credential-fields" hidden>
+      <div>
+        <label for="pin">New touchscreen PIN (at least 4 digits)</label>
+        <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+          maxlength="1024" autocomplete="new-password" disabled>
+      </div>
+      <div>
+        <label for="pin-confirm">Confirm touchscreen PIN</label>
+        <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+          maxlength="1024" autocomplete="new-password" disabled>
+      </div>
     </div>
     <button id="save" type="submit" disabled>Save for next reboot</button>
   </form>
@@ -59,13 +74,30 @@
         || typeof result.applied !== 'boolean' || typeof result.reboot_required !== 'boolean')) {
       throw new Error('Invalid air-gap status. Reload to verify saved settings.');
     }
+    if (url === '/auth/airgap' && data === undefined && (typeof result.has_pin !== 'boolean'
+        || !['off', 'basic', 'lockdown'].includes(result.security_mode))) {
+      throw new Error('Unable to verify the shared touchscreen PIN. Reload before changing settings.');
+    }
     return result;
   }
-  function render() {
+  function pinControls() {
+    const needed = el('enabled').checked && !state.has_pin;
+    el('pin-fields').hidden = !needed;
+    for (const id of ['pin', 'pin-confirm']) {
+      el(id).required = needed && state.local;
+      el(id).disabled = !needed || !state.local;
+    }
+    el('pin-help').textContent = state.has_pin
+      ? 'The existing Lockdown touchscreen PIN will be reused. No new PIN is needed.'
+      : 'Enabling air-gapped mode requires a new touchscreen PIN. This same PIN will also be used by Lockdown.';
+  }
+  function render(resetSelection = true) {
     el('state').textContent = state.applied ? 'Air-gap isolation is active.' : 'Air-gap isolation is not active.';
     if (state.reboot_required) el('state').textContent += ' A reboot is required to apply the saved change.';
-    el('enabled').checked = state.enabled;
-    el('network-enabled').checked = !state.enabled;
+    if (resetSelection) {
+      el('enabled').checked = state.enabled;
+      el('network-enabled').checked = !state.enabled;
+    }
     el('enabled').disabled = !state.local;
     el('network-enabled').disabled = !state.local;
     el('save').disabled = !state.local;
@@ -77,31 +109,51 @@
     el('confirm').required = !state.has_password;
     el('password').autocomplete = state.has_password ? 'current-password' : 'new-password';
     el('reboot').hidden = !state.local || !state.reboot_required;
+    pinControls();
   }
+  for (const id of ['enabled', 'network-enabled']) el(id).addEventListener('change', pinControls);
   el('settings').addEventListener('submit', async event => {
     event.preventDefault();
     el('save').disabled = true;
     el('message').textContent = '';
     let passwordCreated = false;
+    let pinCreated = false;
     try {
       const password = el('password').value;
+      const needsPin = el('enabled').checked && !state.has_pin;
+      const pin = el('pin').value;
+      if (needsPin && (!/^[0-9]{4,}$/.test(pin) || pin !== el('pin-confirm').value)) {
+        throw new Error('Use matching touchscreen PINs of at least 4 digits.');
+      }
       if (!state.has_password) {
         if (password.length < 8 || password !== el('confirm').value) {
           throw new Error('Use matching administrator passwords of at least 8 characters.');
         }
-        await request('/auth/password', {new: password, mode: 'basic'});
+        await request('/auth/password', {new: password, mode: 'basic', ...(needsPin ? {pin} : {})});
         state.has_password = true;
+        state.security_mode = 'basic';
         passwordCreated = true;
+        if (needsPin) {
+          state.has_pin = true;
+          pinCreated = true;
+        }
+      } else if (needsPin) {
+        await request('/auth/password', {current: password, mode: state.security_mode, pin});
+        state.has_pin = true;
+        pinCreated = true;
       }
       const result = await request('/auth/airgap', {enabled: el('enabled').checked, current: password});
       state = {...state, ...result};
       el('message').textContent = 'Saved. Finish setup to reboot, or reboot now when the printer is idle. No isolation change takes effect until reboot.';
     } catch (error) {
-      el('message').textContent = (passwordCreated ? 'Administrator password saved, but air-gap settings were not confirmed. ' : '') + error.message;
+      el('message').textContent = (passwordCreated || pinCreated
+        ? 'Access credentials saved, but air-gap settings were not confirmed. ' : '') + error.message;
     } finally {
       el('password').value = '';
       el('confirm').value = '';
-      render();
+      el('pin').value = '';
+      el('pin-confirm').value = '';
+      render(false);
     }
   });
   el('reboot').addEventListener('click', async () => {

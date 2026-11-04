@@ -8,7 +8,7 @@ const assets = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'files
 const source = fs.readFileSync(path.join(assets, 'kiosk.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture(search = '') {
+async function fixture(search = '', mode = 'lockdown') {
   const elements = new Map();
   const listeners = {};
   const intervals = new Map();
@@ -37,11 +37,11 @@ async function fixture(search = '') {
       calls.push([url, body]);
       if (fail) throw new Error('Network unavailable');
       let data = {};
-      if (url === '/auth/status') data = {mode:'lockdown'};
+      if (url === '/auth/status') data = {mode, touchscreen_locked:true};
       if (url === '/auth/printer-status') data = telemetry;
       if (url === '/auth/lock') session = false;
       if (url === '/auth/pin') session = body.pin === '1234';
-      if (url === '/auth/kiosk-status') data = {unlocked:session};
+      if (url === '/auth/kiosk-status') data = {unlocked:session, mode, touchscreen_locked:true};
       return {ok:true, json:async () => data};
     }
   };
@@ -57,6 +57,16 @@ async function fixture(search = '') {
     setTime(value) { now = value; }, expire() { session = false; }, fail() { fail = true; }
   };
 }
+
+test('air-gapped Basic mode uses the shared lock and never redirects to unprotected control', async () => {
+  const f = await fixture('', 'basic');
+  await f.unlock();
+  await f.intervals.get(5000)();
+  assert.equal(f.element('printer').src, '/');
+  assert.equal(f.calls.some(([url]) => url === 'redirect'), false);
+  await f.element('lock-now').click();
+  assert.equal(f.element('printer').src, 'about:blank');
+});
 
 test('startup and manual locking unload printer control, and PIN unlock does not reveal the PIN', async () => {
   const f = await fixture();

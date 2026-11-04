@@ -17,6 +17,7 @@ import tempfile
 ENABLED = Path("/etc/re3d-airgap/enabled")
 APPLIED = Path("/run/re3d-airgap/enabled")
 SOCKET = "/run/re3d-airgap/settings.sock"
+AUTH_STATE = Path("/var/lib/re3d-auth/password.json")
 RULES = Path("/run/udev/rules.d/99-re3d-airgap.rules")
 RADIOS = Path("/etc/re3d-airgap/radios.json")
 NETWORK_UNITS = (
@@ -147,6 +148,13 @@ def restore_radios():
     sync_directory(RADIOS.parent)
 
 
+def require_pin():
+    from auth_server import AuthState
+
+    if not AuthState(AUTH_STATE).has_pin:
+        raise ValueError("Air-gapped mode requires a touchscreen PIN. Configure it before rebooting.")
+
+
 def apply():
     if not ENABLED.exists():
         restore_radios()
@@ -158,6 +166,7 @@ def apply():
                   and item["table"].get("name") == "re3d_airgap"
                   for item in tables["nftables"])
     run("nft", "-f", "-", input=firewall_rules(replace))
+    require_pin()
     # Keep all connection managers and console keyboard paths disabled for this boot only.
     run("systemctl", "mask", "--runtime", *NETWORK_UNITS, *CONSOLE_UNITS)
     block_radios()

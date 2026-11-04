@@ -26,8 +26,8 @@ if [ -f /etc/firstboot-splash ] || { [ -f /var/lib/re3d-setup/step ] \
 fi
 echo "[$(date)] re3d-session started — mode: ${MODE}"
 
-if [ -f "$LOCKDOWN" ]; then
-  echo "[$(date)] Lockdown: starting only the PIN-protected Chromium kiosk under cage."
+if [ -f "$LOCKDOWN" ] || [ -f /run/re3d-airgap/enabled ]; then
+  echo "[$(date)] PIN-protected mode: starting only the Chromium kiosk under cage."
   exec cage -d -- /opt/custompios/scripts/start_chromium_browser
 fi
 

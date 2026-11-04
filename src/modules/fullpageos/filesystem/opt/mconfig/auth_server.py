@@ -204,6 +204,10 @@ class AuthState:
         return self.record is not None and self.record.get("pin") is not None
 
     @property
+    def touchscreen_locked(self):
+        return self.mode == "lockdown" or AIRGAP_APPLIED.exists()
+
+    @property
     def applied_mode(self):
         return APPLIED_MODE.read_text().strip() if APPLIED_MODE.exists() else "off"
 
@@ -344,8 +348,8 @@ class AuthHandler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         path = url.path
         if path == "/auth/printer-status":
-            if not self.local or self.state.mode != "lockdown":
-                self.reply(403, {"error": "Locked-screen printer status is only available locally in Lockdown"})
+            if not self.local or not self.state.touchscreen_locked:
+                self.reply(403, {"error": "Locked-screen printer status is only available locally in a PIN-protected mode"})
                 return
             try:
                 self.reply(200, kiosk_printer_status())
@@ -359,7 +363,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                     self.reply(401, b"", https_required=True)
                     return
                 self.state.prune()
-                if self.local and self.state.mode == "lockdown":
+                if self.local and self.state.touchscreen_locked:
                     allowed = self.token(PIN_COOKIE) in self.state.pin_sessions
                 else:
                     allowed = self.state.record is None or self.local or self.token() in self.state.sessions
@@ -373,22 +377,26 @@ class AuthHandler(BaseHTTPRequestHandler):
             elif path == "/auth/status":
                 self.reply(200, {"enabled": self.state.record is not None, "mode": self.state.mode,
                                 "local": self.local, "has_pin": self.state.has_pin,
+                                "touchscreen_locked": self.state.touchscreen_locked,
+                                "airgap_enabled": AIRGAP_ENABLED.exists(),
                                 "applied_mode": self.state.applied_mode,
                                 "reboot_required": self.state.reboot_required})
             elif path == "/auth/airgap":
                 self.reply(200, {**airgap_status(), "local": self.local,
-                                 "has_password": self.state.record is not None})
+                                 "has_password": self.state.record is not None,
+                                 "has_pin": self.state.has_pin, "security_mode": self.state.mode})
             elif path == "/auth/airgap-settings":
                 self.reply(200, (ROOT / "airgap.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/auth/kiosk-status" and self.local:
                 self.state.prune()
                 self.reply(200, {"unlocked": self.token(PIN_COOKIE) in self.state.pin_sessions,
-                                "mode": self.state.mode, "idle_seconds": IDLE_SECONDS})
+                                "mode": self.state.mode, "idle_seconds": IDLE_SECONDS,
+                                "touchscreen_locked": self.state.touchscreen_locked})
             elif path == "/auth/kiosk" and self.local:
                 self.reply(200, (ROOT / "kiosk.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/auth/kiosk-client.js":
                 body = ((ROOT / "kiosk-client.js").read_bytes()
-                        if self.local and self.state.mode == "lockdown" else b"")
+                        if self.local and self.state.touchscreen_locked else b"")
                 self.reply(200, body, "application/javascript")
             elif path == "/auth/security.css":
                 self.reply(200, (ROOT / "security.css").read_bytes(), "text/css; charset=utf-8")
@@ -426,8 +434,8 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(400, {"error": str(error)})
             return
         if self.path == "/auth/emergency-stop":
-            if not self.local or self.state.mode != "lockdown":
-                self.reply(403, {"error": "Locked-screen emergency stop is only available locally in Lockdown"})
+            if not self.local or not self.state.touchscreen_locked:
+                self.reply(403, {"error": "Locked-screen emergency stop is only available locally in a PIN-protected mode"})
                 return
             try:
                 if kiosk_printer_request("/printer/emergency_stop", "POST") != "ok":
@@ -458,8 +466,8 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(426, {"error": "Use HTTPS before configuring Lockdown or submitting passwords outside Basic mode"})
             return
         if self.path in ("/auth/pin", "/auth/activity", "/auth/lock"):
-            if not self.local or self.state.mode != "lockdown":
-                self.reply(403, {"error": "Touchscreen PIN access is only available locally in Lockdown"})
+            if not self.local or not self.state.touchscreen_locked:
+                self.reply(403, {"error": "Touchscreen PIN access is only available locally in a PIN-protected mode"})
                 return
             self.state.prune()
             token = self.token(PIN_COOKIE)
@@ -511,7 +519,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.reply(status, result)
             return
         if self.path == "/auth/login":
-            if self.local and self.state.mode == "lockdown":
+            if self.local and self.state.touchscreen_locked:
                 self.reply(403, {"error": "Use the touchscreen PIN to unlock this display"})
             elif self.state.record is None:
                 self.reply(200, {"ok": True})
@@ -530,6 +538,8 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.reply(409, {"error": "Set a web administrator password in Security settings first"})
             elif type(data.get("enabled")) is not bool:
                 self.reply(400, {"error": "Air-gap enabled must be a boolean"})
+            elif data["enabled"] and not self.state.has_pin:
+                self.reply(409, {"error": "Create a touchscreen PIN before enabling air-gapped mode"})
             else:
                 status, result = change_airgap(data["enabled"])
                 self.reply(status, result, cookie=self.state.session() if status == 200 else None)
