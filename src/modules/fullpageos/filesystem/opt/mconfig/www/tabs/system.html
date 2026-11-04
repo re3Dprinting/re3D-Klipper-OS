@@ -325,20 +325,6 @@
   <div class="sys-col">
     <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-34</span></div>
 
-    <div class="card sys-card">
-      <div class="sys-title">Printer Security</div>
-      <div class="sys-subtitle">
-        Choose Off, Basic interface protection, or Lockdown with a separate touchscreen PIN,
-        restricted network services and SSH access using a non-default pi password or existing keys.
-        Change the separate pi account password in Security settings.
-        The administrator password is required to change mode, password or PIN.
-      </div>
-      <div class="btn-row">
-        <a class="btn-ghost" href="/auth/settings">Security settings</a>
-        <a class="btn-ghost" href="/auth/login">Login / logout</a>
-      </div>
-    </div>
-
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
       <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4 M4 16v5h16v-5"/></svg>System Update</div>
@@ -363,6 +349,20 @@
         <button type="button" class="btn-primary" id="btn-update" disabled>Run Update</button>
       </div>
       <div class="sys-out mono" id="out-update"></div>
+    </div>
+
+    <div class="card sys-card">
+      <div class="sys-title">Printer Security</div>
+      <div class="sys-subtitle">
+        Choose Off, Basic interface protection, or Lockdown with a separate touchscreen PIN,
+        restricted network services and SSH access using a non-default pi password or existing keys.
+        Change the separate pi account password in Security settings.
+        The administrator password is required to change mode, password or PIN.
+      </div>
+      <div class="btn-row">
+        <a class="btn-ghost" href="/auth/settings">Security settings</a>
+        <a class="btn-ghost" href="/auth/login">Login / logout</a>
+      </div>
     </div>
 
     <!-- Display Mode -->
