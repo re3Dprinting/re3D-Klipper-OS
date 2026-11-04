@@ -252,7 +252,7 @@
         throw new Error('Unable to verify air-gap mode. Reload setup before continuing.');
       }
       if (networkMode === 'offline' && !isolation.enabled) {
-        throw new Error('Open Air-gap settings, enable isolation with an administrator password, then return to setup.');
+        throw new Error('Open Air-gap settings, enter or create the shared touchscreen PIN to enable isolation, then return to setup.');
       }
       if (networkMode === 'connect' && (isolation.enabled || isolation.applied)) {
         throw new Error('Air-gap mode is enabled or still active. Use System > Air-gap settings to disable it and reboot before connecting.');

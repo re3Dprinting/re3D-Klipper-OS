@@ -58,14 +58,16 @@ async function fixture(search = '', mode = 'lockdown') {
   };
 }
 
-test('air-gapped Basic mode uses the shared lock and never redirects to unprotected control', async () => {
-  const f = await fixture('', 'basic');
-  await f.unlock();
-  await f.intervals.get(5000)();
-  assert.equal(f.element('printer').src, '/');
-  assert.equal(f.calls.some(([url]) => url === 'redirect'), false);
-  await f.element('lock-now').click();
-  assert.equal(f.element('printer').src, 'about:blank');
+test('air-gapped Basic and Off modes use the shared lock and never redirect to unprotected control', async () => {
+  for (const mode of ['basic', 'off']) {
+    const f = await fixture('', mode);
+    await f.unlock();
+    await f.intervals.get(5000)();
+    assert.equal(f.element('printer').src, '/');
+    assert.equal(f.calls.some(([url]) => url === 'redirect'), false);
+    await f.element('lock-now').click();
+    assert.equal(f.element('printer').src, 'about:blank');
+  }
 });
 
 test('startup and manual locking unload printer control, and PIN unlock does not reveal the PIN', async () => {

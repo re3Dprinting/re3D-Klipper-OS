@@ -29,21 +29,14 @@
         <span>Network access permitted</span>
       </label>
     </div>
-    <p id="password-help"></p>
-    <label for="password">Web administrator password</label>
-    <input id="password" type="password" autocomplete="current-password" required maxlength="1024">
-    <div id="confirm-field" hidden>
-      <label for="confirm">Confirm new administrator password</label>
-      <input id="confirm" type="password" autocomplete="new-password" maxlength="1024">
-    </div>
     <p id="pin-help"></p>
-    <div id="pin-fields" class="credential-fields" hidden>
+    <div id="pin-fields" class="credential-fields">
       <div>
-        <label for="pin">New touchscreen PIN (at least 4 digits)</label>
+        <label id="pin-label" for="pin">Touchscreen PIN</label>
         <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
           maxlength="1024" autocomplete="new-password" disabled>
       </div>
-      <div>
+      <div id="pin-confirm-field" hidden>
         <label for="pin-confirm">Confirm touchscreen PIN</label>
         <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
           maxlength="1024" autocomplete="new-password" disabled>
@@ -64,6 +57,7 @@
     el('return').textContent = 'Return to setup';
   }
   let state;
+  let busy = false;
   async function request(url, data) {
     const response = await fetch(url, data === undefined ? {cache: 'no-store'} : {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
@@ -74,22 +68,24 @@
         || typeof result.applied !== 'boolean' || typeof result.reboot_required !== 'boolean')) {
       throw new Error('Invalid air-gap status. Reload to verify saved settings.');
     }
-    if (url === '/auth/airgap' && data === undefined && (typeof result.has_pin !== 'boolean'
-        || !['off', 'basic', 'lockdown'].includes(result.security_mode))) {
+    if (url === '/auth/airgap' && typeof result.has_pin !== 'boolean') {
       throw new Error('Unable to verify the shared touchscreen PIN. Reload before changing settings.');
     }
     return result;
   }
   function pinControls() {
-    const needed = el('enabled').checked && !state.has_pin;
-    el('pin-fields').hidden = !needed;
-    for (const id of ['pin', 'pin-confirm']) {
-      el(id).required = needed && state.local;
-      el(id).disabled = !needed || !state.local;
-    }
-    el('pin-help').textContent = state.has_pin
-      ? 'The existing Lockdown touchscreen PIN will be reused. No new PIN is needed.'
-      : 'Enabling air-gapped mode requires a new touchscreen PIN. This same PIN will also be used by Lockdown.';
+    const creating = el('enabled').checked && !state.has_pin;
+    el('pin-label').textContent = state.has_pin ? 'Touchscreen PIN' : 'New touchscreen PIN (at least 4 digits)';
+    el('pin').autocomplete = state.has_pin ? 'current-password' : 'new-password';
+    el('pin-confirm-field').hidden = !creating;
+    el('pin').required = state.local && (state.has_pin || creating);
+    el('pin').disabled = !state.local || busy || !state.has_pin && !creating;
+    el('pin-confirm').required = state.local && creating;
+    el('pin-confirm').disabled = !state.local || busy || !creating;
+    el('save').disabled = !state.local || busy || !state.has_pin && !creating;
+    el('pin-help').textContent = !state.local ? 'Use the printer touchscreen to change this setting.'
+      : state.has_pin ? 'Enter the shared touchscreen PIN to enable or disable air-gapping. No administrator password is required.'
+        : 'Create and confirm a touchscreen PIN to enable air-gapping. Lockdown is not required; both modes share this PIN.';
   }
   function render(resetSelection = true) {
     el('state').textContent = state.applied ? 'Air-gap isolation is active.' : 'Air-gap isolation is not active.';
@@ -98,59 +94,38 @@
       el('enabled').checked = state.enabled;
       el('network-enabled').checked = !state.enabled;
     }
-    el('enabled').disabled = !state.local;
-    el('network-enabled').disabled = !state.local;
-    el('save').disabled = !state.local;
-    el('password-help').textContent = !state.local
-      ? 'Use the printer touchscreen to change this setting.'
-      : state.has_password ? 'Your administrator password is required to enable or disable isolation.'
-        : 'Create an administrator password (at least 8 characters) so you can leave air-gapped mode later.';
-    el('confirm-field').hidden = state.has_password;
-    el('confirm').required = !state.has_password;
-    el('password').autocomplete = state.has_password ? 'current-password' : 'new-password';
+    el('enabled').disabled = !state.local || busy;
+    el('network-enabled').disabled = !state.local || busy;
     el('reboot').hidden = !state.local || !state.reboot_required;
     pinControls();
   }
   for (const id of ['enabled', 'network-enabled']) el(id).addEventListener('change', pinControls);
   el('settings').addEventListener('submit', async event => {
     event.preventDefault();
-    el('save').disabled = true;
+    if (busy) return;
+    busy = true;
     el('message').textContent = '';
-    let passwordCreated = false;
-    let pinCreated = false;
+    render(false);
     try {
-      const password = el('password').value;
       const needsPin = el('enabled').checked && !state.has_pin;
       const pin = el('pin').value;
-      if (needsPin && (!/^[0-9]{4,}$/.test(pin) || pin !== el('pin-confirm').value)) {
+      if (!/^[0-9]{4,}$/.test(pin)) throw new Error('Enter a touchscreen PIN of at least 4 digits.');
+      if (needsPin && pin !== el('pin-confirm').value) {
         throw new Error('Use matching touchscreen PINs of at least 4 digits.');
       }
-      if (!state.has_password) {
-        if (password.length < 8 || password !== el('confirm').value) {
-          throw new Error('Use matching administrator passwords of at least 8 characters.');
-        }
-        await request('/auth/password', {new: password, mode: 'basic', ...(needsPin ? {pin} : {})});
-        state.has_password = true;
-        state.security_mode = 'basic';
-        passwordCreated = true;
-        if (needsPin) {
-          state.has_pin = true;
-          pinCreated = true;
-        }
-      } else if (needsPin) {
-        await request('/auth/password', {current: password, mode: state.security_mode, pin});
-        state.has_pin = true;
-        pinCreated = true;
-      }
-      const result = await request('/auth/airgap', {enabled: el('enabled').checked, current: password});
+      const result = await request('/auth/airgap', {enabled: el('enabled').checked, pin,
+        ...(needsPin ? {pin_confirm: el('pin-confirm').value} : {})});
       state = {...state, ...result};
       el('message').textContent = 'Saved. Finish setup to reboot, or reboot now when the printer is idle. No isolation change takes effect until reboot.';
     } catch (error) {
-      el('message').textContent = (passwordCreated || pinCreated
-        ? 'Access credentials saved, but air-gap settings were not confirmed. ' : '') + error.message;
+      el('message').textContent = error.message;
+      try { state = {...state, ...await request('/auth/airgap')}; }
+      catch (statusError) {
+        state.local = false;
+        el('message').textContent += ' Saved settings could not be verified. Reload before retrying. ' + statusError.message;
+      }
     } finally {
-      el('password').value = '';
-      el('confirm').value = '';
+      busy = false;
       el('pin').value = '';
       el('pin-confirm').value = '';
       render(false);
@@ -162,7 +137,7 @@
       await request('/auth/reboot', {});
       el('message').textContent = 'Reboot requested.';
     } catch (error) {
-      el('message').textContent = error.message + ' Save again with your administrator password if your session expired.';
+      el('message').textContent = error.message + ' Save again with your touchscreen PIN if your session expired.';
       el('reboot').disabled = false;
     }
   });

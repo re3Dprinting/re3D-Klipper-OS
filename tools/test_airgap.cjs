@@ -18,6 +18,7 @@ async function fixture(initial = {}, search = '') {
   const elements = new Map();
   const calls = [];
   let failure = '';
+  let helperFailure = false;
   function el(id) {
     if (!elements.has(id)) elements.set(id, {
       value: '', checked: false, hidden: false, disabled: true, textContent: '',
@@ -31,11 +32,9 @@ async function fixture(initial = {}, search = '') {
       const body = options.body ? JSON.parse(options.body) : undefined;
       calls.push({url, body});
       if (url === failure) return {ok: false, json: async () => ({error: 'Operation failed'})};
-      if (url === '/auth/password') {
-        state.has_password = true;
-        if (body.pin) state.has_pin = true;
-      }
       if (url === '/auth/airgap' && body) {
+        state.has_pin = true;
+        if (helperFailure) return {ok: false, json: async () => ({error: 'Helper unavailable'})};
         state.enabled = body.enabled;
         state.reboot_required = state.enabled !== state.applied;
       }
@@ -43,12 +42,12 @@ async function fixture(initial = {}, search = '') {
     }
   });
   await new Promise(resolve => setImmediate(resolve));
-  return {el, calls, state, fail(url) { failure = url; },
-    async save(enabled, password = 'administrator') {
+  return {el, calls, state, fail(url) { failure = url; }, failHelper() { helperFailure = true; },
+    async save(enabled, pin = '1234') {
       el('enabled').checked = enabled;
       el('network-enabled').checked = !enabled;
       el('enabled').change();
-      el('password').value = password;
+      el('pin').value = pin;
       await el('settings').submit({preventDefault() {}});
     }};
 }
@@ -68,14 +67,15 @@ test('mode uses two visible, labelled radio choices instead of a native dropdown
   assert.equal(f.el('enabled').checked, true);
   assert.equal(f.el('network-enabled').checked, false);
   await f.save(false);
-  assert.deepEqual(f.calls.at(-1), {url: '/auth/airgap', body: {enabled: false, current: 'administrator'}});
+  assert.deepEqual(f.calls.at(-1), {url: '/auth/airgap', body: {enabled: false, pin: '1234'}});
 });
 
-test('air-gap settings save a strict boolean and password without claiming immediate isolation', async () => {
+test('air-gap settings save a strict boolean and PIN without claiming immediate isolation', async () => {
   const f = await fixture();
   await f.save(true);
-  assert.deepEqual(f.calls.at(-1), {url: '/auth/airgap', body: {enabled: true, current: 'administrator'}});
-  assert.equal(f.el('password').value, '');
+  assert.deepEqual(f.calls.at(-1), {url: '/auth/airgap', body: {enabled: true, pin: '1234'}});
+  assert.equal(f.el('pin').value, '');
+  assert.doesNotMatch(html, /id="password"|id="confirm"|\/auth\/password/);
   assert.match(f.el('message').textContent, /No isolation change takes effect until reboot/);
   assert.match(f.el('state').textContent, /not active.*reboot is required/);
   assert.equal(f.el('reboot').hidden, false);
@@ -83,64 +83,58 @@ test('air-gap settings save a strict boolean and password without claiming immed
   assert.equal(f.calls.at(-1).url, '/auth/reboot');
 });
 
-test('first enable creates a confirmed administrator password before saving isolation', async () => {
-  const f = await fixture({has_password: false}, '?setup=openbox');
-  assert.equal(f.el('confirm-field').hidden, false);
-  f.el('confirm').value = 'mismatch';
-  await f.save(true);
-  assert.equal(f.calls.length, 1);
-  assert.match(f.el('message').textContent, /matching/);
-  f.el('confirm').value = 'administrator';
-  await f.save(true);
-  assert.deepEqual(f.calls.slice(1).map(call => call.url), ['/auth/password', '/auth/airgap']);
-  assert.equal(f.el('confirm').value, '');
-  assert.equal(f.el('confirm-field').hidden, true);
-  assert.equal(f.el('return').href, 'http://localhost:8081/?setup=1&flow=openbox');
-});
-
-test('a missing shared PIN must be created and confirmed before enabling isolation', async () => {
-  const f = await fixture({has_pin: false});
-  await f.save(true);
-  assert.match(f.el('message').textContent, /matching touchscreen PINs/);
-  assert.equal(f.calls.length, 1);
-  assert.equal(f.el('pin-fields').hidden, false);
-  f.el('pin').value = '1234';
+test('first enable creates only a confirmed shared PIN without administrator or Lockdown setup', async () => {
+  const f = await fixture({has_password: false, has_pin: false, security_mode: 'off'}, '?setup=openbox');
+  assert.equal(f.el('save').disabled, true);
   f.el('pin-confirm').value = '4321';
   await f.save(true);
-  assert.equal(f.calls.length, 1);
-  f.el('pin').value = '1234';
+  assert.equal(f.calls.filter(call => call.body).length, 0);
+  assert.match(f.el('message').textContent, /matching/);
+  assert.equal(f.el('pin-confirm-field').hidden, false);
+  assert.equal(f.el('enabled').checked, true);
   f.el('pin-confirm').value = '1234';
   await f.save(true);
-  assert.deepEqual(f.calls.slice(1).map(call => call.url), ['/auth/password', '/auth/airgap']);
-  assert.deepEqual(f.calls[1].body, {current: 'administrator', mode: 'basic', pin: '1234'});
+  assert.deepEqual(f.calls.filter(call => call.body), [
+    {url: '/auth/airgap', body: {enabled: true, pin: '1234', pin_confirm: '1234'}}
+  ]);
+  assert.equal(f.state.has_password, false);
+  assert.equal(f.state.security_mode, 'off');
   assert.equal(f.el('pin').value, '');
   assert.equal(f.el('pin-confirm').value, '');
-  assert.equal(f.el('pin-fields').hidden, true);
+  assert.equal(f.el('pin-confirm-field').hidden, true);
+  assert.equal(f.el('pin').required, true);
+  assert.equal(f.el('return').href, 'http://localhost:8081/?setup=1&flow=openbox');
+  await f.save(false);
+  assert.deepEqual(f.calls.at(-1).body, {enabled: false, pin: '1234'});
 });
 
-test('an existing Lockdown PIN is reused without a credential update', async () => {
+test('a missing shared PIN must contain at least four ASCII digits', async () => {
+  const f = await fixture({has_pin: false});
+  await f.save(true, 'abc');
+  assert.match(f.el('message').textContent, /PIN of at least 4 digits/);
+  assert.equal(f.calls.filter(call => call.body).length, 0);
+  assert.equal(f.el('pin-confirm-field').hidden, false);
+  assert.equal(f.el('pin').value, '');
+  assert.equal(f.el('pin-confirm').value, '');
+});
+
+test('an existing Lockdown PIN is required and reused without a credential update', async () => {
   const f = await fixture({has_pin: true, security_mode: 'lockdown'});
   await f.save(true);
-  assert.equal(f.el('pin-fields').hidden, true);
-  assert.match(f.el('pin-help').textContent, /existing Lockdown touchscreen PIN/);
+  assert.equal(f.el('pin-confirm-field').hidden, true);
+  assert.equal(f.el('pin').required, true);
+  assert.match(f.el('pin-help').textContent, /shared touchscreen PIN/);
+  assert.deepEqual(f.calls.at(-1).body, {enabled: true, pin: '1234'});
   assert.deepEqual(f.calls.map(call => call.url), ['/auth/airgap', '/auth/airgap']);
 });
 
-test('initial password and missing PIN are created together using the shared credential API', async () => {
-  const f = await fixture({has_password: false, has_pin: false, security_mode: 'off'});
-  f.el('confirm').value = 'administrator';
-  f.el('pin').value = '5678';
-  f.el('pin-confirm').value = '5678';
-  await f.save(true);
-  assert.deepEqual(f.calls[1].body, {new: 'administrator', mode: 'basic', pin: '5678'});
-  assert.equal(f.calls.at(-1).url, '/auth/airgap');
-});
-
-test('disabling isolation does not require creating a missing PIN', async () => {
+test('missing PIN cannot silently authorize disabling isolation', async () => {
   const f = await fixture({has_pin: false, enabled: true, applied: true});
-  await f.save(false);
+  f.el('enabled').checked = false;
+  f.el('enabled').change();
   assert.equal(f.el('pin').required, false);
-  assert.deepEqual(f.calls.map(call => call.url), ['/auth/airgap', '/auth/airgap']);
+  assert.equal(f.el('save').disabled, true);
+  assert.deepEqual(f.calls.map(call => call.url), ['/auth/airgap']);
 });
 
 test('pending disable still reports isolation active and remote controls stay disabled', async () => {
@@ -151,18 +145,36 @@ test('pending disable still reports isolation active and remote controls stay di
   assert.equal(remote.el('enabled').disabled, true);
   assert.equal(remote.el('network-enabled').disabled, true);
   assert.equal(remote.el('save').disabled, true);
-  assert.match(remote.el('password-help').textContent, /touchscreen/);
+  assert.equal(remote.el('pin').disabled, true);
+  assert.match(remote.el('pin-help').textContent, /touchscreen/);
 });
 
-test('helper failure does not display a successful save or leak passwords', async () => {
+test('helper and status failure do not display success or retain PINs', async () => {
   const f = await fixture();
   f.fail('/auth/airgap');
   await f.save(true);
-  assert.equal(f.el('message').textContent, 'Operation failed');
-  assert.equal(f.el('password').value, '');
+  assert.match(f.el('message').textContent, /Operation failed.*Reload before retrying/);
+  assert.equal(f.el('pin').value, '');
+  assert.equal(f.el('save').disabled, true);
   assert.equal(f.el('enabled').checked, true);
   assert.equal(f.el('network-enabled').checked, false);
   assert.equal(f.el('reboot').hidden, true);
+});
+
+test('helper failure after PIN creation refreshes saved credentials without claiming isolation was saved', async () => {
+  const f = await fixture({has_password: false, has_pin: false, security_mode: 'off'});
+  f.failHelper();
+  f.el('pin-confirm').value = '1234';
+  await f.save(true);
+  assert.match(f.el('message').textContent, /Helper unavailable/);
+  assert.equal(f.el('enabled').checked, true);
+  assert.equal(f.el('pin-confirm-field').hidden, true);
+  assert.equal(f.el('pin').required, true);
+  assert.equal(f.el('pin').value, '');
+  assert.equal(f.el('pin-confirm').value, '');
+  assert.equal(f.el('save').disabled, false);
+  assert.equal(f.el('reboot').hidden, true);
+  assert.equal(f.state.has_password, false);
 });
 
 test('failed initial status keeps controls disabled', async () => {

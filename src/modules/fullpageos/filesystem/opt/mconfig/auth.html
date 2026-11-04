@@ -129,6 +129,12 @@
         <label id="current-label" for="current">Web administrator password</label>
         <input id="current" type="password" autocomplete="current-password" maxlength="1024" required>
       </div>
+      <div id="current-pin-row" hidden>
+        <label for="current-pin">Existing touchscreen PIN</label>
+        <input id="current-pin" type="password" inputmode="numeric" pattern="[0-9]{4,}"
+               maxlength="1024" autocomplete="current-password" disabled>
+        <p class="field-help">Required to add administrator protection when a shared touchscreen PIN already exists.</p>
+      </div>
     </section>
     <details id="review-section" class="security-help" hidden>
       <summary id="review-heading">What changes when I save?</summary>
@@ -270,6 +276,10 @@
     el('current-row').hidden = settings && !enabled;
     el('current').required = !settings || enabled;
     el('current-label').textContent = settings ? 'Current web password (required to save)' : 'Web administrator password';
+    const pinOnly = settings && !enabled && state.has_pin;
+    el('current-pin-row').hidden = !pinOnly;
+    el('current-pin').disabled = !pinOnly;
+    el('current-pin').required = pinOnly;
     el('review-heading').textContent = 'What changes when I save?';
     const switchingHostPolicy = (mode === 'lockdown') !== (state.applied_mode === 'lockdown');
     el('review').textContent = (mode === 'off'
@@ -339,7 +349,8 @@
         }
         if (mode === 'off' && enabled && !confirm('Turn browser password protection off? Anyone who can reach the printer will be able to use both interfaces. Network and touchscreen changes may need a reboot.')) return;
         await request('password', {current:el('current').value, new:mode === 'off' ? '' : el('new').value,
-                                  mode, pin:mode === 'lockdown' ? el('pin').value : ''});
+                                  mode, pin:mode === 'lockdown' ? el('pin').value : '',
+                                  ...(!enabled && state.has_pin ? {current_pin:el('current-pin').value} : {})});
         el('form').reset();
         el('ssh-form').reset();
         try { state = await request('status'); }
@@ -420,7 +431,7 @@
     state = await request('status');
     enabled = state.enabled;
     loaded = true;
-    if (!settings && state.local && state.mode === 'lockdown') {
+    if (!settings && state.local && state.touchscreen_locked) {
       location.replace('/auth/kiosk'); return;
     }
     if (!settings && !enabled) { location.replace('/'); return; }

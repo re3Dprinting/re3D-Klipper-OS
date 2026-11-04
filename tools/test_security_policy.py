@@ -62,6 +62,23 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(policy.SSH_CONFIG.exists())
         self.assertEqual((policy.RUNTIME / "mode").read_text().strip(), "basic")
 
+    def test_airgap_pin_only_off_state_loads_without_lockdown_prerequisites(self):
+        state = self.root / "password.json"
+        state.write_text(json.dumps({"mode": "off", "pin": {"salt": "00" * 32, "hash": "11" * 64}}))
+        policy.AIRGAP_APPLIED.touch()
+        with patch.object(policy, "STATE", state), \
+                patch.object(sys, "argv", ["security_policy.py"]), \
+                patch.object(policy, "table_exists", return_value=False), \
+                patch.object(policy, "ssh_readiness") as readiness, \
+                patch.object(policy, "stop_desktops") as desktops, \
+                patch.object(policy, "run") as run:
+            policy.main()
+        desktops.assert_called_once()
+        readiness.assert_not_called()
+        run.assert_not_called()
+        self.assertTrue(policy.CHROME_POLICIES[0].exists())
+        self.assertEqual((policy.RUNTIME / "mode").read_text().strip(), "off")
+
     def test_ipv4_and_ipv6_default_deny_and_only_intended_ports(self):
         rules = policy.firewall_rules()
         self.assertIn("table inet re3d_lockdown", rules)

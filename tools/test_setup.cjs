@@ -341,7 +341,8 @@ test('network choices appear only in the wizard and require a selection before c
   assert.match(index, /Connect to network/);
   assert.match(index, /Air-gapped mode/);
   assert.match(index, /Isolation takes effect only after reboot/);
-  assert.match(index, /administrator password/);
+  assert.match(index, /enter or create the shared PIN/);
+  assert.match(index, /No administrator password is required/);
   const wizard = await mount();
   assert.equal(wizard.byId('setup-network-choice').hidden, true);
   wizard.events['re3d-machine-result']({ detail: { ok: true } });

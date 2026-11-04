@@ -96,6 +96,8 @@ class AirgapTests(unittest.TestCase):
             self.assertRaisesRegex(ValueError, "PIN", require_pin)
             state.write_text(json.dumps({**credential, "mode": "basic", "pin": credential}))
             require_pin()
+            state.write_text(json.dumps({"mode": "off", "pin": credential}))
+            require_pin()
 
     def test_boot_blocks_ipv4_ipv6_and_forwarding_without_established_bypass(self):
         rules = airgap.firewall_rules()
