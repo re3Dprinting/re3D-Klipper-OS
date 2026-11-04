@@ -8,14 +8,61 @@ Based on Debian Bookworm, [FullPageOS](https://github.com/guysoft/FullPageOS), a
 
 ## Features
 
-* **One image across the printer lineup:** Profiles for Gigabot 4, Terabot 4, GigabotX 2, TerabotX 2, and Gigabot XLT variants. Supported hardware options generate the matching configuration instead of requiring hand-edited files.
-* **From first boot to printer control:** Guided Archimajor firmware flashing and machine setup, plus an optional customer open-box walkthrough. Choose re:3D-themed Mainsail or KlipperScreen for the touchscreen.
-* **Calibration with a record:** Built-in flow and pressure-advance tests save results by machine, material, extruder, and temperature, alongside calibration reports and print metrics.
-* **Tuning without the command-line workflow:** Interactive bed-leveling controls, live PID tuning, and accelerometer-based input shaping with graphs, saved runs, and recommendations.
-* **Interrupted-print recovery (beta):** A background monitor saves print progress. Generate recovery G-code from that record or a selected Z height, rather than automatically restarting the print.
-* **Connected or offline operation:** Configure Wi-Fi in the interface, or complete setup offline and load G-code from automatically mounted USB drives.
-* **Optional protection for shared printers:** Administrator authentication and a Lockdown mode with HTTPS, a separate touchscreen PIN, and restricted network services.
-* **Maintenance in one place:** Software/configuration updates without re-imaging, live system health, log analysis with suggested fixes, and print-history/G-code backup and restore.
+<details>
+<summary><strong>One image across the printer lineup</strong></summary>
+
+Profiles for Gigabot 4, Terabot 4, GigabotX 2, TerabotX 2, and Gigabot XLT variants. Supported hardware options generate the matching configuration instead of requiring hand-edited files.
+
+</details>
+
+<details>
+<summary><strong>From first boot to printer control</strong></summary>
+
+Guided Archimajor firmware flashing and machine setup, plus an optional customer open-box walkthrough. Choose re:3D-themed Mainsail or KlipperScreen for the touchscreen.
+
+</details>
+
+<details>
+<summary><strong>Calibration with a record</strong></summary>
+
+Built-in flow and pressure-advance tests save results by machine, material, extruder, and temperature, alongside calibration reports and print metrics.
+
+</details>
+
+<details>
+<summary><strong>Tuning without the command-line workflow</strong></summary>
+
+Interactive bed-leveling controls, live PID tuning, and accelerometer-based input shaping with graphs, saved runs, and recommendations.
+
+</details>
+
+<details>
+<summary><strong>Interrupted-print recovery (beta)</strong></summary>
+
+A background monitor saves print progress. Generate recovery G-code from that record or a selected Z height, rather than automatically restarting the print.
+
+</details>
+
+<details>
+<summary><strong>Connected or offline operation</strong></summary>
+
+Configure Wi-Fi in the interface, or complete setup offline and load G-code from automatically mounted USB drives.
+
+</details>
+
+<details>
+<summary><strong>Optional protection for shared printers</strong></summary>
+
+Administrator authentication and a Lockdown mode with HTTPS, a separate touchscreen PIN, and restricted network services.
+
+</details>
+
+<details>
+<summary><strong>Maintenance in one place</strong></summary>
+
+Software/configuration updates without re-imaging, live system health, log analysis with suggested fixes, and print-history/G-code backup and restore.
+
+</details>
 
 ## To change touchscreen display methods: 
 * Mainsail → KlipperScreen: Open Configurator → System → Display Mode, then select KlipperScreen. The printer will reboot into KlipperScreen.
