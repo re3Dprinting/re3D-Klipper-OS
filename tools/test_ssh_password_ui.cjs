@@ -9,7 +9,7 @@ const html = fs.readFileSync(path.join(assets, 'auth.html'), 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture(mode, pathname = '/auth/settings') {
+async function fixture(mode, pathname = '/auth/settings', protocol = 'https:', search = '') {
   const elements = new Map();
   const calls = [];
   const redirects = [];
@@ -33,7 +33,8 @@ async function fixture(mode, pathname = '/auth/settings') {
   }
   vm.runInNewContext(source, {
     document: {getElementById: element},
-    location: {pathname, hostname:'printer.local', replace(url) { redirects.push(url); }},
+    URLSearchParams,
+    location: {pathname, protocol, search, hostname:'printer.local', replace(url) { redirects.push(url); }},
     confirm:() => true,
     async fetch(url, options) {
       const body = options.body ? JSON.parse(options.body) : undefined;
@@ -64,6 +65,30 @@ async function fixture(mode, pathname = '/auth/settings') {
     await flush();
   }};
 }
+
+test('Basic HTTP warns about cleartext and upgrades before configuring Lockdown', async () => {
+  const f = await fixture('basic', '/auth/settings', 'http:');
+  assert.match(f.element('warning').textContent, /not encrypted/);
+  f.chooseMode('lockdown');
+  assert.deepEqual(f.redirects, ['/auth/settings?mode=lockdown']);
+  await f.save();
+  assert.equal(f.calls.length, 1);
+  const secure = await fixture('basic', '/auth/settings', 'https:', '?mode=lockdown');
+  assert.equal(secure.element('mode').value, 'lockdown');
+  assert.equal(secure.element('ssh-section').open, true);
+  assert.equal(secure.element('submit').disabled, true);
+  assert.deepEqual(secure.redirects, []);
+  const login = await fixture('basic', '/auth/login', 'http:');
+  assert.match(login.element('description').textContent, /HTTP is not encrypted/);
+});
+
+test('disabling Basic over HTTP returns settings to encrypted initial setup', async () => {
+  const f = await fixture('basic', '/auth/settings', 'http:');
+  f.chooseMode('off');
+  await f.save();
+  assert.deepEqual(f.redirects, ['/auth/settings']);
+  assert.equal(f.state.mode, 'off');
+});
 
 test('pi password form is available in all modes with separate administrator confirmation', async () => {
   for (const mode of ['off', 'basic', 'lockdown']) {

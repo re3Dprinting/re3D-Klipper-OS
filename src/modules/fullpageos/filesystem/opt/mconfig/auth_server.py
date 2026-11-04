@@ -17,10 +17,11 @@ import socket
 import tempfile
 import threading
 import time
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 
 COOKIE = "re3d_session"
+HTTP_COOKIE = "re3d_http_session"
 PIN_COOKIE = "re3d_kiosk"
 SESSION_SECONDS = 8 * 60 * 60
 IDLE_SECONDS = 5 * 60
@@ -255,7 +256,7 @@ class AuthHandler(BaseHTTPRequestHandler):
     def state(self):
         return self.server.state
 
-    def reply(self, status, data, content_type="application/json", cookie=None, cookie_name=COOKIE,
+    def reply(self, status, data, content_type="application/json", cookie=None, cookie_name=None,
               location=None, https_required=False):
         body = data if isinstance(data, bytes) else json.dumps(data).encode("utf-8")
         self.send_response(status)
@@ -274,6 +275,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                          "frame-src 'self' http://localhost:8081; "
                          "base-uri 'none'; form-action 'self'")
         if cookie is not None:
+            cookie_name = cookie_name or self.session_cookie
             secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
             self.send_header("Set-Cookie",
                              f"{cookie_name}={cookie}; Path=/; HttpOnly; SameSite=Strict"
@@ -281,7 +283,13 @@ class AuthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def token(self, name=COOKIE):
+    @property
+    def session_cookie(self):
+        # A previous Secure cookie must not prevent Basic HTTP login from setting its own cookie.
+        return COOKIE if self.headers.get("X-Forwarded-Proto") == "https" else HTTP_COOKIE
+
+    def token(self, name=None):
+        name = name or self.session_cookie
         cookie = SimpleCookie()
         try:
             cookie.load(self.headers.get("Cookie", ""))
@@ -312,7 +320,8 @@ class AuthHandler(BaseHTTPRequestHandler):
         self.reply(307, b"", location=origin + self.path)
 
     def do_GET(self):
-        path = urlsplit(self.path).path
+        url = urlsplit(self.path)
+        path = url.path
         if path == "/auth/printer-status":
             if not self.local or self.state.mode != "lockdown":
                 self.reply(403, {"error": "Locked-screen printer status is only available locally in Lockdown"})
@@ -325,7 +334,7 @@ class AuthHandler(BaseHTTPRequestHandler):
             return
         with self.state.lock:
             if path == "/auth/check":
-                if self.remote_http and self.state.mode != "off":
+                if self.remote_http and self.state.mode == "lockdown":
                     self.reply(401, b"", https_required=True)
                     return
                 self.state.prune()
@@ -334,8 +343,11 @@ class AuthHandler(BaseHTTPRequestHandler):
                 else:
                     allowed = self.state.record is None or self.local or self.token() in self.state.sessions
                 self.reply(204 if allowed else 401, b"")
-            elif self.remote_http and (self.state.mode != "off" or path in ("/auth/login", "/auth/settings")):
-                # Credential forms require TLS even before a password has been configured.
+            elif self.remote_http and (
+                    self.state.mode == "lockdown"
+                    or (self.state.mode == "off" and path in ("/auth/login", "/auth/settings"))
+                    or (path == "/auth/settings" and parse_qs(url.query).get("mode") == ["lockdown"])):
+                # Initial setup and Lockdown use TLS; Basic also permits unencrypted HTTP.
                 self.require_https()
             elif path == "/auth/status":
                 self.reply(200, {"enabled": self.state.record is not None, "mode": self.state.mode,
@@ -362,7 +374,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.reply(404, {"error": "Not found"})
 
     def do_POST(self):
-        if self.remote_http:
+        if self.remote_http and self.state.mode != "basic":
             self.reply(426, {"error": "Use HTTPS before submitting passwords or changing security settings"})
             return
         origin = f'{self.headers.get("X-Forwarded-Proto")}://{self.headers.get("Host")}'
@@ -411,6 +423,10 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(500, {"error": error})
 
     def post(self, data):
+        if self.remote_http and (self.state.mode != "basic" or (
+                self.path == "/auth/password" and data.get("mode") == "lockdown")):
+            self.reply(426, {"error": "Use HTTPS before configuring Lockdown or submitting passwords outside Basic mode"})
+            return
         if self.path in ("/auth/pin", "/auth/activity", "/auth/lock"):
             if not self.local or self.state.mode != "lockdown":
                 self.reply(403, {"error": "Touchscreen PIN access is only available locally in Lockdown"})
@@ -436,9 +452,10 @@ class AuthHandler(BaseHTTPRequestHandler):
                            cookie=self.state.session(kiosk=True), cookie_name=PIN_COOKIE)
             return
         if self.path == "/auth/logout":
-            admin = self.state.sessions.pop(self.token(), None)
+            admin = self.state.sessions.pop(self.token(COOKIE), None)
+            http_admin = self.state.sessions.pop(self.token(HTTP_COOKIE), None)
             pin = self.state.pin_sessions.pop(self.token(PIN_COOKIE), None)
-            if admin is not None or pin is not None:
+            if admin is not None or http_admin is not None or pin is not None:
                 self.state.revoke_connections()
             self.reply(200, {"ok": True}, cookie="")
             return

@@ -375,6 +375,66 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(self.request("check", address="127.0.0.1",
                                       **{"X-Forwarded-Proto": "http"})[0], 204)
 
+    def test_basic_http_login_settings_password_change_and_logout(self):
+        secure_cookie = self.enable()
+        headers = {"X-Forwarded-Proto": "http", "Origin": "http://printer.local"}
+        for page in ("login", "settings", "status"):
+            self.assertEqual(self.request(page, **headers)[0], 200)
+        self.assertEqual(self.request("check", cookie=secure_cookie, **headers)[0], 401)
+        self.assertEqual(self.request("login", {"password": "wrong"}, **headers)[0], 403)
+        status, _, cookie = self.request("login", {"password": PASSWORD}, **headers)
+        self.assertEqual(status, 200)
+        self.assertTrue(cookie.startswith(auth.HTTP_COOKIE + "="))
+        self.assertNotIn("Secure", cookie)
+        self.assertIn("HttpOnly; SameSite=Strict", cookie)
+        token = cookie.split(";")[0]
+        self.assertEqual(self.request("check", cookie=token, **headers)[0], 204)
+        self.assertEqual(self.request("password", {"current": "wrong", "new": NEW_PASSWORD},
+                                      **headers)[0], 403)
+        status, _, changed = self.request("password", {"current": PASSWORD, "new": NEW_PASSWORD},
+                                          **headers)
+        self.assertEqual(status, 200)
+        self.assertTrue(self.state.verify(NEW_PASSWORD))
+        self.assertEqual(self.request("check", cookie=token, **headers)[0], 401)
+        token = changed.split(";")[0]
+        self.assertEqual(self.request("check", cookie=token, **headers)[0], 204)
+        self.assertEqual(self.request("logout", {}, cookie=token, **headers)[0], 200)
+        self.assertEqual(self.request("check", cookie=token, **headers)[0], 401)
+        self.assertEqual(self.request("password", {"current": NEW_PASSWORD, "disable": True},
+                                      address="192.168.1.3", **headers)[0], 200)
+        self.assertIsNone(self.state.record)
+
+    def test_basic_http_keeps_origin_validation_and_cannot_enable_lockdown(self):
+        self.enable()
+        headers = {"X-Forwarded-Proto": "http", "Origin": "http://printer.local"}
+        self.assertEqual(self.request("login", {"password": PASSWORD},
+                                      **{**headers, "Origin": "http://attacker.example"})[0], 403)
+        with patch.object(auth, "lockdown_readiness") as readiness:
+            status, _, _ = self.request("password", {"current": PASSWORD, "mode": "lockdown",
+                                                     "pin": "1234"}, **headers)
+        self.assertEqual(status, 426)
+        self.assertEqual(self.state.mode, "basic")
+        readiness.assert_not_called()
+        self.assertEqual(self.request("settings?mode=lockdown", **{
+            **headers, "X-Re3D-HTTPS-Origin": "https://printer.local"})[0], 307)
+
+    def test_lockdown_still_rejects_remote_http_even_with_an_admin_session(self):
+        self.lockdown()
+        headers = {"X-Forwarded-Proto": "http", "Origin": "http://printer.local"}
+        self.assertEqual(self.request("check", **{"X-Forwarded-Proto": "http"})[0], 401)
+        self.assertEqual(self.request("login", {"password": PASSWORD}, **headers)[0], 426)
+        self.assertEqual(self.request("password", {"current": PASSWORD, "mode": "basic"},
+                                      **headers)[0], 426)
+        self.assertEqual(self.request("check", address="127.0.0.1",
+                                      **headers)[0], 401)
+
+    def test_https_logout_revokes_both_transport_sessions(self):
+        secure_cookie = self.enable()
+        _, _, cookie = self.request("login", {"password": PASSWORD}, **{
+            "X-Forwarded-Proto": "http", "Origin": "http://printer.local"})
+        self.assertEqual(self.request("logout", {}, cookie=secure_cookie + "; " + cookie.split(";")[0])[0], 200)
+        self.assertFalse(self.state.sessions)
+
     def test_missing_or_malformed_https_proxy_configuration_fails_explicitly(self):
         for origin in ("", "https://[invalid"):
             with self.subTest(origin=origin), self.assertLogs(level="ERROR"):

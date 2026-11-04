@@ -37,8 +37,8 @@
       <summary>Compare the three modes</summary>
       <dl class="mode-comparison">
         <dt>Off</dt><dd>No password for Mainsail or the Configurator. Anyone who can reach the printer can use it.</dd>
-        <dt>Basic</dt><dd>Adds a password to both browser interfaces. The touchscreen stays unlocked. Direct API and camera connections remain available without this password, including slicer integrations.</dd>
-        <dt>Lockdown</dt><dd>Also requires a touchscreen PIN and blocks direct API, camera and other incoming ports. Signed-in browsers still work; unauthenticated slicers do not. Remote desktop and KlipperScreen are disabled. SSH remains available to the pi account using its password or existing keys.</dd>
+        <dt>Basic</dt><dd>Adds a password to both browser interfaces and allows HTTP. Over HTTP, passwords and session cookies are not encrypted; use only on a trusted network. HTTPS is still available. The touchscreen stays unlocked. Direct API and camera connections remain available without this password, including slicer integrations.</dd>
+        <dt>Lockdown</dt><dd>Requires HTTPS for remote browser access, a touchscreen PIN, and blocks direct API, camera and other incoming ports. Signed-in browsers still work; unauthenticated slicers do not. Remote desktop and KlipperScreen are disabled. SSH remains available to the pi account using its password or existing keys.</dd>
       </dl>
       <p>No mode makes it safe to expose this printer directly to the Internet.</p>
     </details>
@@ -145,7 +145,7 @@
     <summary>Why does my browser show a certificate warning?</summary>
     <p>This printer generates its own HTTPS certificate. The connection is encrypted, but your browser does not automatically trust the printer's identity. The warning is separate from whether password protection is enabled.</p>
     <p>Verify that you are connecting to your actual printer, and verify its certificate fingerprint through a trusted channel before trusting the certificate on your device. Do not ignore a changed certificate unexpectedly. Ask your administrator for help if you are unsure.</p>
-    <p>Remote security settings always use HTTPS to keep passwords encrypted. With protection Off, ordinary interface browsing can still use HTTP; HTTP is not encrypted.</p>
+    <p>Initial security setup and Lockdown use HTTPS remotely. Basic also allows HTTP for login and settings without a certificate warning, but passwords (including pi password changes) and session cookies are not encrypted. Use HTTP only on a trusted network. Selecting Lockdown switches settings to HTTPS before you enter credentials. With protection Off, ordinary browsing can use HTTP.</p>
   </details>
   <footer class="security-footer"><a href="/">Return to interface</a></footer>
 </main>
@@ -187,6 +187,13 @@
   function enteringLockdown() {
     return el('mode').value === 'lockdown' && state.mode !== 'lockdown';
   }
+  function upgradeLockdown() {
+    if (settings && el('mode').value === 'lockdown' && location.protocol === 'http:' && !state.local) {
+      location.replace('/auth/settings?mode=lockdown');
+      return true;
+    }
+    return false;
+  }
   function render() {
     const mode = el('mode').value;
     const lockdown = mode === 'lockdown';
@@ -195,7 +202,9 @@
     el('heading').textContent = settings ? 'Printer security' : 'Welcome back';
     el('description').textContent = settings
       ? 'Choose protection, set credentials, then save.'
-      : 'Enter the web administrator password to open your printer interface.';
+      : 'Enter the web administrator password to open your printer interface.'
+        + (state.mode === 'basic' && location.protocol === 'http:' && !state.local
+          ? ' HTTP is not encrypted. Use only on a trusted network.' : '');
     for (const id of ['overview', 'mode-row', 'ssh-section', 'review-section', 'connection-help',
                       'credentials-heading', 'save-help']) el(id).hidden = !settings;
     el('credentials-help').hidden = !settings || mode !== 'off';
@@ -222,7 +231,7 @@
     el('reboot-reload').hidden = !rebootRequested;
     el('warning').textContent = {
       off:'No browser password. Use only on a trusted network.',
-      basic:'Browser password only. Touchscreen, direct API and camera access stay unprotected.',
+      basic:'Browser password only. HTTP passwords and session cookies are not encrypted; use only on a trusted network. Touchscreen, direct API and camera access stay unprotected.',
       lockdown:'Browser password + touchscreen PIN. Blocks direct API/slicer access, remote desktop and KlipperScreen. Reboot required when switching.'
     }[mode];
     el('ssh-heading').textContent = lockdown ? '2. Recovery access' : 'Optional: pi account password';
@@ -318,6 +327,7 @@
   });
   el('form').addEventListener('submit', event => {
     event.preventDefault();
+    if (upgradeLockdown()) return;
     act(async () => {
       if (settings) {
         const mode = el('mode').value;
@@ -342,6 +352,10 @@
         render();
         message('status', `${names[state.mode]} protection saved. Other browser sessions were signed out.`
           + (state.reboot_required ? ' Next: finish any print, then reboot to apply network and touchscreen changes.' : ' No reboot is needed.'));
+        if (state.mode === 'off' && location.protocol === 'http:' && !state.local) {
+          location.replace('/auth/settings');
+          return;
+        }
         if (state.reboot_required) el('reboot-dialog').showModal();
       } else {
         await request('login', {password:el('current').value});
@@ -385,6 +399,7 @@
     location.replace('/auth/login');
   }));
   el('mode').addEventListener('change', () => {
+    if (upgradeLockdown()) return;
     el('ssh-section').open = el('mode').value === 'lockdown';
     render();
   });
@@ -409,8 +424,9 @@
       location.replace('/auth/kiosk'); return;
     }
     if (!settings && !enabled) { location.replace('/'); return; }
-    el('mode').value = state.mode;
-    el('ssh-section').open = state.mode === 'lockdown';
+    el('mode').value = settings && new URLSearchParams(location.search).get('mode') === 'lockdown'
+      ? 'lockdown' : state.mode;
+    el('ssh-section').open = el('mode').value === 'lockdown';
     render();
   });
 })();
