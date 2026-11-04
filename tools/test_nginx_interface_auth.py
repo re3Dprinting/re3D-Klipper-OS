@@ -171,6 +171,24 @@ class NginxAuthTests(unittest.TestCase):
             self.assertNotIn("Location", headers)
             self.assertEqual(self.request(port, "/auth/kiosk-client.js")[0], 200)
 
+    def test_fresh_image_defaults_to_off_with_http_and_no_saved_credentials(self):
+        state = self.auth.state.path
+        state.unlink()
+        self.auth.state = auth.AuthState(state)
+        for port in (self.http, self.config_http):
+            status, _, headers = self.request(port)
+            self.assertEqual(status, 200)
+            self.assertNotIn("Location", headers)
+            status, body, _ = self.request(port, "/auth/status")
+            self.assertEqual(status, 200)
+            settings = json.loads(body)
+            self.assertEqual(settings["mode"], "off")
+            self.assertFalse(settings["enabled"])
+            self.assertFalse(settings["has_pin"])
+            self.assertFalse(settings["reboot_required"])
+            self.assertFalse(settings["local"])
+        self.assertFalse(state.exists())
+
     def test_basic_allows_http_on_both_interfaces_and_keeps_kiosk_bypass(self):
         self.enable()
         for port in (self.http, self.config_http):

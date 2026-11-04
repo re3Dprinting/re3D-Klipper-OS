@@ -32,6 +32,19 @@ class PolicyTests(unittest.TestCase):
         mock.start()
         self.addCleanup(mock.stop)
 
+    def test_fresh_image_defaults_to_off_without_installing_lockdown_policy(self):
+        state = self.root / "password.json"
+        with patch.object(policy, "STATE", state), \
+                patch.object(sys, "argv", ["security_policy.py"]), \
+                patch.object(policy, "table_exists", return_value=False), \
+                patch.object(policy, "run") as run:
+            policy.main()
+        self.assertEqual((policy.RUNTIME / "mode").read_text().strip(), "off")
+        for path in (state, policy.MARKER, policy.SSH_CONFIG, policy.SSH_UNIT,
+                     policy.SSH_RUNTIME, policy.SERVICE_BACKUP, *policy.CHROME_POLICIES):
+            self.assertFalse(path.exists(), str(path))
+        run.assert_not_called()
+
     def test_ipv4_and_ipv6_default_deny_and_only_intended_ports(self):
         rules = policy.firewall_rules()
         self.assertIn("table inet re3d_lockdown", rules)
