@@ -234,6 +234,10 @@ systemctl stop klipper || true
 # Ensure bossac is available — pre-installed in new images, but install as a fallback
 # for older images that were built before bossa-cli was added to the chroot.
 if ! command -v bossac >/dev/null 2>&1; then
+  if [[ -e /etc/re3d-airgap/enabled || -e /run/re3d-airgap/enabled ]]; then
+    jstatus "error" 5 "Missing bossac in air-gapped mode. Restore the image's bundled firmware tools before flashing."
+    exit 1
+  fi
   DEBIAN_FRONTEND=noninteractive apt-get install -y bossa-cli 2>/dev/null || true
 fi
 
@@ -338,7 +342,12 @@ fi
 
 echo "$(ts) ensuring build deps + klippy-env"
 jstatus "running" 96 "Preparing build environment"
-DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
+if [[ ! -e /etc/re3d-airgap/enabled && ! -e /run/re3d-airgap/enabled ]]; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3-dev libffi-dev || true
+elif [[ ! -x /home/pi/klippy-env/bin/python ]]; then
+  jstatus "error" 96 "Missing Klipper environment in air-gapped mode. Restore the image's bundled environment."
+  exit 1
+fi
 
 sudo -u pi -H bash -lc '
   set -e

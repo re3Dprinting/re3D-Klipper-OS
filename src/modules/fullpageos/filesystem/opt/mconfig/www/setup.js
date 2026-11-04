@@ -37,6 +37,7 @@
   const setupContainer = page.parentElement;
   const networkChoices = byId('setup-network-choice');
   const networkInputs = [byId('setup-network-connect'), byId('setup-network-offline')];
+  byId('setup-airgap-settings').href = '/auth/airgap-settings?setup=' + (openBox ? 'openbox' : 'machine');
   let step = steps[0];
   let networkMode = null;
   let busy = false;
@@ -232,6 +233,18 @@
   next.addEventListener('click', () => act(async () => {
     if (step === 'network' && !networkMode) {
       throw new Error('Choose a network mode before continuing.');
+    }
+    if (step === 'network') {
+      const isolation = await request('/auth/airgap');
+      if (typeof isolation.enabled !== 'boolean' || typeof isolation.applied !== 'boolean') {
+        throw new Error('Unable to verify air-gap mode. Reload setup before continuing.');
+      }
+      if (networkMode === 'offline' && !isolation.enabled) {
+        throw new Error('Open Air-gap settings, enable isolation with an administrator password, then return to setup.');
+      }
+      if (networkMode === 'connect' && (isolation.enabled || isolation.applied)) {
+        throw new Error('Air-gap mode is enabled or still active. Use System > Air-gap settings to disable it and reboot before connecting.');
+      }
     }
     if (step === 'finish') {
       await setSetupState('completed');

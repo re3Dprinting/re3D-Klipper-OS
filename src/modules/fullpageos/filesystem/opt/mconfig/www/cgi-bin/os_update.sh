@@ -1,4 +1,7 @@
 #!/bin/bash
+. "$(dirname "$0")/_cgi_common.sh"
+require_network
+
 STATE_FILE="/opt/mconfig/www/update.txt"
 REBOOT_CGI="/opt/mconfig/www/cgi-bin/reboot.sh"   # adjust if your reboot script lives elsewhere
 

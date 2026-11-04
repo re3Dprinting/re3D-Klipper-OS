@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "$0")/_cgi_common.sh"
+require_network
+
 echo "Content-Type: text/plain"
 echo
 

@@ -370,6 +370,14 @@
       </div>
     </div>
 
+    <div class="card sys-card">
+      <div class="sys-title">Air-gapped mode</div>
+      <div class="sys-subtitle">Disable all external network interfaces, wireless radios and physical keyboards.
+        Touchscreen controls, mainboard USB and USB drives remain available.
+        Changes require the administrator password on the touchscreen and a reboot.</div>
+      <div class="btn-row"><a class="btn-ghost" href="/auth/airgap-settings">Air-gap settings</a></div>
+    </div>
+
     <!-- Display Mode -->
     <div class="card sys-card">
       <div class="sys-title"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 17v4 M8 21h8"/></svg>Display Mode</div>
@@ -697,6 +705,19 @@
     if (updateCard) updateCard.classList.add('sys-disabled');
 
     try{
+      const isolationResponse = await fetch('/auth/airgap', {cache:'no-store'});
+      if (!isolationResponse.ok) throw new Error('Unable to verify air-gap mode');
+      const isolation = await isolationResponse.json();
+      if (typeof isolation.enabled !== 'boolean' || typeof isolation.applied !== 'boolean') {
+        throw new Error('Invalid air-gap status');
+      }
+      if (isolation.enabled || isolation.applied) {
+        applyUpdateConnectivity(false);
+        setUpdatePill('Air-gapped mode', 'muted');
+        if (offlineHint) offlineHint.textContent = 'Updates are disabled by air-gap policy.';
+        if (outUpdate) outUpdate.textContent = 'Disable air-gapped mode on the touchscreen and reboot before updating.';
+        return;
+      }
       const r = await fetch('/cgi-bin/check_update_connectivity.sh?ts=' + Date.now(), {cache:'no-store'});
       if (!r.ok){
         throw new Error('HTTP ' + r.status);

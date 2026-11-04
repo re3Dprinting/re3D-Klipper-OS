@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; then
+  echo "[re3D-OS bootstrap] ERROR: Updates are disabled in air-gapped mode." >&2
+  exit 1
+fi
+
 BRANCH="${1:-devel}"   # default branch/tag to track
 REPO_DIR="/opt/re3d-os-src"
 REPO_URL="https://github.com/re3Dprinting/re3D-Klipper-OS.git"

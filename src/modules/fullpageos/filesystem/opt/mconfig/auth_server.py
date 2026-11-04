@@ -28,6 +28,27 @@ IDLE_SECONDS = 5 * 60
 APPLIED_MODE = Path("/run/re3d-security/mode")
 MAX_ENTRIES = 4096
 ROOT = Path(__file__).resolve().parent
+AIRGAP_ENABLED = Path("/etc/re3d-airgap/enabled")
+AIRGAP_APPLIED = Path("/run/re3d-airgap/enabled")
+
+
+def airgap_status():
+    enabled, applied = AIRGAP_ENABLED.exists(), AIRGAP_APPLIED.exists()
+    return {"enabled": enabled, "applied": applied, "reboot_required": enabled != applied}
+
+
+def change_airgap(enabled):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(10)
+        connection.connect("/run/re3d-airgap/settings.sock")
+        connection.sendall(json.dumps({"enabled": enabled}).encode() + b"\n")
+        with connection.makefile("rb") as stream:
+            result = json.loads(stream.readline(1025))
+    if (not isinstance(result, dict) or type(result.get("status")) is not int
+            or result["status"] not in (200, 400, 500)
+            or (result["status"] != 200 and not isinstance(result.get("error"), str))):
+        raise ValueError("Invalid air-gap helper response")
+    return result.pop("status"), result
 
 
 def password_hash(password, salt):
@@ -354,6 +375,11 @@ class AuthHandler(BaseHTTPRequestHandler):
                                 "local": self.local, "has_pin": self.state.has_pin,
                                 "applied_mode": self.state.applied_mode,
                                 "reboot_required": self.state.reboot_required})
+            elif path == "/auth/airgap":
+                self.reply(200, {**airgap_status(), "local": self.local,
+                                 "has_password": self.state.record is not None})
+            elif path == "/auth/airgap-settings":
+                self.reply(200, (ROOT / "airgap.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/auth/kiosk-status" and self.local:
                 self.state.prune()
                 self.reply(200, {"unlocked": self.token(PIN_COOKIE) in self.state.pin_sessions,
@@ -421,6 +447,8 @@ class AuthHandler(BaseHTTPRequestHandler):
                      if self.path == "/auth/reboot"
                      else "Could not check Lockdown requirements. Check that the Configurator service is running, then try again."
                      if self.path == "/auth/readiness"
+                     else "Could not save air-gap settings. Check re3d-airgap-helper.service logs and reload to verify the saved state."
+                     if self.path == "/auth/airgap"
                      else "Could not save settings or verify prerequisites; settings were not changed")
             self.reply(500, {"error": error})
 
@@ -461,7 +489,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.state.revoke_connections()
             self.reply(200, {"ok": True}, cookie="")
             return
-        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness", "/auth/reboot"):
+        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness", "/auth/reboot", "/auth/airgap"):
             self.reply(404, {"error": "Not found"})
             return
         address = self.headers.get("X-Real-IP", "")
@@ -476,7 +504,7 @@ class AuthHandler(BaseHTTPRequestHandler):
         if self.path == "/auth/reboot":
             if self.state.record is not None and self.token() not in self.state.sessions:
                 self.reply(403, {"error": "Sign in with the web administrator password before rebooting"})
-            elif not self.state.reboot_required:
+            elif not self.state.reboot_required and not airgap_status()["reboot_required"]:
                 self.reply(409, {"error": "These security settings do not require a reboot"})
             else:
                 status, result = request_reboot()
@@ -495,6 +523,17 @@ class AuthHandler(BaseHTTPRequestHandler):
         if self.state.record is not None and not self.state.verify(data.get("current", "")):
             self.reply(403, {"error": "Current password is incorrect"})
             return
+        if self.path == "/auth/airgap":
+            if not self.local:
+                self.reply(403, {"error": "Change air-gap mode on the printer touchscreen, not a remote browser"})
+            elif self.state.record is None:
+                self.reply(409, {"error": "Set a web administrator password in Security settings first"})
+            elif type(data.get("enabled")) is not bool:
+                self.reply(400, {"error": "Air-gap enabled must be a boolean"})
+            else:
+                status, result = change_airgap(data["enabled"])
+                self.reply(status, result, cookie=self.state.session() if status == 200 else None)
+            return
         if self.path == "/auth/readiness":
             self.reply(200, lockdown_readiness())
             return
@@ -509,6 +548,9 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(400, {"error": "Choose Off, Basic or Lockdown"})
             return
         if mode == "off":
+            if airgap_status()["enabled"] or airgap_status()["applied"]:
+                self.reply(409, {"error": "Leave air-gapped mode and reboot before disabling the administrator password"})
+                return
             self.state.save(None)
             self.reply(200, {"ok": True, "enabled": False}, cookie="")
             return

@@ -24,6 +24,10 @@ class AuthTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.state = auth.AuthState(Path(self.directory.name) / "password.json")
+        for name in ("AIRGAP_ENABLED", "AIRGAP_APPLIED"):
+            patcher = patch.object(auth, name, Path(self.directory.name) / name)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.server = auth.ThreadingHTTPServer(("127.0.0.1", 0), auth.AuthHandler)
         self.server.state = self.state
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -53,6 +57,65 @@ class AuthTests(unittest.TestCase):
         status, _, cookie = self.request("password", {"new": PASSWORD})
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
+
+    def test_airgap_changes_require_a_local_administrator_password(self):
+        self.assertEqual(self.request("airgap", {"enabled": True}, address="127.0.0.1")[0], 409)
+        self.enable()
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD})[0], 403)
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": "wrong"},
+                                          address="127.0.0.1")[0], 403)
+            change.assert_not_called()
+            status, _, cookie = self.request("airgap", {"enabled": True, "current": PASSWORD},
+                                             address="127.0.0.1")
+            self.assertEqual(status, 200)
+            self.assertIn("re3d_session=", cookie)
+            change.assert_called_once_with(True)
+
+    def test_airgap_blocks_password_removal_until_isolation_has_ended(self):
+        self.enable()
+        for marker in (auth.AIRGAP_ENABLED, auth.AIRGAP_APPLIED):
+            marker.touch()
+            self.assertEqual(self.request("password", {"disable": True, "current": PASSWORD})[0], 409)
+            self.assertIsNotNone(self.state.record)
+            marker.unlink()
+        self.assertEqual(self.request("password", {"disable": True, "current": PASSWORD})[0], 200)
+
+    def test_airgap_status_distinguishes_pending_enable_and_pending_disable(self):
+        for enabled, applied in ((False, False), (True, False), (True, True), (False, True)):
+            for path, present in ((auth.AIRGAP_ENABLED, enabled), (auth.AIRGAP_APPLIED, applied)):
+                path.touch() if present else path.unlink(missing_ok=True)
+            status, body, _ = self.request("airgap", address="127.0.0.1")
+            self.assertEqual(status, 200)
+            self.assertEqual(body, {"enabled": enabled, "applied": applied,
+                                   "reboot_required": enabled != applied,
+                                   "local": True, "has_password": False})
+
+    def test_airgap_changes_require_same_origin_and_strict_boolean(self):
+        self.enable()
+        with patch.object(auth, "change_airgap") as change:
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD},
+                                          address="127.0.0.1", Origin="https://attacker.example")[0], 403)
+            self.assertEqual(self.request("airgap", {"enabled": "true", "current": PASSWORD},
+                                          address="127.0.0.1")[0], 400)
+            change.assert_not_called()
+
+    def test_airgap_helper_errors_are_reported_without_claiming_success(self):
+        self.enable()
+        with patch.object(auth, "change_airgap", side_effect=OSError("unavailable")), \
+                self.assertLogs(level="ERROR"):
+            status, body, _ = self.request("airgap", {"enabled": False, "current": PASSWORD},
+                                           address="127.0.0.1")
+        self.assertEqual(status, 500)
+        self.assertIn("reload to verify", body["error"])
+
+    def test_pending_airgap_policy_can_reboot_with_an_administrator_session(self):
+        cookie = self.enable()
+        auth.AIRGAP_ENABLED.touch()
+        with patch.object(auth, "request_reboot", return_value=(200, {"ok": True})) as reboot:
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1")[0], 403)
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1", cookie=cookie)[0], 200)
+            reboot.assert_called_once()
 
     def test_locked_screen_status_and_stop_are_local_only_without_a_pin_session(self):
         self.lockdown()

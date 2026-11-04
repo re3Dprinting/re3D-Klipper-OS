@@ -12,6 +12,24 @@ fi
 
 getent passwd re3d-auth >/dev/null || useradd --system --user-group --home-dir /var/lib/re3d-auth --shell /usr/sbin/nologin re3d-auth
 install -d -m 0700 -o re3d-auth -g re3d-auth /var/lib/re3d-auth
+install -d -m 0755 -o root -g root /etc/re3d-airgap
+for service in NetworkManager systemd-networkd wpa_supplicant wpa_supplicant@ dhcpcd dhcpcd@ networking connman iwd ModemManager bluetooth systemd-rfkill getty@ serial-getty@ console-getty debug-shell re3d-security; do
+  install -d -m 0755 "/etc/systemd/system/${service}.service.d"
+  printf '[Unit]\nRequires=re3d-airgap.service\nAfter=re3d-airgap.service\n' \
+    > "/etc/systemd/system/${service}.service.d/re3d-airgap.conf"
+  if [[ "$service" != "re3d-security" ]]; then
+    printf 'ConditionPathExists=!/etc/re3d-airgap/enabled\nConditionPathExists=!/run/re3d-airgap/enabled\n' \
+      >> "/etc/systemd/system/${service}.service.d/re3d-airgap.conf"
+  fi
+done
+for socket in systemd-networkd systemd-rfkill; do
+  install -d -m 0755 "/etc/systemd/system/${socket}.socket.d"
+  printf '[Unit]\nRequires=re3d-airgap.service\nAfter=re3d-airgap.service\nConditionPathExists=!/etc/re3d-airgap/enabled\nConditionPathExists=!/run/re3d-airgap/enabled\n' \
+    > "/etc/systemd/system/${socket}.socket.d/re3d-airgap.conf"
+done
+install -d -m 0755 /etc/systemd/system/display-manager.service.d
+printf '[Unit]\nRequires=re3d-airgap-helper.service\nAfter=re3d-airgap-helper.service\n' \
+  > /etc/systemd/system/display-manager.service.d/re3d-airgap.conf
 install -d -m 0755 /etc/nginx/re3d-auth
 install -d -m 0755 /etc/systemd/system/nginx.service.d
 install -m 0644 /opt/mconfig/nginx/service.conf /etc/systemd/system/nginx.service.d/re3d-auth.conf
@@ -46,6 +64,7 @@ PY
 
 ln -sf /etc/nginx/sites-available/re3d-configurator /etc/nginx/sites-enabled/re3d-configurator
 systemctl enable re3d-security.service re3d-auth.service re3d-auth-tls.service re3d-auth-revoke.path re3d-ssh-password.service
+systemctl enable re3d-airgap.service re3d-airgap-helper.service
 if [[ "$MODE" == "live" ]]; then
   bash /opt/mconfig/prepare_auth_tls.sh
   nginx -t

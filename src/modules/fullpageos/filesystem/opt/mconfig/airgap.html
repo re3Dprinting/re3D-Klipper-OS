@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Air-gap settings - re:3D</title>
+  <link rel="stylesheet" href="/auth/security.css">
+</head>
+<body>
+<main class="security-card">
+  <h1>Air-gapped mode</h1>
+  <p>After reboot, all external network interfaces, Wi-Fi and Bluetooth are disabled.
+    Physical keyboards are blocked. The touchscreen, on-screen keyboard, printer mainboard
+    and USB drives remain available.</p>
+  <p>This is software-enforced isolation, not a substitute for unplugging Ethernet and removing
+    wireless hardware where a physical air gap is required. USB drives can still transfer untrusted files.</p>
+  <p id="state" role="status">Loading air-gap settings...</p>
+  <form id="settings">
+    <label for="enabled">Mode after reboot</label>
+    <select id="enabled" disabled>
+      <option value="enabled">Air-gapped</option>
+      <option value="disabled">Network access permitted</option>
+    </select>
+    <p id="password-help"></p>
+    <label for="password">Web administrator password</label>
+    <input id="password" type="password" autocomplete="current-password" required maxlength="1024">
+    <div id="confirm-field" hidden>
+      <label for="confirm">Confirm new administrator password</label>
+      <input id="confirm" type="password" autocomplete="new-password" maxlength="1024">
+    </div>
+    <button id="save" type="submit" disabled>Save for next reboot</button>
+  </form>
+  <p id="message" role="status" aria-live="polite"></p>
+  <button id="reboot" type="button" hidden>Reboot now</button>
+  <p><a id="return" href="http://localhost:8081/#system">Return to Configurator</a></p>
+</main>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  const flow = new URLSearchParams(location.search).get('setup');
+  if (flow === 'machine' || flow === 'openbox') {
+    el('return').href = 'http://localhost:8081/?setup=1' + (flow === 'openbox' ? '&flow=openbox' : '');
+    el('return').textContent = 'Return to setup';
+  }
+  let state;
+  async function request(url, data) {
+    const response = await fetch(url, data === undefined ? {cache: 'no-store'} : {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+    if (url === '/auth/airgap' && (typeof result.enabled !== 'boolean'
+        || typeof result.applied !== 'boolean' || typeof result.reboot_required !== 'boolean')) {
+      throw new Error('Invalid air-gap status. Reload to verify saved settings.');
+    }
+    return result;
+  }
+  function render() {
+    el('state').textContent = state.applied ? 'Air-gap isolation is active.' : 'Air-gap isolation is not active.';
+    if (state.reboot_required) el('state').textContent += ' A reboot is required to apply the saved change.';
+    el('enabled').value = state.enabled ? 'enabled' : 'disabled';
+    el('enabled').disabled = !state.local;
+    el('save').disabled = !state.local;
+    el('password-help').textContent = !state.local
+      ? 'Use the printer touchscreen to change this setting.'
+      : state.has_password ? 'Your administrator password is required to enable or disable isolation.'
+        : 'Create an administrator password (at least 8 characters) so you can leave air-gapped mode later.';
+    el('confirm-field').hidden = state.has_password;
+    el('confirm').required = !state.has_password;
+    el('password').autocomplete = state.has_password ? 'current-password' : 'new-password';
+    el('reboot').hidden = !state.local || !state.reboot_required;
+  }
+  el('settings').addEventListener('submit', async event => {
+    event.preventDefault();
+    el('save').disabled = true;
+    el('message').textContent = '';
+    let passwordCreated = false;
+    try {
+      const password = el('password').value;
+      if (!state.has_password) {
+        if (password.length < 8 || password !== el('confirm').value) {
+          throw new Error('Use matching administrator passwords of at least 8 characters.');
+        }
+        await request('/auth/password', {new: password, mode: 'basic'});
+        state.has_password = true;
+        passwordCreated = true;
+      }
+      const result = await request('/auth/airgap', {enabled: el('enabled').value === 'enabled', current: password});
+      state = {...state, ...result};
+      el('message').textContent = 'Saved. Finish setup to reboot, or reboot now when the printer is idle. No isolation change takes effect until reboot.';
+    } catch (error) {
+      el('message').textContent = (passwordCreated ? 'Administrator password saved, but air-gap settings were not confirmed. ' : '') + error.message;
+    } finally {
+      el('password').value = '';
+      el('confirm').value = '';
+      render();
+    }
+  });
+  el('reboot').addEventListener('click', async () => {
+    el('reboot').disabled = true;
+    try {
+      await request('/auth/reboot', {});
+      el('message').textContent = 'Reboot requested.';
+    } catch (error) {
+      el('message').textContent = error.message + ' Save again with your administrator password if your session expired.';
+      el('reboot').disabled = false;
+    }
+  });
+  request('/auth/airgap').then(result => { state = result; render(); }).catch(error => {
+    el('state').textContent = 'Unable to load air-gap settings: ' + error.message;
+  });
+})();
+</script>
+</body>
+</html>
