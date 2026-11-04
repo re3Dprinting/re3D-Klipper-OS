@@ -19,7 +19,7 @@ async function fixture(initial = {}, search = '') {
   let failure = '';
   function el(id) {
     if (!elements.has(id)) elements.set(id, {
-      value: '', hidden: false, disabled: true, textContent: '',
+      value: '', checked: false, hidden: false, disabled: true, textContent: '',
       addEventListener(event, callback) { this[event] = callback; }
     });
     return elements.get(id);
@@ -41,11 +41,30 @@ async function fixture(initial = {}, search = '') {
   await new Promise(resolve => setImmediate(resolve));
   return {el, calls, state, fail(url) { failure = url; },
     async save(enabled, password = 'administrator') {
-      el('enabled').value = enabled ? 'enabled' : 'disabled';
+      el('enabled').checked = enabled;
+      el('network-enabled').checked = !enabled;
       el('password').value = password;
       await el('settings').submit({preventDefault() {}});
     }};
 }
+
+test('mode uses two visible, labelled radio choices instead of a native dropdown', async () => {
+  assert.doesNotMatch(html, /<select\b/);
+  assert.match(html, /role="radiogroup" aria-labelledby="mode-label"/);
+  for (const id of ['enabled', 'network-enabled']) {
+    assert.match(html, new RegExp(`<input id="${id}" type="radio" name="airgap-mode"`));
+  }
+  const f = await fixture();
+  assert.equal(f.el('enabled').checked, false);
+  assert.equal(f.el('network-enabled').checked, true);
+  assert.equal(f.el('enabled').disabled, false);
+  assert.equal(f.el('network-enabled').disabled, false);
+  await f.save(true);
+  assert.equal(f.el('enabled').checked, true);
+  assert.equal(f.el('network-enabled').checked, false);
+  await f.save(false);
+  assert.deepEqual(f.calls.at(-1), {url: '/auth/airgap', body: {enabled: false, current: 'administrator'}});
+});
 
 test('air-gap settings save a strict boolean and password without claiming immediate isolation', async () => {
   const f = await fixture();
@@ -80,6 +99,7 @@ test('pending disable still reports isolation active and remote controls stay di
   assert.match(f.el('state').textContent, /is active.*reboot is required/);
   const remote = await fixture({local: false});
   assert.equal(remote.el('enabled').disabled, true);
+  assert.equal(remote.el('network-enabled').disabled, true);
   assert.equal(remote.el('save').disabled, true);
   assert.match(remote.el('password-help').textContent, /touchscreen/);
 });
@@ -90,7 +110,8 @@ test('helper failure does not display a successful save or leak passwords', asyn
   await f.save(true);
   assert.equal(f.el('message').textContent, 'Operation failed');
   assert.equal(f.el('password').value, '');
-  assert.equal(f.el('enabled').value, 'disabled');
+  assert.equal(f.el('enabled').checked, false);
+  assert.equal(f.el('network-enabled').checked, true);
   assert.equal(f.el('reboot').hidden, true);
 });
 
@@ -104,6 +125,8 @@ test('failed initial status keeps controls disabled', async () => {
     fetch: async () => { throw new Error('Unavailable'); }});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(el('save').disabled, true);
+  assert.equal(el('enabled').disabled, true);
+  assert.equal(el('network-enabled').disabled, true);
   assert.match(el('state').textContent, /Unable to load air-gap settings/);
 });
 

@@ -16,11 +16,17 @@
     wireless hardware where a physical air gap is required. USB drives can still transfer untrusted files.</p>
   <p id="state" role="status">Loading air-gap settings...</p>
   <form id="settings">
-    <label for="enabled">Mode after reboot</label>
-    <select id="enabled" disabled>
-      <option value="enabled">Air-gapped</option>
-      <option value="disabled">Network access permitted</option>
-    </select>
+    <div role="radiogroup" aria-labelledby="mode-label">
+      <div id="mode-label">Mode after reboot</div>
+      <label class="check-row">
+        <input id="enabled" type="radio" name="airgap-mode" value="enabled" disabled>
+        <span>Air-gapped</span>
+      </label>
+      <label class="check-row">
+        <input id="network-enabled" type="radio" name="airgap-mode" value="disabled" disabled>
+        <span>Network access permitted</span>
+      </label>
+    </div>
     <p id="password-help"></p>
     <label for="password">Web administrator password</label>
     <input id="password" type="password" autocomplete="current-password" required maxlength="1024">
@@ -58,8 +64,10 @@
   function render() {
     el('state').textContent = state.applied ? 'Air-gap isolation is active.' : 'Air-gap isolation is not active.';
     if (state.reboot_required) el('state').textContent += ' A reboot is required to apply the saved change.';
-    el('enabled').value = state.enabled ? 'enabled' : 'disabled';
+    el('enabled').checked = state.enabled;
+    el('network-enabled').checked = !state.enabled;
     el('enabled').disabled = !state.local;
+    el('network-enabled').disabled = !state.local;
     el('save').disabled = !state.local;
     el('password-help').textContent = !state.local
       ? 'Use the printer touchscreen to change this setting.'
@@ -85,7 +93,7 @@
         state.has_password = true;
         passwordCreated = true;
       }
-      const result = await request('/auth/airgap', {enabled: el('enabled').value === 'enabled', current: password});
+      const result = await request('/auth/airgap', {enabled: el('enabled').checked, current: password});
       state = {...state, ...result};
       el('message').textContent = 'Saved. Finish setup to reboot, or reboot now when the printer is idle. No isolation change takes effect until reboot.';
     } catch (error) {
