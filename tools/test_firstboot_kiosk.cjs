@@ -123,14 +123,42 @@ for (const firstboot of [true, false]) {
     const result = launchBrowser({ display: ':0', firstboot });
     assert.ok(result.args.includes('--ozone-platform=x11'));
     assert.ok(!result.args.includes('--ozone-platform=wayland'));
+    assert.ok(result.args.includes('--load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui'));
   });
 
   test(`${firstboot ? 'first' : 'normal'} boot prefers Wayland when XWayland is also available`, () => {
     const result = launchBrowser({ wayland: 'wayland-0', display: ':0', firstboot });
     assert.ok(result.args.includes('--ozone-platform=wayland'));
     assert.ok(!result.args.includes('--ozone-platform=x11'));
+    assert.ok(result.args.includes('--load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui'));
   });
 }
+
+test('upload shortcut is hidden by a kiosk-only stylesheet, never the shared Mainsail theme', () => {
+  const extension = path.join(filesystem, 'home', 'pi', 're3d-kiosk-ui');
+  const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.manifest_version, 3);
+  assert.deepEqual(manifest.content_scripts, [{
+    matches: ['http://*/*', 'https://*/*'],
+    css: ['mainsail.css'],
+    run_at: 'document_start'
+  }]);
+  assert.equal(manifest.permissions, undefined);
+  const css = fs.readFileSync(path.join(extension, 'mainsail.css'), 'utf8');
+  assert.match(css, /\.v-application \.topbar \.upload-and-start-button\s*\{\s*display: none !important;\s*\}/);
+  assert.doesNotMatch(css, /emergency-button|save-config-button|nth-child|@media/);
+  const source = path.join(filesystem, 'home', 'pi', 'printer_data', 'config', 'src');
+  assert.doesNotMatch(fs.readFileSync(path.join(source, 'common', 'mainsail.css'), 'utf8'),
+    /upload-and-start-button|re3d-kiosk-ui/);
+  for (const deposition of ['fff', 'fgf']) {
+    const defaults = JSON.parse(fs.readFileSync(path.join(source, deposition, '.theme', 'default.json'), 'utf8'));
+    assert.equal(defaults.uiSettings.boolHideUploadAndPrintButton, false);
+  }
+  const legacy = fs.readFileSync(path.join(source, 'system_config', 'start_chromium_browser'), 'utf8');
+  assert.equal((legacy.match(/--load-extension=\/home\/pi\/virtual_keyboard,\/home\/pi\/re3d-kiosk-ui/g) || []).length, 2);
+  const updater = fs.readFileSync(path.join(__dirname, 're3d-os-update.sh'), 'utf8');
+  assert.ok(updater.includes('"${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"'));
+});
 
 test('three immediate browser crashes never stop flashing or remove its flags', () => {
   const result = launchBrowser({ display: ':0', attempts: 3 });

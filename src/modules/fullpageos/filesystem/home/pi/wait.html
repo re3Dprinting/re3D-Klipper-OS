@@ -5,20 +5,26 @@
   <title>Preparing Printer…</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <style>
+    @font-face{
+      font-family:Lato;
+      src:url("../../opt/mconfig/www/fonts/Lato-Regular.ttf") format("truetype");
+      font-style:normal;font-weight:400;font-display:swap;
+    }
     /* Keep this inline: first-boot flashing runs from file:// without the configurator server. */
     :root{
       color-scheme:dark;
-      --bg:#121314; --card:#1F2023; --surface-0:#17181A; --surface-2:#292B2F;
-      --card-border:#32353A; --text:#EEF0F3; --text-sub:#ACAFB8; --dim:#999DA6;
-      --accent:#E7C547; --accent-soft:#CEB147;
+      --bg:#121314; --card:#181b20; --surface-0:#14171b; --surface-2:#23272c;
+      --card-border:#32353A; --text:#F2F2F2; --text-sub:#bcbec0; --dim:#999DA6;
+      --accent:#FFD400; --accent-soft:#E6BF00;
       --error:#ef4444; --success:#22c55e;
     }
     *,*::before,*::after{box-sizing:border-box}
     html,body{min-height:100%;margin:0;background:var(--bg);color:var(--text);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial}
+      font-family:Lato,Roboto,Arial,sans-serif}
     .wrap{min-height:100dvh;display:grid;place-items:center;padding:24px}
     .card{width:min(960px,100%);min-width:0;max-height:calc(100dvh - 48px);overflow:auto;padding:32px;
-      border:1px solid var(--card-border);border-radius:16px;background:var(--card);
+      border:none;border-radius:16px;background:var(--card);
+      background-image:radial-gradient(ellipse at 90% 50%,rgba(57,59,62,.3),transparent 65%);
       box-shadow:0 4px 20px rgba(0,0,0,.08);display:grid;gap:24px}
     .maintenance-brand{display:flex;align-items:center;gap:12px}
     .logo{height:34px;width:auto;object-fit:contain}
