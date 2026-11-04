@@ -3,7 +3,6 @@ set -euo pipefail
 
 # --- Settings ---
 TITLE="Configurator"
-PORT="${PORT:-8081}"
 ICON_PATH='M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z'
 POSITION=90
 TARGET="_self"
@@ -21,44 +20,7 @@ fi
 
 mkdir -p "$THEME_DIR"
 
-if ! command -v ip >/dev/null 2>&1; then
-  echo "Cannot refresh navi.json: ip command not found" >&2
-  exit 1
-fi
-
-# Pick best private IPv4: eth0 > wlan0 > anything private.
-pick_ip() {
-  # helper: first private IPv4 on an interface (if any)
-  int_ip() {
-    local IF="$1"
-    ip -4 -o addr show dev "$IF" scope global 2>/dev/null \
-      | awk '{print $4}' | cut -d/ -f1 \
-      | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)' | head -n1 || true
-  }
-
-  # priority: eth0, wlan0, then any interface
-  for IF in eth0 wlan0; do
-    IP=$(int_ip "$IF")
-    [ -n "${IP:-}" ] && { echo "$IP"; return; }
-  done
-
-  # any private IPv4 on any interface
-  IP=$(ip -4 -o addr show scope global \
-        | awk '{print $4}' | cut -d/ -f1 \
-        | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)' \
-        | head -n1 || true)
-  [ -n "${IP:-}" ] && { echo "$IP"; return; }
-
-  return 0
-}
-
-IP="$(pick_ip)"
-if [ -z "$IP" ]; then
-  echo "No private LAN IPv4 available; leaving navi.json unchanged. The timer will retry."
-  exit 0
-fi
-
-URL="http://${IP}:${PORT}/"
+URL="/configurator/"
 
 TMP="$(mktemp "$THEME_DIR/.navi.XXXXXX")"
 trap 'rm -f "$TMP"' EXIT

@@ -61,12 +61,14 @@ test('normal boot still honors a disabled HTTP check', () => {
   assert.deepEqual(launch({ disabled: true }), ['get_url', 'curl', 'browser']);
 });
 
-function launchBrowser({ wayland = '', display = '', firstboot = true, attempts = 1 } = {}) {
+function launchBrowser({ wayland = '', display = '', firstboot = true, attempts = 1, lockdown = false } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-browser-'));
   try {
     if (firstboot) fs.writeFileSync(path.join(directory, 'firstboot-splash'), '');
+    if (lockdown) fs.writeFileSync(path.join(directory, 'lockdown'), '');
     fs.writeFileSync(path.join(directory, 'wait.html'), '<html></html>');
     const script = browser
+      .replaceAll('/etc/re3d-security/lockdown', './lockdown')
       .replaceAll('/etc/firstboot-splash', './firstboot-splash')
       .replaceAll('/tmp/', './')
       .replaceAll('/home/pi/.config/chromium-firstboot', './profile')
@@ -76,7 +78,8 @@ function launchBrowser({ wayland = '', display = '', firstboot = true, attempts 
     for (let attempt = 0; attempt < attempts; attempt++) {
       result = spawnSync(bash, ['-s'], {
         cwd: directory,
-        env: { ...process.env, WAYLAND_DISPLAY: wayland, DISPLAY: display },
+        env: { ...process.env, WAYLAND_DISPLAY: wayland, DISPLAY: display,
+          XDG_RUNTIME_DIR: directory.replaceAll('\\', '/') },
         input: `
 chromium-browser() { printf '%s\\n' "$@" > browser-args; return 7; }
 nohup() { "$@"; }
@@ -88,7 +91,7 @@ ${script}`,
         timeout: 3000
       });
       assert.ifError(result.error);
-      assert.equal(result.status, wayland || display ? 0 : 1, result.stderr);
+      assert.equal(result.status, wayland || display ? (lockdown ? 7 : 0) : 1, result.stderr);
     }
     const read = name => fs.existsSync(path.join(directory, name))
       ? fs.readFileSync(path.join(directory, name), 'utf8') : '';
@@ -97,12 +100,23 @@ ${script}`,
       log: read('firstboot-kiosk.log'),
       serviceActions: read('systemctl-actions'),
       flagExists: fs.existsSync(path.join(directory, 'firstboot-splash')),
-      markerExists: fs.existsSync(path.join(directory, 'firstboot-ui-started'))
+      markerExists: fs.existsSync(path.join(directory, 'firstboot-ui-started')),
+      profiles: fs.readdirSync(directory).filter(name => name.startsWith('re3d-kiosk.'))
     };
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 }
+
+test('Lockdown launches the PIN wrapper with a fresh profile and preserves the touchscreen keyboard extension', () => {
+  const result = launchBrowser({ wayland:'wayland-0', lockdown:true });
+  assert.ok(result.args.includes('--app=http://localhost/auth/kiosk'));
+  assert.ok(result.args.some(arg => arg.startsWith('--user-data-dir=')));
+  assert.ok(result.args.includes('--load-extension=/home/pi/virtual_keyboard'));
+  assert.ok(!result.args.includes('--incognito'));
+  assert.deepEqual(result.profiles, []);
+  assert.equal(result.markerExists, true);
+});
 
 for (const firstboot of [true, false]) {
   test(`${firstboot ? 'first' : 'normal'} boot uses X11 in the legacy guisession`, () => {

@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch credential/session revocation for open printer connections
+
+[Path]
+PathChanged=/var/lib/re3d-auth/password.json
+PathChanged=/var/lib/re3d-auth/revoke
+Unit=re3d-auth-revoke.service
+
+[Install]
+WantedBy=multi-user.target

@@ -25,6 +25,11 @@ if [ -n "$REBOOT" ] && [ "$REBOOT" != "defer" ]; then
   exit 1
 fi
 
+if [ "$MODE" = "klipperscreen" ] && [ -f /etc/re3d-security/lockdown ]; then
+  printf '{"status":"error","message":"KlipperScreen is disabled in Lockdown. Change security mode and reboot first."}\n'
+  exit 0
+fi
+
 if [ "$MODE" = "mainsail" ] || [ "$MODE" = "klipperscreen" ]; then
   if ! printf '%s' "$MODE" > /etc/re3d-display-mode; then
     reply "500 Internal Server Error" '{"status":"error","message":"Unable to save display mode."}'

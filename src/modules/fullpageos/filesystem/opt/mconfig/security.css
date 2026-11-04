@@ -1,0 +1,304 @@
+@font-face {
+  font-family: Lato;
+  src: url("/auth/fonts/Lato-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  /* Match the Configurator tokens and the shared Mainsail charcoal/yellow palette. */
+  --brand: #FFD400;
+  --brand-600: #FFE04D;
+  --brand-700: #E6BF00;
+  --on-action: #181b20;
+  --bg: #121314;
+  --surface-0: #14171b;
+  --surface-1: #181b20;
+  --surface-2: #23272c;
+  --surface-3: #2c3034;
+  --border: #32353A;
+  --border-2: #494D54;
+  --fg: #F2F2F2;
+  --muted: #bcbec0;
+  --dim: #999DA6;
+  --warn: #f97316;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --focus-ring: 0 0 0 3px rgba(255,212,0,.4);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box }
+html { min-height: 100%; background: var(--bg) }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  padding: clamp(12px, 3vw, 32px);
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 Lato, Roboto, Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important }
+
+.security-card {
+  width: 100%;
+  max-width: 600px;
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: 0 4px 20px rgba(0,0,0,.08);
+  overflow-wrap: anywhere;
+}
+.security-brand { display: flex; align-items: center; gap: 16px; margin-bottom: 24px }
+.brand-logo { display: block; width: auto; height: 32px; max-width: 120px; object-fit: contain }
+.brand-caption { color: var(--dim); font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase }
+h1 { margin: 0 0 8px; font-size: 28px; font-weight: 650; line-height: 1.2; letter-spacing: -.6px }
+p { margin: 0 0 20px; color: var(--muted); line-height: 1.6 }
+form { display: grid; gap: 18px; min-width: 0 }
+label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: .1px }
+.credential-fields { display: grid; gap: 18px }
+input, select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+select { text-overflow: ellipsis }
+input:hover, select:hover { border-color: var(--muted) }
+input:focus, select:focus { border-color: var(--brand-700); box-shadow: var(--focus-ring) }
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .1px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+button:hover { background: var(--surface-3); border-color: var(--muted) }
+button:active { background: var(--surface-0); transform: translateY(1px) }
+button:focus-visible, a:focus-visible { outline: none; box-shadow: var(--focus-ring) }
+button:disabled { opacity: .45; cursor: not-allowed; transform: none }
+.btn-primary { background: var(--brand); border-color: transparent; color: var(--on-action) }
+.btn-primary:hover { background: var(--brand-600); border-color: transparent }
+.btn-primary:active { background: var(--brand-700) }
+.btn-ghost { background: transparent }
+#logout { margin-top: 12px }
+a { color: var(--fg); text-decoration-color: var(--brand); text-underline-offset: 4px; border-radius: 4px }
+a:hover { color: var(--brand) }
+.security-footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12px }
+.notice, .status-message:not(:empty) {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--fg);
+  font-size: 12px;
+}
+#pending { border-left-color: var(--warn) }
+.status-message { margin: 18px 0 0; white-space: pre-wrap }
+.status-message:empty { display: none }
+
+.settings-card { max-width: 820px }
+.setup-section { min-width: 0; padding: 22px 0; border-top: 1px solid var(--border) }
+.setup-section h2 { margin: 0 0 10px; font-size: 19px; line-height: 1.4 }
+.setup-section > p { margin-bottom: 14px }
+.setup-section > div + div, .setup-section .credential-fields + div { margin-top: 18px }
+.setup-section > button { margin: 12px 0 }
+.setup-section .field-help { margin: 7px 0 0; font-size: 12px; color: var(--muted) }
+.security-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 16px;
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.eyebrow { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px }
+.security-overview strong { font-size: 15px; font-weight: 600 }
+.security-overview p { grid-column: 1 / -1; margin: 0; font-size: 12px }
+.security-overview a { grid-column: 1 / -1; min-height: 44px; display: flex; align-items: center; font-size: 13px }
+.mode-explanation { margin-top: 14px }
+.security-help { margin: 16px 0; font-size: 13px }
+.security-help summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--fg); font-weight: 600 }
+.security-help summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px }
+.security-help p { margin: 8px 0 14px }
+.security-help li + li { margin-top: 8px }
+.security-help ol { padding-left: 22px; color: var(--muted) }
+.security-help code { color: var(--fg); overflow-wrap: anywhere }
+.mode-comparison dt { margin-top: 12px; color: var(--fg); font-weight: 600 }
+.mode-comparison dd { margin: 4px 0 0; color: var(--muted) }
+.check-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; font-size: 13px; color: var(--fg) }
+.check-row input { flex: 0 0 24px; width: 24px; min-height: 24px; height: 24px; padding: 0; accent-color: var(--brand) }
+[data-state="blocked"] { border-left-color: var(--warn) }
+#readiness[data-state="ready"] { border-left-color: var(--brand); font-weight: 500 }
+.status-message:focus { outline: 2px solid var(--brand); outline-offset: 3px }
+#credentials-section:first-child { padding-top: 0; border-top: 0 }
+.settings-card #credentials-section { padding-top: 22px; border-top: 1px solid var(--border) }
+.settings-card .security-brand { margin-bottom: 12px }
+.settings-card h1 { font-size: 24px }
+.settings-card #description { margin-bottom: 12px; font-size: 13px }
+.settings-card .security-overview { gap: 6px 12px; margin: 12px 0; padding: 10px 12px }
+.settings-card .setup-section { padding: 12px 0; margin: 0 }
+.settings-card .setup-section h2 { margin-bottom: 8px; font-size: 16px }
+.settings-card #credentials-section { padding-top: 12px }
+.settings-card .setup-section > p { margin-bottom: 8px; font-size: 12px }
+.settings-card .setup-section > div + div,
+.settings-card .setup-section .credential-fields + div { margin-top: 12px }
+.settings-card .security-help { margin: 4px 0 }
+.settings-card .security-help p { margin: 6px 0 10px }
+.settings-card #ssh-heading { font-size: 16px }
+.settings-card #ssh-section:not([open]) { padding: 0 }
+.settings-card form, .settings-card .credential-fields { gap: 10px }
+.settings-card .mode-explanation { margin-top: 8px; padding: 8px 10px }
+.settings-card #save-help { margin: 0; padding: 8px 10px }
+.settings-card .security-footer { margin-top: 14px; padding-top: 12px }
+@media (min-width: 600px) {
+  .settings-card .credential-fields { grid-template-columns: repeat(2, minmax(0,1fr)); align-items: start }
+}
+dialog {
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--fg);
+}
+dialog::backdrop { background: rgba(0,0,0,.7) }
+dialog h2 { margin: 0 0 14px; font-size: 22px; line-height: 1.3 }
+.dialog-actions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px }
+#reboot-reload { margin-top: 16px }
+
+.pin-card { max-width: 420px; text-align: center }
+.kiosk-page { padding: 12px }
+.kiosk-page .pin-card {
+  display: grid;
+  grid-template-rows: auto auto minmax(0,1fr) auto;
+  max-width: none;
+  min-height: calc(100dvh - 24px);
+}
+.kiosk-page .pin-card form { grid-template-rows: auto auto minmax(0,1fr) auto }
+.kiosk-page #keys { grid-template-rows: repeat(4, minmax(48px,1fr)) }
+.pin-card .security-brand { justify-content: center }
+.pin-card h1 { font-size: 26px }
+.pin-card form { gap: 10px }
+.pin-card label { margin: 0 }
+#pin { text-align: center; font-size: 24px; letter-spacing: .2em }
+.pin-card #pin { padding: 8px 12px }
+#keys { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px }
+#keys button { min-height: 48px; font-size: 20px; background: var(--surface-0) }
+#keys button:hover { background: var(--surface-2) }
+#keys .key-action { color: var(--muted); font-size: 12px }
+#unlock { margin-top: 2px }
+#screen { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0,1fr); background: var(--bg) }
+#toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-0);
+}
+.toolbar-copy { display: flex; align-items: center; gap: 16px; min-width: 0 }
+.toolbar-copy .brand-logo { height: 26px }
+.toolbar-copy span { color: var(--muted); font-size: 12px }
+.toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap }
+#toolbar button { width: auto; flex-shrink: 0; min-width: 72px }
+iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; background: var(--bg) }
+
+@media (max-width: 420px) {
+  .security-card { padding: 20px }
+  .security-brand { gap: 12px }
+  .brand-caption { font-size: 9px }
+  h1 { font-size: 26px }
+  .toolbar-copy { gap: 10px }
+  .toolbar-copy span { font-size: 11px }
+  .security-overview { grid-template-columns: minmax(0,1fr) }
+}
+@media (min-width: 600px) and (max-height: 600px) {
+  .pin-card {
+    display: grid;
+    grid-template-columns: minmax(0,.9fr) minmax(0,1.1fr);
+    gap: 16px 28px;
+    max-width: none;
+    text-align: left;
+  }
+  .pin-card .security-brand { grid-column: 1; justify-content: flex-start; margin: 0 }
+  .pin-intro { grid-column: 1; align-self: start }
+  .pin-intro p { margin-bottom: 0 }
+  .pin-card form { grid-column: 2; grid-row: 1 / span 3 }
+  .pin-card .status-message { grid-column: 1; align-self: end; margin: 0 }
+  #keys button { min-height: 44px }
+  .kiosk-page .pin-card { padding: 20px; grid-template-rows: auto 1fr auto }
+  .kiosk-page .pin-card form { align-self: stretch; gap: 8px }
+  .kiosk-page #keys { grid-template-rows: repeat(4, minmax(44px,1fr)) }
+  .kiosk-page #keys button { font-size: 24px }
+  .kiosk-page #keys .key-action { font-size: 14px }
+  .kiosk-page #unlock { min-height: 52px }
+}
+.locked-printer-status {
+  margin: 12px 0;
+  max-height: 130px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  text-align: left;
+}
+.locked-printer-status strong { font-size: 15px }
+.locked-printer-status #heater-status { white-space: pre-line; font-size: 13px; margin: 6px 0 }
+.locked-printer-status #telemetry-status { margin: 0; font-size: 11px }
+.btn-emergency { background: #b91c1c; border-color: #ef4444; color: #fff; min-height: 52px; font-size: 16px }
+.btn-emergency:hover { background: #991b1b; border-color: #f87171 }
+.pin-intro .emergency-help { margin: 8px 0; font-size: 11px; line-height: 1.4 }
+.pin-intro #emergency-status { margin: 8px 0 0; font-size: 12px }
+@media (min-width: 600px) and (max-height: 600px) {
+  .pin-intro h1 { font-size: 22px }
+  .pin-intro > p { font-size: 12px; line-height: 1.4 }
+  .locked-printer-status { margin: 8px 0; padding: 6px 10px }
+  .locked-printer-status #heater-status { margin: 4px 0; font-size: 12px; line-height: 1.4 }
+  .pin-intro .emergency-help { margin: 6px 0; font-size: 10px; line-height: 1.3 }
+  .pin-intro #emergency-status { padding: 6px 8px; margin: 6px 0 0; font-size: 11px; line-height: 1.4 }
+}
+@media (max-width: 599px) {
+  .kiosk-page .security-brand { margin-bottom: 12px }
+  .pin-intro h1 { font-size: 24px }
+  .pin-intro > p { font-size: 12px }
+  .locked-printer-status { margin: 8px 0; padding: 6px 10px }
+}
+@media (prefers-reduced-motion: reduce) {
+  input, select, button { transition: none }
+}
