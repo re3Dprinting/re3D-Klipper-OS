@@ -15,6 +15,14 @@
   <div class="pin-intro">
     <h1 id="pin-heading">Touchscreen locked</h1>
     <p>Enter your PIN to unlock. The printer continues operating while locked.</p>
+    <section class="locked-printer-status" aria-label="Live printer status">
+      <strong id="print-state">Connecting to printer...</strong>
+      <p id="heater-status">Checking heater temperatures...</p>
+      <p id="telemetry-status" role="status" aria-live="polite"></p>
+    </section>
+    <button id="emergency-stop" class="btn-emergency" type="button">EMERGENCY STOP</button>
+    <p class="emergency-help">Stops heaters and motion in Klipper. No PIN needed. Software stop cannot cut power; use the physical stop or power switch if unsafe.</p>
+    <p id="emergency-status" class="status-message" role="alert"></p>
   </div>
   <form id="form">
     <label for="pin">Touchscreen PIN</label>
@@ -53,6 +61,33 @@
   let dirty = false;
   let reporting = false;
   let lastReport = -Infinity;
+  let stopping = false;
+  let readingStatus = false;
+  async function refreshPrinterStatus() {
+    if (readingStatus || unlocked) return;
+    readingStatus = true;
+    try {
+      const state = await request('printer-status');
+      const names = {standby:'Ready', printing:'Printing', paused:'Print paused',
+        complete:'Print complete', cancelled:'Print cancelled', error:'Print error'};
+      el('print-state').textContent = state.firmware !== 'ready'
+        ? 'Printer ' + state.firmware
+        : (names[state.state] || state.state)
+          + (['printing', 'paused'].includes(state.state) ? ` - ${Math.round(state.progress * 100)}%` : '');
+      el('heater-status').textContent = state.heaters.length
+        ? state.heaters.map(heater => {
+          const label = heater.name === 'heater_bed' ? 'Bed'
+            : heater.name === 'extruder' ? 'Nozzle'
+              : heater.name.replace(/^heater_generic /, '').replaceAll('_', ' ');
+          return `${label}: ${heater.temperature.toFixed(1)} / ${heater.target.toFixed(0)} \u00b0C`;
+        }).join('\n') : 'No heaters configured.';
+      el('telemetry-status').textContent = 'Live - updates every 5 seconds';
+    } catch (error) {
+      el('print-state').textContent = 'Printer status unavailable';
+      el('heater-status').textContent = 'Temperatures unavailable - do not assume heaters are cold.';
+      el('telemetry-status').textContent = error.message;
+    } finally { readingStatus = false; }
+  }
   const initialView = new URLSearchParams(location.search).get('view') === 'configurator'
     ? 'http://localhost:8081/' : '/';
   function navigate(url) {
@@ -79,6 +114,7 @@
     el('lock').hidden = false;
     el('pin').value = '';
     el('status').textContent = message;
+    refreshPrinterStatus();
   }
   async function lock() {
     showLock();
@@ -121,6 +157,24 @@
   el('lock-now').addEventListener('click', lock);
   el('printer-control').addEventListener('click', () => navigate('/'));
   el('configurator').addEventListener('click', () => navigate('http://localhost:8081/'));
+  el('emergency-stop').addEventListener('click', async () => {
+    if (stopping) return;
+    stopping = true;
+    el('emergency-stop').disabled = true;
+    el('emergency-status').textContent = 'Sending emergency stop...';
+    try {
+      await request('emergency-stop', {});
+      el('emergency-status').textContent = 'Emergency stop acknowledged by Klipper. Check the printer; recovery is required before printing again.';
+    } catch (error) {
+      el('emergency-status').textContent = error.message.includes('physical emergency stop')
+        ? error.message : error.message
+          + ' Stop NOT confirmed. Use the physical emergency stop or power switch if unsafe.';
+    } finally {
+      stopping = false;
+      el('emergency-stop').disabled = false;
+      refreshPrinterStatus();
+    }
+  });
   addEventListener('message', event => {
     if (event.source !== el('printer').contentWindow
         || !['http://localhost', 'http://localhost:8081'].includes(event.origin)
@@ -138,6 +192,7 @@
     if (unlocked && performance.now() - lastActivity >= 300000) lock();
   }, 1000);
   setInterval(async () => {
+    refreshPrinterStatus();
     if (!unlocked) return;
     try {
       if (dirty) {

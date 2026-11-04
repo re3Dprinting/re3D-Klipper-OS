@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import ipaddress
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import secrets
@@ -16,7 +17,7 @@ import socket
 import tempfile
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 
 COOKIE = "re3d_session"
@@ -100,6 +101,52 @@ def request_reboot():
         return 200, {"ok": True}
     finally:
         connection.close()
+
+
+def kiosk_printer_request(path, method="GET"):
+    connection = http.client.HTTPConnection("127.0.0.1", 7125, timeout=3)
+    try:
+        connection.request(method, path)
+        response = connection.getresponse()
+        data = json.loads(response.read(65536))
+        if response.status != 200 or not isinstance(data, dict) or "result" not in data:
+            raise ValueError("The printer did not accept the request")
+        return data["result"]
+    finally:
+        connection.close()
+
+
+def kiosk_printer_status():
+    result = kiosk_printer_request("/printer/objects/query?webhooks&print_stats&virtual_sdcard&heaters")
+    if not isinstance(result, dict) or not isinstance(result.get("status"), dict):
+        raise ValueError("Printer status is invalid")
+    status = result["status"]
+    if not all(isinstance(status.get(name), dict) for name in ("heaters", "print_stats", "webhooks", "virtual_sdcard")):
+        raise ValueError("Printer status is incomplete")
+    heaters = status.get("heaters", {}).get("available_heaters")
+    if not isinstance(heaters, list) or not all(isinstance(name, str) for name in heaters):
+        raise ValueError("Heater list is unavailable")
+    temperatures = []
+    if heaters:
+        result = kiosk_printer_request("/printer/objects/query?"
+                                       + "&".join(quote(name, safe="") for name in heaters))
+        if not isinstance(result, dict) or not isinstance(result.get("status"), dict):
+            raise ValueError("Heater status is invalid")
+        for name in heaters:
+            values = result["status"].get(name, {})
+            if not isinstance(values, dict):
+                raise ValueError("Heater status is invalid")
+            temperature, target = values.get("temperature"), values.get("target")
+            if not all(type(value) in (float, int) and math.isfinite(value) for value in (temperature, target)):
+                raise ValueError("Heater temperatures are unavailable")
+            temperatures.append({"name": name, "temperature": temperature, "target": target})
+    print_state = status.get("print_stats", {}).get("state")
+    firmware = status.get("webhooks", {}).get("state")
+    progress = status.get("virtual_sdcard", {}).get("progress")
+    if (not isinstance(print_state, str) or not isinstance(firmware, str)
+            or type(progress) not in (int, float) or not math.isfinite(progress) or not 0 <= progress <= 1):
+        raise ValueError("Print status is unavailable")
+    return {"state": print_state, "firmware": firmware, "progress": progress, "heaters": temperatures}
 
 
 class AuthState:
@@ -266,6 +313,16 @@ class AuthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path == "/auth/printer-status":
+            if not self.local or self.state.mode != "lockdown":
+                self.reply(403, {"error": "Locked-screen printer status is only available locally in Lockdown"})
+                return
+            try:
+                self.reply(200, kiosk_printer_status())
+            except (OSError, http.client.HTTPException, ValueError):
+                logging.exception("Could not read locked-screen printer status")
+                self.reply(503, {"error": "Live printer status unavailable. Temperatures and print state cannot be verified."})
+            return
         with self.state.lock:
             if path == "/auth/check":
                 if self.remote_http and self.state.mode != "off":
@@ -327,6 +384,18 @@ class AuthHandler(BaseHTTPRequestHandler):
                     raise ValueError("Passwords must be strings of at most 1024 characters")
         except (ValueError, UnicodeError) as error:
             self.reply(400, {"error": str(error)})
+            return
+        if self.path == "/auth/emergency-stop":
+            if not self.local or self.state.mode != "lockdown":
+                self.reply(403, {"error": "Locked-screen emergency stop is only available locally in Lockdown"})
+                return
+            try:
+                if kiosk_printer_request("/printer/emergency_stop", "POST") != "ok":
+                    raise ValueError("Emergency stop was not acknowledged")
+                self.reply(200, {"ok": True})
+            except (OSError, http.client.HTTPException, ValueError):
+                logging.exception("Could not confirm touchscreen emergency stop")
+                self.reply(503, {"error": "Emergency stop NOT confirmed. Use the physical emergency stop or disconnect printer power if unsafe."})
             return
         try:
             with self.state.lock:

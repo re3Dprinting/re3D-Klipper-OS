@@ -54,6 +54,89 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
 
+    def test_locked_screen_status_and_stop_are_local_only_without_a_pin_session(self):
+        self.lockdown()
+        self.state.sessions.clear()
+        with patch.object(auth, "kiosk_printer_status", return_value={"state": "printing"}) as status, \
+                patch.object(auth, "kiosk_printer_request", return_value="ok") as stop:
+            self.assertEqual(self.request("printer-status")[0], 403)
+            self.assertEqual(self.request("emergency-stop", {})[0], 403)
+            status.assert_not_called()
+            stop.assert_not_called()
+            self.assertEqual(self.request("printer-status", address="127.0.0.1")[0], 200)
+            self.assertEqual(self.request("emergency-stop", {}, address="127.0.0.1")[0], 200)
+            stop.assert_called_once_with("/printer/emergency_stop", "POST")
+            self.assertFalse(self.state.pin_sessions)
+            self.assertFalse(self.state.sessions)
+
+    def test_stop_requires_same_origin_json_and_reports_printer_failure(self):
+        self.lockdown()
+        with patch.object(auth, "kiosk_printer_request", side_effect=OSError("Printer offline")) as stop:
+            self.assertEqual(self.request("emergency-stop", {}, address="127.0.0.1",
+                                          Origin="https://attacker.example")[0], 403)
+            self.assertEqual(self.request("emergency-stop", {}, address="127.0.0.1",
+                                          **{"Content-Type": "text/plain"})[0], 415)
+            stop.assert_not_called()
+            with self.assertLogs(level="ERROR"):
+                status, body, _ = self.request("emergency-stop", {}, address="127.0.0.1")
+            self.assertEqual(status, 503)
+            self.assertIn("NOT confirmed", body["error"])
+            self.assertIn("physical emergency stop", body["error"])
+
+    def test_locked_screen_status_failure_is_explicit_and_does_not_extend_pin_session(self):
+        self.lockdown()
+        token = self.state.session(kiosk=True)
+        expiry = self.state.pin_sessions[token]
+        with patch.object(auth, "kiosk_printer_status", side_effect=ValueError("Invalid status")), \
+                self.assertLogs(level="ERROR"):
+            status, body, _ = self.request("printer-status", cookie=f"re3d_kiosk={token}", address="127.0.0.1")
+        self.assertEqual(status, 503)
+        self.assertIn("unavailable", body["error"])
+        self.assertEqual(self.state.pin_sessions[token], expiry)
+
+    def test_printer_status_queries_all_configured_heaters_and_limits_output(self):
+        base = {"status": {"webhooks": {"state": "ready"}, "print_stats": {"state": "printing", "filename": "private.gcode"},
+                           "virtual_sdcard": {"progress": .25},
+                           "heaters": {"available_heaters": ["extruder", "heater_bed", "heater_generic chamber"]}}}
+        heaters = {"status": {name: {"temperature": 42.5, "target": 60}
+                              for name in base["status"]["heaters"]["available_heaters"]}}
+        with patch.object(auth, "kiosk_printer_request", side_effect=[base, heaters]) as request:
+            result = auth.kiosk_printer_status()
+        self.assertEqual(result["progress"], .25)
+        self.assertEqual(len(result["heaters"]), 3)
+        self.assertNotIn("filename", result)
+        self.assertIn("heater_generic%20chamber", request.call_args.args[0])
+
+    def test_locked_screen_endpoints_do_not_work_in_off_or_basic_modes(self):
+        for enabled in (False, True):
+            if enabled:
+                self.enable()
+            with patch.object(auth, "kiosk_printer_status") as status, \
+                    patch.object(auth, "kiosk_printer_request") as stop:
+                self.assertEqual(self.request("printer-status", address="127.0.0.1")[0], 403)
+                self.assertEqual(self.request("emergency-stop", {}, address="127.0.0.1")[0], 403)
+                status.assert_not_called()
+                stop.assert_not_called()
+
+    def test_printer_status_rejects_malformed_and_nonfinite_temperatures(self):
+        for invalid in (None, {}, {"status": {"heaters": None}}):
+            with patch.object(auth, "kiosk_printer_request", return_value=invalid):
+                self.assertRaises(ValueError, auth.kiosk_printer_status)
+        base = {"status": {"webhooks": {"state": "ready"}, "print_stats": {"state": "standby"},
+                           "virtual_sdcard": {"progress": 0}, "heaters": {"available_heaters": ["extruder"]}}}
+        for temperature in (None, float("nan"), float("inf"), "25", True):
+            with patch.object(auth, "kiosk_printer_request", side_effect=[
+                    base, {"status": {"extruder": {"temperature": temperature, "target": 0}}}]):
+                self.assertRaises(ValueError, auth.kiosk_printer_status)
+
+    def test_stop_without_acknowledgement_is_never_reported_as_success(self):
+        self.lockdown()
+        with patch.object(auth, "kiosk_printer_request", return_value={"error": "Printer unavailable"}), \
+                self.assertLogs(level="ERROR"):
+            status, body, _ = self.request("emergency-stop", {}, address="127.0.0.1")
+        self.assertEqual(status, 503)
+        self.assertIn("NOT confirmed", body["error"])
+
     def test_security_reboot_requires_an_admin_session_and_pending_policy(self):
         cookie = self.enable()
         with patch.object(auth, "request_reboot", return_value=(200, {"ok": True})) as reboot:

@@ -16,6 +16,8 @@ async function fixture(search = '') {
   let now = 0;
   let session = false;
   let fail = false;
+  let telemetry = {state:'printing', firmware:'ready', progress:.42,
+    heaters:[{name:'extruder', temperature:205.2, target:210}, {name:'heater_bed', temperature:60, target:60}]};
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
       value:'', hidden:false, textContent:'', src:'', contentWindow:{},
@@ -36,6 +38,7 @@ async function fixture(search = '') {
       if (fail) throw new Error('Network unavailable');
       let data = {};
       if (url === '/auth/status') data = {mode:'lockdown'};
+      if (url === '/auth/printer-status') data = telemetry;
       if (url === '/auth/lock') session = false;
       if (url === '/auth/pin') session = body.pin === '1234';
       if (url === '/auth/kiosk-status') data = {unlocked:session};
@@ -50,6 +53,7 @@ async function fixture(search = '') {
   }
   return {
     element, calls, intervals, listeners, unlock,
+    setTelemetry(value) { telemetry = value; },
     setTime(value) { now = value; }, expire() { session = false; }, fail() { fail = true; }
   };
 }
@@ -184,4 +188,46 @@ test('PIN layout uses the available screen and stretches the keypad on touchscre
   assert.match(html, /<body class="kiosk-page">/);
   assert.match(css, /\.kiosk-page \.pin-card \{[^}]*max-width: none;[^}]*min-height: calc\(100dvh - 24px\)/);
   assert.match(css, /\.kiosk-page #keys \{ grid-template-rows: repeat\(4, minmax\(48px,1fr\)\)/);
+});
+
+test('locked-screen telemetry shows print progress and heater temperatures without unlocking or activity', async () => {
+  const f = await fixture();
+  await flush();
+  assert.equal(f.element('print-state').textContent, 'Printing - 42%');
+  assert.match(f.element('heater-status').textContent, /Nozzle: 205.2 \/ 210/);
+  assert.match(f.element('heater-status').textContent, /Bed: 60.0 \/ 60/);
+  f.setTelemetry({state:'paused', firmware:'ready', progress:.5, heaters:[]});
+  await f.intervals.get(5000)();
+  await flush();
+  assert.equal(f.element('print-state').textContent, 'Print paused - 50%');
+  assert.equal(f.element('heater-status').textContent, 'No heaters configured.');
+  assert.equal(f.element('printer').src, 'about:blank');
+  assert.equal(f.calls.some(([url]) => url === '/auth/activity' || url === '/auth/pin'), false);
+  f.fail();
+  await f.intervals.get(5000)();
+  await flush();
+  assert.match(f.element('heater-status').textContent, /unavailable/);
+  assert.doesNotMatch(f.element('heater-status').textContent, /205/);
+});
+
+test('emergency stop is immediate while locked, needs no PIN, and reports acknowledgement', async () => {
+  const f = await fixture();
+  const stop = f.element('emergency-stop').click();
+  assert.equal(f.element('emergency-stop').disabled, true);
+  await f.element('emergency-stop').click();
+  await stop;
+  assert.equal(f.calls.filter(([url]) => url === '/auth/emergency-stop').length, 1);
+  assert.match(f.element('emergency-status').textContent, /acknowledged/);
+  assert.equal(f.element('printer').src, 'about:blank');
+  assert.equal(f.calls.some(([url]) => url === '/auth/pin'), false);
+  assert.equal(f.element('emergency-stop').disabled, false);
+});
+
+test('emergency stop network failure never claims success and keeps retry available', async () => {
+  const f = await fixture();
+  f.fail();
+  await f.element('emergency-stop').click();
+  assert.match(f.element('emergency-status').textContent, /Stop NOT confirmed/);
+  assert.match(f.element('emergency-status').textContent, /physical emergency stop/);
+  assert.equal(f.element('emergency-stop').disabled, false);
 });
