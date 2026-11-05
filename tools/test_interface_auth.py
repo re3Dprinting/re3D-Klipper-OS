@@ -58,6 +58,30 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
 
+    def test_settings_can_be_embedded_only_by_the_local_touchscreen_wrapper(self):
+        auth.AIRGAP_APPLIED.touch()
+        for path in ("/auth/airgap-settings", "/auth/airgap-settings?setup=machine", "/auth/settings"):
+            for address in ("127.0.0.1", "::1", "192.168.1.2"):
+                with self.subTest(path=path, address=address):
+                    connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+                    self.addCleanup(connection.close)
+                    connection.request("GET", path, headers={"X-Real-IP": address,
+                                                             "X-Forwarded-Proto": "https"})
+                    response = connection.getresponse()
+                    body = response.read()
+                    self.assertEqual(response.status, 200)
+                    policy = response.getheader("Content-Security-Policy")
+                    ancestor = "http://localhost" if address in ("127.0.0.1", "::1") else "'none'"
+                    self.assertIn(f"frame-ancestors {ancestor};", policy)
+                    self.assertIn(b'<script src="/auth/kiosk-client.js"></script>', body)
+        for path in ("/auth/kiosk", "/auth/login"):
+            connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+            self.addCleanup(connection.close)
+            connection.request("GET", path, headers={"X-Real-IP": "127.0.0.1"})
+            response = connection.getresponse()
+            response.read()
+            self.assertIn("frame-ancestors 'none';", response.getheader("Content-Security-Policy"))
+
     def test_airgap_changes_require_only_a_local_shared_pin(self):
         self.state.save({"mode": "off", "pin": auth.credential("1234")})
         with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:

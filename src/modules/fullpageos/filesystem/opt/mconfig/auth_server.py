@@ -302,9 +302,11 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.send_header("X-Re3D-HTTPS-Required", "1")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        frame_ancestors = ("http://localhost" if self.local and urlsplit(self.path).path in
+                           ("/auth/settings", "/auth/airgap-settings") else "'none'")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                         "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; "
+                         f"style-src 'self' 'unsafe-inline'; frame-ancestors {frame_ancestors}; "
                          "frame-src 'self' http://localhost:8081; "
                          "base-uri 'none'; form-action 'self'")
         if cookie is not None:

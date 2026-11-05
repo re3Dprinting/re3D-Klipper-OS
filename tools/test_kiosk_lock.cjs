@@ -300,6 +300,50 @@ test('air-gapped Basic and Off navigation retains the PIN wrapper and activity h
   }
 });
 
+test('embedded security settings retain activity reporting without redirecting or bypassing the idle lock', async () => {
+  const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
+  for (const pathname of ['/auth/airgap-settings', '/auth/settings']) {
+    const hooks = new Map();
+    const messages = [];
+    const self = {};
+    let checks = 0;
+    const context = {
+      document:clientDocument(),
+      fetch:async () => {
+        checks++;
+        return {ok:true, json:async () => ({local:true, touchscreen_locked:true})};
+      },
+      location:{pathname, replace() { assert.fail('Settings must remain visible'); }},
+      top:{}, self, parent:{postMessage(...args) { messages.push(args); }},
+      addEventListener(event, callback) { hooks.set(event, callback); }
+    };
+    vm.runInNewContext(client, context);
+    await flush();
+    assert.equal(checks, 1);
+    assert.equal(messages.length, 0);
+    hooks.get('pointerdown')();
+    assert.equal(messages[0][0].type, 're3d-activity');
+    assert.equal(messages[0][1], 'http://localhost');
+    context.top = self;
+    context.document = clientDocument();
+    vm.runInNewContext(client, context);
+    await flush();
+    assert.equal(checks, 1, 'Standalone settings must not enter the PIN wrapper');
+  }
+  const f = await fixture('', 'off');
+  await f.unlock();
+  const message = {source:f.element('printer').contentWindow,
+    origin:'http://localhost:8081', data:{type:'re3d-activity'}};
+  f.setTime(299000);
+  f.listeners.message(message);
+  f.setTime(300000);
+  f.intervals.get(1000)();
+  assert.notEqual(f.element('printer').src, 'about:blank');
+  f.setTime(599000);
+  f.intervals.get(1000)();
+  assert.equal(f.element('printer').src, 'about:blank');
+});
+
 test('PIN layout uses the available screen and stretches the keypad on touchscreen displays', () => {
   const html = fs.readFileSync(path.join(assets, 'kiosk.html'), 'utf8');
   const css = fs.readFileSync(path.join(assets, 'security.css'), 'utf8');

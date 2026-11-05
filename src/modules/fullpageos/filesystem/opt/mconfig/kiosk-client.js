@@ -1,5 +1,7 @@
 (async () => {
-  if (location.pathname.startsWith('/auth/')) return;
+  const authPage = location.pathname.startsWith('/auth/');
+  if (authPage && (top === self
+      || !['/auth/settings', '/auth/airgap-settings'].includes(location.pathname))) return;
   const marker = 'data-re3d-kiosk-client';
   if (document.documentElement.hasAttribute(marker)) return;
   document.documentElement.setAttribute(marker, '');
