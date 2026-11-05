@@ -112,7 +112,7 @@ test('Lockdown launches the PIN wrapper with a fresh profile and preserves the t
   const result = launchBrowser({ wayland:'wayland-0', lockdown:true });
   assert.ok(result.args.includes('--app=http://localhost/auth/kiosk'));
   assert.ok(result.args.some(arg => arg.startsWith('--user-data-dir=')));
-  assert.ok(result.args.includes('--load-extension=/home/pi/virtual_keyboard'));
+  assert.ok(result.args.includes('--load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui'));
   assert.ok(!result.args.includes('--incognito'));
   assert.deepEqual(result.profiles, []);
   assert.equal(result.markerExists, true);
@@ -142,6 +142,11 @@ test('upload shortcut is hidden by a kiosk-only stylesheet, never the shared Mai
     matches: ['http://*/*', 'https://*/*'],
     css: ['mainsail.css'],
     run_at: 'document_start'
+  }, {
+    matches: ['http://localhost/*', 'https://localhost/*', 'http://127.0.0.1/*', 'https://127.0.0.1/*'],
+    js: ['kiosk-client.js'],
+    all_frames: true,
+    run_at: 'document_start'
   }]);
   assert.equal(manifest.permissions, undefined);
   const css = fs.readFileSync(path.join(extension, 'mainsail.css'), 'utf8');
@@ -158,6 +163,8 @@ test('upload shortcut is hidden by a kiosk-only stylesheet, never the shared Mai
   assert.equal((legacy.match(/--load-extension=\/home\/pi\/virtual_keyboard,\/home\/pi\/re3d-kiosk-ui/g) || []).length, 2);
   const updater = fs.readFileSync(path.join(__dirname, 're3d-os-update.sh'), 'utf8');
   assert.ok(updater.includes('"${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"'));
+  const installer = fs.readFileSync(path.join(filesystem, 'opt', 'mconfig', 'install_auth.sh'), 'utf8');
+  assert.ok(installer.includes('install -m 0644 /opt/mconfig/kiosk-client.js /home/pi/re3d-kiosk-ui/kiosk-client.js'));
 });
 
 test('three immediate browser crashes never stop flashing or remove its flags', () => {

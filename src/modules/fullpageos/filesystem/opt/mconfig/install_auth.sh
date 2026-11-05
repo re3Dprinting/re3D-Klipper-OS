@@ -12,6 +12,8 @@ fi
 
 getent passwd re3d-auth >/dev/null || useradd --system --user-group --home-dir /var/lib/re3d-auth --shell /usr/sbin/nologin re3d-auth
 install -d -m 0700 -o re3d-auth -g re3d-auth /var/lib/re3d-auth
+install -d -m 0755 /home/pi/re3d-kiosk-ui
+install -m 0644 /opt/mconfig/kiosk-client.js /home/pi/re3d-kiosk-ui/kiosk-client.js
 install -d -m 0755 /etc/nginx/re3d-auth
 install -d -m 0755 /etc/systemd/system/nginx.service.d
 install -m 0644 /opt/mconfig/nginx/service.conf /etc/systemd/system/nginx.service.d/re3d-auth.conf
