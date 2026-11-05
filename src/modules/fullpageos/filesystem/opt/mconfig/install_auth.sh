@@ -30,6 +30,8 @@ done
 install -d -m 0755 /etc/systemd/system/display-manager.service.d
 printf '[Unit]\nRequires=re3d-airgap-helper.service\nAfter=re3d-airgap-helper.service\n' \
   > /etc/systemd/system/display-manager.service.d/re3d-airgap.conf
+install -d -m 0755 /home/pi/re3d-kiosk-ui
+install -m 0644 /opt/mconfig/kiosk-client.js /home/pi/re3d-kiosk-ui/kiosk-client.js
 install -d -m 0755 /etc/nginx/re3d-auth
 install -d -m 0755 /etc/systemd/system/nginx.service.d
 install -m 0644 /opt/mconfig/nginx/service.conf /etc/systemd/system/nginx.service.d/re3d-auth.conf

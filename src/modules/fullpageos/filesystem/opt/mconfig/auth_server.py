@@ -403,8 +403,7 @@ class AuthHandler(BaseHTTPRequestHandler):
             elif path == "/auth/kiosk" and self.local:
                 self.reply(200, (ROOT / "kiosk.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/auth/kiosk-client.js":
-                body = ((ROOT / "kiosk-client.js").read_bytes()
-                        if self.local and self.state.touchscreen_locked else b"")
+                body = (ROOT / "kiosk-client.js").read_bytes() if self.local else b""
                 self.reply(200, body, "application/javascript")
             elif path == "/auth/security.css":
                 self.reply(200, (ROOT / "security.css").read_bytes(), "text/css; charset=utf-8")
