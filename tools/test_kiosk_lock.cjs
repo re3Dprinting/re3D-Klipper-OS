@@ -112,25 +112,29 @@ test('server session expiry and network errors close the printer frame', async (
   }
 });
 
-test('activity hook does not treat timers as user input and redirects direct kiosk navigation', () => {
+test('activity hook does not treat timers as user input and redirects direct kiosk navigation', async () => {
   const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
   const hooks = [];
   const messages = [];
   const context = {
+    fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true})}),
     location:{pathname:'/', replace(url) { messages.push(url); }},
     top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
     addEventListener(event, callback) { hooks.push([event, callback]); }
   };
   vm.runInNewContext(client, context);
+  await flush();
   assert.ok(hooks.some(([event]) => event === 'pointerdown'));
   assert.equal(messages.length, 0);
   hooks.find(([event]) => event === 'pointerdown')[1]();
   assert.equal(messages.length, 1);
   context.top = context.self;
   vm.runInNewContext(client, context);
+  await flush();
   assert.equal(messages.at(-1), 'http://localhost/auth/kiosk');
   context.location.port = '8081';
   vm.runInNewContext(client, context);
+  await flush();
   assert.equal(messages.at(-1), 'http://localhost/auth/kiosk?view=configurator');
 });
 
@@ -165,21 +169,47 @@ test('top-level Configurator handoff restores the intended page only after PIN u
   assert.equal(invalid.element('printer').src, '/');
 });
 
-test('the Mainsail Configurator link requests embedded navigation instead of replacing the kiosk', () => {
+test('the Mainsail Configurator link requests embedded navigation instead of replacing the kiosk', async () => {
   const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
   const hooks = new Map();
   const messages = [];
   vm.runInNewContext(client, {
+    fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true})}),
     location:{pathname:'/', href:'http://localhost/'}, URL,
     top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
     addEventListener(event, callback) { hooks.set(event, callback); }
   });
+  await flush();
   let prevented = false;
   hooks.get('click')({target:{closest() { return {href:'http://localhost/configurator/'}; }},
     preventDefault() { prevented = true; }, stopImmediatePropagation() {}});
   assert.equal(prevented, true);
   assert.equal(messages[0][0].type, 're3d-configurator');
   assert.equal(messages[0][1], 'http://localhost');
+});
+
+test('Basic and Off force a document navigation instead of a blank Mainsail route', async () => {
+  const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
+  for (const mode of ['basic', 'off']) {
+    const hooks = new Map();
+    const redirects = [];
+    vm.runInNewContext(client, {
+      fetch:async () => ({ok:true, json:async () => ({mode, local:true})}),
+      location:{pathname:'/', origin:'http://localhost', href:'http://localhost/',
+        assign(url) { redirects.push(url); }, replace() { assert.fail('Must not enter the PIN wrapper'); }},
+      URL, addEventListener(event, callback) { hooks.set(event, callback); }
+    });
+    await flush();
+    assert.deepEqual([...hooks.keys()], ['click']);
+    for (const href of ['http://localhost/configurator/', 'http://localhost/configurator/?setup=1',
+      'http://other-printer/configurator/', 'http://localhost/files']) {
+      let prevented = false;
+      hooks.get('click')({target:{closest() { return {href}; }},
+        preventDefault() { prevented = true; }, stopImmediatePropagation() {}});
+      assert.equal(prevented, href.startsWith('http://localhost/configurator/'));
+    }
+    assert.deepEqual(redirects, ['http://localhost/configurator/', 'http://localhost/configurator/?setup=1']);
+  }
 });
 
 test('PIN layout uses the available screen and stretches the keypad on touchscreen displays', () => {

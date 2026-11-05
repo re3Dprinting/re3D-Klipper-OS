@@ -1,5 +1,23 @@
-(() => {
+(async () => {
   if (location.pathname.startsWith('/auth/')) return;
+  const response = await fetch('/auth/status', {cache:'no-store'});
+  if (!response.ok) throw new Error('Could not check touchscreen security mode');
+  const state = await response.json();
+  if (!state.local) return;
+  if (state.mode !== 'lockdown') {
+    addEventListener('click', event => {
+      const link = event.target.closest?.('a[href]');
+      if (!link || event.defaultPrevented) return;
+      const url = new URL(link.href, location.href);
+      if (url.origin === location.origin && url.pathname === '/configurator/') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        // Leave Mainsail's client-side router so nginx can select the Configurator port.
+        location.assign(url.href);
+      }
+    }, {capture:true});
+    return;
+  }
   if (top === self) {
     location.replace('http://localhost/auth/kiosk'
       + (location.port === '8081' ? '?view=configurator' : ''));
@@ -19,4 +37,4 @@
   for (const event of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
     addEventListener(event, active, {capture:true, passive:true});
   }
-})();
+})().catch(error => console.error('Touchscreen navigation setup failed:', error));

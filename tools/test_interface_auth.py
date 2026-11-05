@@ -364,6 +364,21 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_navigation_hook_is_local_only_in_all_modes(self):
+        script = (ASSETS / "kiosk-client.js").read_bytes()
+        for mode in ("off", "basic", "lockdown"):
+            if mode == "basic":
+                self.enable()
+            elif mode == "lockdown":
+                self.state.save(None)
+                self.lockdown()
+            with self.subTest(mode=mode):
+                status, body, _ = self.request("kiosk-client.js", address="127.0.0.1",
+                                                **{"X-Forwarded-Proto": "http"})
+                self.assertEqual(status, 200)
+                self.assertEqual(body, script)
+                self.assertEqual(self.request("kiosk-client.js")[1], b"")
+
     def test_lato_font_loads_without_an_admin_or_pin_session_in_lockdown(self):
         self.lockdown()
         self.state.sessions.clear()
