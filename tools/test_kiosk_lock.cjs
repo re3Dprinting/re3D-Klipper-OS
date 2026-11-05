@@ -8,6 +8,15 @@ const assets = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'files
 const source = fs.readFileSync(path.join(assets, 'kiosk.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
+function clientDocument() {
+  const attributes = new Map();
+  return {documentElement:{
+    hasAttribute(name) { return attributes.has(name); },
+    setAttribute(name, value) { attributes.set(name, value); },
+    removeAttribute(name) { attributes.delete(name); }
+  }};
+}
+
 async function fixture(search = '') {
   const elements = new Map();
   const listeners = {};
@@ -117,6 +126,7 @@ test('activity hook does not treat timers as user input and redirects direct kio
   const hooks = [];
   const messages = [];
   const context = {
+    document:clientDocument(),
     fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true})}),
     location:{pathname:'/', replace(url) { messages.push(url); }},
     top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
@@ -129,10 +139,12 @@ test('activity hook does not treat timers as user input and redirects direct kio
   hooks.find(([event]) => event === 'pointerdown')[1]();
   assert.equal(messages.length, 1);
   context.top = context.self;
+  context.document = clientDocument();
   vm.runInNewContext(client, context);
   await flush();
   assert.equal(messages.at(-1), 'http://localhost/auth/kiosk');
   context.location.port = '8081';
+  context.document = clientDocument();
   vm.runInNewContext(client, context);
   await flush();
   assert.equal(messages.at(-1), 'http://localhost/auth/kiosk?view=configurator');
@@ -174,6 +186,7 @@ test('the Mainsail Configurator link requests embedded navigation instead of rep
   const hooks = new Map();
   const messages = [];
   vm.runInNewContext(client, {
+    document:clientDocument(),
     fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true})}),
     location:{pathname:'/', href:'http://localhost/'}, URL,
     top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
@@ -196,6 +209,7 @@ test('Basic and Off bypass Mainsail service-worker navigation using the Configur
     const hooks = new Map();
     const redirects = [];
     vm.runInNewContext(client, {
+      document:clientDocument(),
       fetch:async () => ({ok:true, json:async () => ({mode, local:true})}),
       location:{pathname:'/', origin, href:origin + '/',
         assign(url) { redirects.push(url); }, replace() { assert.fail('Must not enter the PIN wrapper'); }},
@@ -218,6 +232,26 @@ test('Basic and Off bypass Mainsail service-worker navigation using the Configur
         'The destination must escape the controlling Mainsail service worker');
     }
   }
+});
+
+test('extension and HTML injection share a document guard across isolated worlds', async () => {
+  const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
+  const document = clientDocument();
+  let checks = 0;
+  const hooks = [];
+  const context = {
+    document, location:{pathname:'/'},
+    fetch:async () => {
+      checks++;
+      return {ok:true, json:async () => ({mode:'basic', local:true})};
+    },
+    addEventListener(event) { hooks.push(event); }
+  };
+  vm.runInNewContext(client, {...context});
+  vm.runInNewContext(client, {...context});
+  await flush();
+  assert.equal(checks, 1);
+  assert.deepEqual(hooks, ['click']);
 });
 
 test('PIN layout uses the available screen and stretches the keypad on touchscreen displays', () => {

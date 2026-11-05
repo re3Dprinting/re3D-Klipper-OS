@@ -1,5 +1,8 @@
 (async () => {
   if (location.pathname.startsWith('/auth/')) return;
+  const marker = 'data-re3d-kiosk-client';
+  if (document.documentElement.hasAttribute(marker)) return;
+  document.documentElement.setAttribute(marker, '');
   const response = await fetch('/auth/status', {cache:'no-store'});
   if (!response.ok) throw new Error('Could not check touchscreen security mode');
   const state = await response.json();
@@ -39,4 +42,7 @@
   for (const event of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
     addEventListener(event, active, {capture:true, passive:true});
   }
-})().catch(error => console.error('Touchscreen navigation setup failed:', error));
+})().catch(error => {
+  document.documentElement.removeAttribute('data-re3d-kiosk-client');
+  console.error('Touchscreen navigation setup failed:', error);
+});
