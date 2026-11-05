@@ -12,7 +12,9 @@
       if (url.origin === location.origin && url.pathname === '/configurator/') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        // Leave Mainsail's client-side router so nginx can select the Configurator port.
+        // A same-origin navigation is intercepted by Mainsail's offline service worker.
+        url.port = url.protocol === 'https:' ? '8443' : '8081';
+        url.pathname = '/';
         location.assign(url.href);
       }
     }, {capture:true});

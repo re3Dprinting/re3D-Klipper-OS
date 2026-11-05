@@ -188,27 +188,35 @@ test('the Mainsail Configurator link requests embedded navigation instead of rep
   assert.equal(messages[0][1], 'http://localhost');
 });
 
-test('Basic and Off force a document navigation instead of a blank Mainsail route', async () => {
+test('Basic and Off bypass Mainsail service-worker navigation using the Configurator origin', async () => {
   const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
-  for (const mode of ['basic', 'off']) {
+  const cases = ['basic', 'off'].flatMap(mode =>
+    ['http://localhost', 'https://localhost', 'http://127.0.0.1'].map(origin => ({mode, origin})));
+  for (const {mode, origin} of cases) {
     const hooks = new Map();
     const redirects = [];
     vm.runInNewContext(client, {
       fetch:async () => ({ok:true, json:async () => ({mode, local:true})}),
-      location:{pathname:'/', origin:'http://localhost', href:'http://localhost/',
+      location:{pathname:'/', origin, href:origin + '/',
         assign(url) { redirects.push(url); }, replace() { assert.fail('Must not enter the PIN wrapper'); }},
       URL, addEventListener(event, callback) { hooks.set(event, callback); }
     });
     await flush();
     assert.deepEqual([...hooks.keys()], ['click']);
-    for (const href of ['http://localhost/configurator/', 'http://localhost/configurator/?setup=1',
-      'http://other-printer/configurator/', 'http://localhost/files']) {
+    for (const href of [origin + '/configurator/', origin + '/configurator/?setup=1#machine',
+      'http://other-printer/configurator/', origin + '/files']) {
       let prevented = false;
       hooks.get('click')({target:{closest() { return {href}; }},
         preventDefault() { prevented = true; }, stopImmediatePropagation() {}});
-      assert.equal(prevented, href.startsWith('http://localhost/configurator/'));
+      assert.equal(prevented, href.startsWith(origin + '/configurator/'));
     }
-    assert.deepEqual(redirects, ['http://localhost/configurator/', 'http://localhost/configurator/?setup=1']);
+    const target = new URL(origin);
+    target.port = target.protocol === 'https:' ? '8443' : '8081';
+    assert.deepEqual(redirects, [target.href, target.href + '?setup=1#machine']);
+    for (const redirect of redirects) {
+      assert.notEqual(new URL(redirect).origin, origin,
+        'The destination must escape the controlling Mainsail service worker');
+    }
   }
 });
 
