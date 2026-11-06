@@ -110,7 +110,7 @@ class MainsailThemeTests(unittest.TestCase):
         self.assertEqual(opacity, .8)
         self.assertIn('pointer-events: none;', pattern)
 
-    def test_sidebar_selection_uses_a_tinted_tile_instead_of_an_edge_bar(self):
+    def test_sidebar_selection_uses_the_native_edge_line_in_the_brand_yellow(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         scope = '.theme--dark.v-navigation-drawer '
 
@@ -118,13 +118,18 @@ class MainsailThemeTests(unittest.TestCase):
             return re.search(re.escape(scope + selector) + r'\s*\{([^}]+)\}', theme)[1]
 
         active = declarations('.v-list-item--active')
-        self.assertIn('background: rgba(255,212,0,.1);', active)
-        self.assertIn('border-inline: 0 !important;', active)
+        self.assertIn('background: transparent;', active)
+        self.assertNotIn('border-inline:', theme)
         self.assertIn('box-shadow: none;', active)
-        self.assertIn('background: rgba(255,212,0,.16);',
+        self.assertIn('border-right: 4px solid var(--re3d-brand);',
+                      declarations('.active-nav-item'))
+        self.assertIn('--re3d-brand: #FFD400;', theme)
+        self.assertIn('background: var(--re3d-surface-2);',
                       declarations('.v-list-item--active:hover'))
-        self.assertIn('border-radius: var(--re3d-radius-sm);',
-                      declarations('.v-list-item:not(.sidebar-logo)'))
+        item = declarations('.v-list-item:not(.sidebar-logo)')
+        self.assertIn('border-radius: 0;', item)
+        self.assertIn('margin: 6px 0;', item)
+        self.assertNotIn('margin-inline:', theme)
         self.assertIn('color: var(--re3d-brand);',
                       declarations('.v-list-item--active .v-icon'))
         self.assertIn('opacity: 0;', declarations('.v-list-item--active::before'))
