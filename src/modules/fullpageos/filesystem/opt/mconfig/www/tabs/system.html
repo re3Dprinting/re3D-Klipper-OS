@@ -66,6 +66,10 @@
   .sys-card.sys-disabled{
     pointer-events:none;
   }
+  .sys-devops{border-top:1px solid var(--border);padding-top:12px}
+  .sys-devops summary{cursor:pointer;font-size:12px;color:var(--muted)}
+  .sys-devops-body{display:grid;gap:10px;margin-top:12px}
+  .sys-devops input{width:100%;min-width:0}
 
   .sys-title{
     display:flex;
@@ -338,6 +342,20 @@
       <div class="hint" id="update-offline-hint" style="display:none;margin-top:2px;">
         Internet connection required to check for or install updates.
       </div>
+      <div class="hint" id="update-branch-current">Loading update branch...</div>
+      <details class="sys-devops">
+        <summary>DevOps</summary>
+        <div class="sys-devops-body">
+          <div class="hint">Test a branch from re3D-Klipper-OS. The saved branch survives updates and reboots. Other software repositories are unaffected. Development branches may be unstable.</div>
+          <label for="update-branch">Update branch</label>
+          <input id="update-branch" type="text" maxlength="255" placeholder="devel" autocomplete="off" spellcheck="false" disabled>
+          <div class="btn-row">
+            <button type="button" class="btn-ghost" id="update-branch-save" disabled>Save branch</button>
+            <button type="button" class="btn-ghost" id="update-branch-reset" disabled>Use devel</button>
+          </div>
+          <div class="hint" id="update-branch-status" role="status" aria-live="polite"></div>
+        </div>
+      </details>
       <div id="klipper-card-warn" style="display:none;
         background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:6px;
         padding:8px 12px; margin-top:6px; color:#fed7aa; font-size:12.5px; line-height:1.4;">
@@ -633,10 +651,80 @@
   const updatePill      = document.getElementById('update-check-pill');
   const updateCard      = document.getElementById('update-card');
   const offlineHint     = document.getElementById('update-offline-hint');
+  const branchInput     = document.getElementById('update-branch');
+  const branchSave      = document.getElementById('update-branch-save');
+  const branchReset     = document.getElementById('update-branch-reset');
+  const branchCurrent   = document.getElementById('update-branch-current');
+  const branchStatus    = document.getElementById('update-branch-status');
 
   // "canUpdate" = "this machine can actually reach the update source"
   let canUpdate = false;
   let connectivityChecked = false;
+  let savedBranch = null;
+  let branchBusy = false;
+  let checkingUpdates = false;
+
+  function branchReady(){
+    return savedBranch !== null && !branchBusy && branchInput.value === savedBranch;
+  }
+
+  function syncUpdateControls(){
+    const ready = canUpdate && branchReady() && !checkingUpdates;
+    if (btnUpdate) btnUpdate.disabled = !ready;
+    if (btnCheckUpdate) btnCheckUpdate.disabled = !ready;
+    if (branchInput) branchInput.disabled = !canUpdate || branchBusy || checkingUpdates;
+    if (branchSave) branchSave.disabled = !canUpdate || branchBusy || checkingUpdates;
+    if (branchReset) branchReset.disabled = !canUpdate || branchBusy || checkingUpdates;
+  }
+
+  async function loadUpdateBranch(){
+    try{
+      const r = await fetch('/cgi-bin/update_branch.sh', {cache:'no-store'});
+      const text = (await r.text()).trim();
+      if (!r.ok || !text) throw new Error(text || 'HTTP ' + r.status);
+      savedBranch = text;
+      branchInput.value = text;
+      branchCurrent.textContent = 'Update branch: ' + text;
+    }catch(err){
+      branchCurrent.textContent = 'Unable to load update branch.';
+      branchStatus.textContent = 'Error: ' + err.message;
+    }
+    syncUpdateControls();
+  }
+
+  async function saveUpdateBranch(branch){
+    if (!canUpdate || branchBusy || checkingUpdates) return;
+    branchBusy = true;
+    syncUpdateControls();
+    branchStatus.textContent = 'Verifying and saving branch...';
+    try{
+      const r = await fetch('/cgi-bin/update_branch.sh', {
+        method:'POST', cache:'no-store',
+        headers:{'Content-Type':'text/plain; charset=utf-8'}, body:branch
+      });
+      const text = (await r.text()).trim();
+      if (!r.ok || !text) throw new Error(text || 'HTTP ' + r.status);
+      savedBranch = text;
+      branchInput.value = text;
+      branchCurrent.textContent = 'Update branch: ' + text;
+      branchStatus.textContent = 'Saved. Future updates will use ' + text + ' until you change it.';
+      setUpdatePill('Branch changed; check required', 'muted');
+      if (outUpdate) outUpdate.textContent = '';
+    }catch(err){
+      branchStatus.textContent = 'Branch not saved: ' + err.message;
+    }finally{
+      branchBusy = false;
+      syncUpdateControls();
+    }
+    if (branchReady()) await checkForUpdates(false);
+  }
+
+  if (branchInput) branchInput.addEventListener('input', () => {
+    branchStatus.textContent = branchInput.value === savedBranch ? '' : 'Save this branch before checking or running updates.';
+    syncUpdateControls();
+  });
+  if (branchSave) branchSave.addEventListener('click', () => saveUpdateBranch(branchInput.value));
+  if (branchReset) branchReset.addEventListener('click', () => saveUpdateBranch('devel'));
 
   function setUpdatePill(text, tone){
     if (!updatePill) return;
@@ -670,8 +758,6 @@
     if (canUpdate){
       if (updateCard) updateCard.classList.remove('sys-disabled');
       if (offlineHint) offlineHint.style.display = 'none';
-      if (btnUpdate) btnUpdate.disabled = false;
-      if (btnCheckUpdate) btnCheckUpdate.disabled = false;
 
       // Reset pill to show it's ready to check for updates
       setUpdatePill('Ready to check', 'muted');
@@ -688,6 +774,7 @@
         outUpdate.textContent = 'Updates require an active internet connection.';
       }
     }
+    syncUpdateControls();
   }
 
   async function checkUpdateConnectivity(){
@@ -741,6 +828,9 @@
       setUpdatePill('No internet for updates', 'error');
       return;
     }
+    if (!branchReady() || checkingUpdates) return;
+    checkingUpdates = true;
+    syncUpdateControls();
 
     if (updatePill){
       setUpdatePill(manual ? 'Checking…' : 'Auto-checking…', 'muted');
@@ -783,7 +873,7 @@
           if (reflashWrap) reflashWrap.style.display = 'none';
         }
       }else{
-        setUpdatePill('Check complete', 'muted');
+        setUpdatePill('Check failed', 'error');
       }
 
       if (outUpdate && text){
@@ -794,6 +884,9 @@
       if (outUpdate){
         outUpdate.textContent = 'Error during update check: ' + err;
       }
+    }finally{
+      checkingUpdates = false;
+      syncUpdateControls();
     }
   }
 
@@ -805,6 +898,7 @@
 
   // Auto-connectivity check + auto-update-check when System tab loads
   (async () => {
+    await loadUpdateBranch();
     await checkUpdateConnectivity();
     if (canUpdate){
       checkForUpdates(false);
@@ -818,7 +912,7 @@
   const updateStatus    = document.getElementById('update-status');
 
   function openUpdateModal(){
-    if (!updateModal || !canUpdate) return;
+    if (!updateModal || !canUpdate || !branchReady()) return;
     updateModal.hidden = false;
     if (updateStatus) updateStatus.textContent = '';
     if (updateRunBtn) updateRunBtn.disabled = false;
@@ -853,7 +947,7 @@
 
   if (updateRunBtn){
     updateRunBtn.addEventListener('click', () => {
-      if (!canUpdate) return;
+      if (!canUpdate || !branchReady() || checkingUpdates) return;
       if (updateStatus) updateStatus.textContent = 'Starting update…';
       updateRunBtn.disabled = true;
       if (updateCancelBtn) updateCancelBtn.disabled = true;
