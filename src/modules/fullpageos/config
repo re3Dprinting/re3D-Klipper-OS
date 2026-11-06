@@ -38,5 +38,3 @@
 [ -n "$FULLPAGEOS_CUSTOM_SPLASHSCREEN" ] || FULLPAGEOS_CUSTOM_SPLASHSCREEN=yes
 
 # wayvnc is launched from labwc autostart (no separate config variable needed)
-# Legacy x11vnc setting (unused in Wayland builds)
-[ -n "$FULLPAGEOS_INCLUDE_X11VNC" ] || FULLPAGEOS_INCLUDE_X11VNC=no

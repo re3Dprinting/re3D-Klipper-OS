@@ -32,7 +32,7 @@ How to use it?
 #. Unzip the image and install it to an SD card `like any other Raspberry Pi image <https://www.raspberrypi.org/documentation/installation/installing-images/README.md>`_
 #. Configure your WiFi by editing ``wifi.nmconnection`` on the first partition of the flashed card when using it like a flash drive
 #. Boot the Pi from the SD card
-#. Log into your Pi via SSH (it is located at ``fullpageos.local`` `if your computer supports bonjour <https://learn.adafruit.com/bonjour-zeroconf-networking-for-windows-and-linux/overview>`_ or the IP address assigned by your router), default username is "pi", default password is "raspberry" and change the password using the ``passwd`` command. Consider also changing the vnc password as well by `x11vnc -storepasswd`.
+#. Log into your Pi via SSH (it is located at ``fullpageos.local`` `if your computer supports bonjour <https://learn.adafruit.com/bonjour-zeroconf-networking-for-windows-and-linux/overview>`_ or the IP address assigned by your router), default username is "pi", default password is "raspberry" and change the password using the ``passwd`` command. See Remote access below for the current VNC setup.
 
 Requirements
 ------------
@@ -48,7 +48,7 @@ Features
 * Webpage can be changed from /boot/firmware/fullpageos.txt
     * You can use variable `{serial}` in the url to get device's serialnumber in the URL
 * Default app is `FullPageDashboard <https://github.com/amitdar/FullPageDashboard>`_, which lets you add multiple tabs changes that switch automatically.
-* Ships with preconfigured `X11VNC <http://www.karlrunge.com/x11vnc/>`_, for remote connection (password 'raspberry')
+* Uses wayvnc from the labwc session for remote GUI access in Mainsail display mode
 * Specify a custom Splashscreen that gets displayed in the booting process instead of Kernel messages/text
 
 Developing
@@ -138,7 +138,7 @@ Remote access
 
 Remote GUI access can be achieved through VNC Viewer. Get the IP of your raspberry ``hostname -I`` via SSH. 
 
-The password is ``raspberry`` and is independent of password you have set for your user(s). Change the password by ``x11vnc -storepasswd`` via SSH.
+In Mainsail display mode, wayvnc starts with the labwc session. Remote desktop availability also depends on the selected security mode. The legacy x11vnc service, password helper, and X11 screen-rotation tools are no longer bundled; x11vnc password commands do not configure wayvnc.
 
 
 Install Chrome Extensions

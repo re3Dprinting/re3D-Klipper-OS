@@ -168,12 +168,41 @@ test('upload shortcut is hidden by a kiosk-only stylesheet, never the shared Mai
     const defaults = JSON.parse(fs.readFileSync(path.join(source, deposition, '.theme', 'default.json'), 'utf8'));
     assert.equal(defaults.uiSettings.boolHideUploadAndPrintButton, false);
   }
-  const legacy = fs.readFileSync(path.join(source, 'system_config', 'start_chromium_browser'), 'utf8');
-  assert.equal((legacy.match(/--load-extension=\/home\/pi\/virtual_keyboard,\/home\/pi\/re3d-kiosk-ui/g) || []).length, 2);
+  assert.ok(browser.includes('--load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui'));
   const updater = fs.readFileSync(path.join(__dirname, 're3d-os-update.sh'), 'utf8');
   assert.ok(updater.includes('"${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"'));
   const installer = fs.readFileSync(path.join(filesystem, 'opt', 'mconfig', 'install_auth.sh'), 'utf8');
   assert.ok(installer.includes('install -m 0644 /opt/mconfig/kiosk-client.js /home/pi/re3d-kiosk-ui/kiosk-client.js'));
+});
+
+test('legacy display assets are retired while the active kiosk and migration safeguards remain', () => {
+  const systemConfig = 'home/pi/printer_data/config/src/system_config';
+  for (const file of [
+    `${systemConfig}/display/lightdm_watchman.service`,
+    `${systemConfig}/display/lightdm_watchman.sh`,
+    `${systemConfig}/screensaver/.xscreensaver`,
+    `${systemConfig}/screensaver/splash.png`,
+    `${systemConfig}/xrandr/configure_hmtech.sh`,
+    `${systemConfig}/xrandr/rotate.sh`,
+    `${systemConfig}/xrandr/rotate_left.sh`,
+    `${systemConfig}/xrandr/rotate_normal.sh`,
+    `${systemConfig}/xrandr/xrandr.sh`,
+    `${systemConfig}/01_debian.conf`,
+    `${systemConfig}/lightdm.conf`,
+    `${systemConfig}/start_chromium_browser`,
+    'opt/custompios/scripts/setX11vncPass',
+    'root_init/etc/systemd/system/x11vnc.service',
+  ]) {
+    assert.equal(fs.existsSync(path.join(filesystem, file)), false, file);
+  }
+  const config = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'config'), 'utf8');
+  assert.doesNotMatch(config, /FULLPAGEOS_INCLUDE_X11VNC/);
+  const autostart = fs.readFileSync(path.join(filesystem, 'home/pi/.config/labwc/autostart'), 'utf8');
+  assert.ok(autostart.includes('wayvnc --render-cursor'));
+  assert.ok(autostart.includes('exec /opt/custompios/scripts/run_onepageos'));
+  const updater = fs.readFileSync(path.join(__dirname, 're3d-os-update.sh'), 'utf8');
+  assert.ok(updater.includes('systemctl disable x11vnc.service'));
+  assert.ok(updater.includes('systemctl stop x11vnc.service'));
 });
 
 test('three immediate browser crashes never stop flashing or remove its flags', () => {

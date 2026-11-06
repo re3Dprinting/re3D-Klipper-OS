@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# fix for when runnign in sudo
-bash -c 'mkdir -p /opt/custompios/vnc'
-bash -c 'x11vnc -storepasswd "'${1}'" /opt/custompios/vnc/passwd'
