@@ -85,7 +85,7 @@ log "${LOG_TAG} Branch/tag: ${BRANCH}"
 log "${LOG_TAG} Repo dir:   ${REPO_DIR}"
 log "${LOG_TAG} ------------------------------------------"
 
-# Safety check for repo clone (bootstrap already cloned / checked out devel)
+# Safety check for repo clone (bootstrap already checked out the selected ref)
 if [ ! -d "${REPO_DIR}/.git" ]; then
   log "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
   set_status "error"

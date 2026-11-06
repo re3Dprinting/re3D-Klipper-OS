@@ -5,9 +5,11 @@ require_network
 echo "Content-Type: text/plain"
 echo
 
-BRANCH="devel"
+. /usr/local/bin/re3d-update-config.sh
+if ! load_update_branch 2>&1; then
+  exit 1
+fi
 REPO_DIR="/opt/re3d-os-src"
-REPO_URL="https://github.com/re3Dprinting/re3D-Klipper-OS.git"
 KLIPPER_DIR="/home/pi/klipper"
 
 # Allow git to operate on pi-owned repos when running as root
@@ -25,13 +27,16 @@ else
   cd "${REPO_DIR}" || { echo "ERROR could not cd into repo"; exit 0; }
 
   # Fetch in the background of this check (non-destructive)
-  git fetch origin >/dev/null 2>&1 || {
+  git fetch --prune origin >/dev/null 2>&1 || {
     echo "ERROR git fetch failed"
     exit 0
   }
 
   LOCAL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-  REMOTE=$(git rev-parse "origin/${BRANCH}" 2>/dev/null || echo "unknown")
+  REMOTE=$(git rev-parse --verify "refs/remotes/origin/${BRANCH}^{commit}" 2>/dev/null) || {
+    echo "ERROR requested branch '${BRANCH}' not found"
+    exit 1
+  }
 
   if [ "$LOCAL" != "$REMOTE" ]; then
     OS_STATUS="UPDATE_AVAILABLE"
