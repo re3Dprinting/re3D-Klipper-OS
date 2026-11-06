@@ -200,14 +200,16 @@
       }
       if (!unlocked) return;
       const state = await request('kiosk-status');
-      if (state.mode === 'off' || state.mode === 'basic') { location.replace('/'); return; }
+      if (typeof state.touchscreen_locked !== 'boolean') throw new Error('Unable to verify touchscreen protection');
+      if (!state.touchscreen_locked) { location.replace('/'); return; }
       if (!state.unlocked) showLock('Touchscreen session ended. Enter your PIN again.');
     } catch (error) { showLock(error.message); }
   }, 5000);
   (async () => {
     try {
       const state = await request('status');
-      if (state.mode !== 'lockdown') { location.replace('/'); return; }
+      if (typeof state.touchscreen_locked !== 'boolean') throw new Error('Unable to verify touchscreen protection');
+      if (!state.touchscreen_locked) { location.replace('/'); return; }
       await request('lock', {});
       showLock();
     } catch (error) { showLock(error.message); }

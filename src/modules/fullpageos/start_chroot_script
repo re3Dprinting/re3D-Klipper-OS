@@ -735,6 +735,7 @@ awk '1;/^\/\/ ---------- icon handling/{print "\
 })();\n"}' \
 /home/pi/virtual_keyboard/background.js > /home/pi/virtual_keyboard/background.js.tmp \
 && mv /home/pi/virtual_keyboard/background.js.tmp /home/pi/virtual_keyboard/background.js
+python3 /opt/mconfig/prepare_keyboard.py
 step_end
 
 # --- Minimal Crowsnest unattended install (no .config) ---

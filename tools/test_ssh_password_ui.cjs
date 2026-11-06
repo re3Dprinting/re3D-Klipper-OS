@@ -9,14 +9,14 @@ const html = fs.readFileSync(path.join(assets, 'auth.html'), 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture(mode, pathname = '/auth/settings', protocol = 'https:', search = '') {
+async function fixture(mode, pathname = '/auth/settings', protocol = 'https:', search = '', initial = {}) {
   const elements = new Map();
   const calls = [];
   const redirects = [];
   let failure = false;
   let readinessFailure = false;
   let readiness = {ready:true};
-  const state = {enabled:mode !== 'off', mode, applied_mode:mode, has_pin:mode === 'lockdown'};
+  const state = {enabled:mode !== 'off', mode, applied_mode:mode, has_pin:mode === 'lockdown', ...initial};
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
       value: '', hidden: false, required: false, textContent: '', checked:false,
@@ -25,7 +25,7 @@ async function fixture(mode, pathname = '/auth/settings', protocol = 'https:', s
       addEventListener(event, callback) { this[event] = callback; },
       reset() {
         const names = id === 'ssh-form' ? ['ssh-current', 'ssh-new', 'ssh-confirm', 'ssh-admin']
-          : ['current', 'new', 'confirm', 'pin', 'pin-confirm'];
+          : ['current', 'current-pin', 'new', 'confirm', 'pin', 'pin-confirm'];
         for (const name of names) element(name).value = '';
       }
     });
@@ -88,6 +88,23 @@ test('disabling Basic over HTTP returns settings to encrypted initial setup', as
   await f.save();
   assert.deepEqual(f.redirects, ['/auth/settings']);
   assert.equal(f.state.mode, 'off');
+});
+
+test('PIN-only installations must confirm the shared PIN when adding administrator protection', async () => {
+  const f = await fixture('off', '/auth/settings', 'https:', '', {has_pin:true});
+  f.chooseMode('basic');
+  assert.equal(f.element('current-row').hidden, true);
+  assert.equal(f.element('current-pin-row').hidden, false);
+  assert.equal(f.element('current-pin').disabled, false);
+  assert.equal(f.element('current-pin').required, true);
+  f.element('current-pin').value = '1234';
+  f.element('new').value = f.element('confirm').value = 'new web password';
+  await f.save();
+  assert.deepEqual(f.calls.find(([url]) => url === '/auth/password')[1], {
+    current:'', new:'new web password', mode:'basic', pin:'', current_pin:'1234'
+  });
+  assert.equal(f.element('current-pin').value, '');
+  assert.equal(f.element('current-pin-row').hidden, true);
 });
 
 test('pi password form is available in all modes with separate administrator confirmation', async () => {

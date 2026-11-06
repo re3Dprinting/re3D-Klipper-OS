@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Air-gap settings - re:3D</title>
+  <link rel="stylesheet" href="/auth/security.css">
+</head>
+<body>
+<main class="security-card settings-card">
+  <h1>Air-gapped mode</h1>
+  <p>Disable all external networking, including Ethernet, Wi-Fi and Bluetooth, and block physical keyboards.
+    Touchscreen typing, mainboard USB and USB drives stay available.</p>
+  <details class="security-help">
+    <summary>Touchscreen and isolation details</summary>
+    <p>Uses Mainsail with the shared Lockdown PIN. Your display preference returns after leaving air-gap mode.</p>
+    <p>Software isolation only: unplug Ethernet and remove radios for a physical air gap.
+      USB drives can transfer untrusted files.</p>
+  </details>
+  <p id="state" class="notice" role="status">Loading air-gap settings...</p>
+  <form id="settings">
+    <div role="radiogroup" aria-labelledby="mode-label">
+      <div id="mode-label">Mode after reboot</div>
+      <label class="check-row">
+        <input id="enabled" type="radio" name="airgap-mode" value="enabled" disabled>
+        <span>Air-gapped</span>
+      </label>
+      <label class="check-row">
+        <input id="network-enabled" type="radio" name="airgap-mode" value="disabled" disabled>
+        <span>Network access permitted</span>
+      </label>
+    </div>
+    <p id="pin-help"></p>
+    <div id="pin-fields" class="credential-fields">
+      <div>
+        <label id="pin-label" for="pin">Touchscreen PIN</label>
+        <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+          maxlength="1024" autocomplete="new-password" disabled>
+      </div>
+      <div id="pin-confirm-field" hidden>
+        <label for="pin-confirm">Confirm touchscreen PIN</label>
+        <input id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+          maxlength="1024" autocomplete="new-password" disabled>
+      </div>
+    </div>
+    <button id="save" class="btn-primary" type="submit" disabled>Save for next reboot</button>
+  </form>
+  <p id="message" class="status-message" role="status" aria-live="polite"></p>
+  <button id="reboot" class="btn-ghost" type="button" hidden>Reboot now</button>
+  <footer class="security-footer"><a id="return" class="btn btn-ghost" href="http://localhost:8081/#system">Return to Configurator</a></footer>
+</main>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  const flow = new URLSearchParams(location.search).get('setup');
+  if (flow === 'machine' || flow === 'openbox') {
+    el('return').href = 'http://localhost:8081/?setup=1' + (flow === 'openbox' ? '&flow=openbox' : '');
+    el('return').textContent = 'Return to setup';
+  }
+  let state;
+  let busy = false;
+  async function request(url, data) {
+    const response = await fetch(url, data === undefined ? {cache: 'no-store'} : {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+    if (url === '/auth/airgap' && (typeof result.enabled !== 'boolean'
+        || typeof result.applied !== 'boolean' || typeof result.reboot_required !== 'boolean')) {
+      throw new Error('Invalid air-gap status. Reload to verify saved settings.');
+    }
+    if (url === '/auth/airgap' && typeof result.has_pin !== 'boolean') {
+      throw new Error('Unable to verify the shared touchscreen PIN. Reload before changing settings.');
+    }
+    return result;
+  }
+  function pinControls() {
+    const creating = el('enabled').checked && !state.has_pin;
+    el('pin-label').textContent = state.has_pin ? 'Touchscreen PIN' : 'New touchscreen PIN (at least 4 digits)';
+    el('pin').autocomplete = state.has_pin ? 'current-password' : 'new-password';
+    el('pin-confirm-field').hidden = !creating;
+    el('pin').required = state.local && (state.has_pin || creating);
+    el('pin').disabled = !state.local || busy || !state.has_pin && !creating;
+    el('pin-confirm').required = state.local && creating;
+    el('pin-confirm').disabled = !state.local || busy || !creating;
+    el('save').disabled = !state.local || busy || !state.has_pin && !creating;
+    el('pin-help').textContent = !state.local ? 'Use the printer touchscreen to change this setting.'
+      : state.has_pin ? 'Enter the shared touchscreen PIN to change mode. No administrator password needed.'
+        : 'Create a shared touchscreen PIN (4+ digits). No Lockdown setup needed.';
+  }
+  function render(resetSelection = true) {
+    el('state').textContent = state.applied ? 'Air-gap isolation is active.' : 'Air-gap isolation is not active.';
+    if (state.reboot_required) el('state').textContent += ' A reboot is required to apply the saved change.';
+    if (resetSelection) {
+      el('enabled').checked = state.enabled;
+      el('network-enabled').checked = !state.enabled;
+    }
+    el('enabled').disabled = !state.local || busy;
+    el('network-enabled').disabled = !state.local || busy;
+    el('reboot').hidden = !state.local || !state.reboot_required;
+    pinControls();
+  }
+  for (const id of ['enabled', 'network-enabled']) el(id).addEventListener('change', pinControls);
+  el('settings').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    el('message').textContent = '';
+    render(false);
+    try {
+      const needsPin = el('enabled').checked && !state.has_pin;
+      const pin = el('pin').value;
+      if (!/^[0-9]{4,}$/.test(pin)) throw new Error('Enter a touchscreen PIN of at least 4 digits.');
+      if (needsPin && pin !== el('pin-confirm').value) {
+        throw new Error('Use matching touchscreen PINs of at least 4 digits.');
+      }
+      const result = await request('/auth/airgap', {enabled: el('enabled').checked, pin,
+        ...(needsPin ? {pin_confirm: el('pin-confirm').value} : {})});
+      state = {...state, ...result};
+      el('message').textContent = 'Saved. Reboot when idle to apply. No isolation change takes effect until reboot.';
+    } catch (error) {
+      el('message').textContent = error.message;
+      try { state = {...state, ...await request('/auth/airgap')}; }
+      catch (statusError) {
+        state.local = false;
+        el('message').textContent += ' Saved settings could not be verified. Reload before retrying. ' + statusError.message;
+      }
+    } finally {
+      busy = false;
+      el('pin').value = '';
+      el('pin-confirm').value = '';
+      render(false);
+    }
+  });
+  el('reboot').addEventListener('click', async () => {
+    el('reboot').disabled = true;
+    try {
+      await request('/auth/reboot', {});
+      el('message').textContent = 'Reboot requested.';
+    } catch (error) {
+      el('message').textContent = error.message + ' Save again with your touchscreen PIN if your session expired.';
+      el('reboot').disabled = false;
+    }
+  });
+  request('/auth/airgap').then(result => { state = result; render(); }).catch(error => {
+    el('state').textContent = 'Unable to load air-gap settings: ' + error.message;
+  });
+})();
+</script>
+<script src="/auth/kiosk-client.js"></script>
+</body>
+</html>

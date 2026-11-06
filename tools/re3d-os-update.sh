@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; then
+  echo "[re3D-OS update] ERROR: Updates are disabled in air-gapped mode." >&2
+  exit 1
+fi
+
 BRANCH="${1:-devel}"   # passed from bootstrap (not strictly required here)
 LOG_TAG="[re3D-OS update]"
 
@@ -197,7 +202,7 @@ fi
 log "${LOG_TAG} Deploying optional HTTPS interface authentication..."
 install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth_server.py" /opt/mconfig/auth_server.py
 install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth.html" /opt/mconfig/auth.html
-for security_asset in security_policy.py ssh_password.py kiosk.html kiosk-client.js security.css; do
+for security_asset in security_policy.py ssh_password.py kiosk.html kiosk-client.js security.css airgap.py airgap.html prepare_keyboard.py; do
   install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/${security_asset}" "/opt/mconfig/${security_asset}"
 done
 install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/install_auth.sh" /opt/mconfig/install_auth.sh

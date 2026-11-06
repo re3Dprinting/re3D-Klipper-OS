@@ -37,12 +37,14 @@
   const setupContainer = page.parentElement;
   const networkChoices = byId('setup-network-choice');
   const networkInputs = [byId('setup-network-connect'), byId('setup-network-offline')];
+  byId('setup-airgap-settings').href = '/auth/airgap-settings?setup=' + (openBox ? 'openbox' : 'machine');
   let step = steps[0];
   let networkMode = null;
   let busy = false;
   let machineSaved = false;
   let initialized = false;
   let welcomeMachine = null;
+  let airgapDisplay = false;
 
   for (const id of ['setup-header', 'setup-status', 'setup-actions']) byId(id).hidden = false;
   if (openBox) byId('setup-eyebrow').textContent = 'OPEN-BOX SETUP';
@@ -184,7 +186,18 @@
         if (!response.ok) throw new Error(`Unable to load display mode (${response.status}).`);
         const mode = (await response.text()).trim();
         if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid saved display mode.');
-        page.querySelector(`input[value="${mode}"]`).checked = true;
+        const isolation = await request('/auth/airgap');
+        if (typeof isolation.enabled !== 'boolean' || typeof isolation.applied !== 'boolean') {
+          throw new Error('Unable to verify air-gap mode before selecting the display.');
+        }
+        airgapDisplay = isolation.enabled || isolation.applied;
+        page.querySelector(`input[value="${airgapDisplay ? 'mainsail' : mode}"]`).checked = true;
+        if (airgapDisplay) {
+          page.querySelectorAll('input[name="setup-display"]').forEach(input => { input.disabled = true; });
+          const note = document.createElement('p');
+          note.textContent = 'Air-gapped mode uses PIN-protected Mainsail. Your saved display preference is retained until you leave air-gapped mode.';
+          page.append(note);
+        }
       } else if (step === 'finish') {
         page.innerHTML = openBox ? `<div class="card">
           <div class="card-title">Finish open-box setup</div>
@@ -233,6 +246,18 @@
     if (step === 'network' && !networkMode) {
       throw new Error('Choose a network mode before continuing.');
     }
+    if (step === 'network') {
+      const isolation = await request('/auth/airgap');
+      if (typeof isolation.enabled !== 'boolean' || typeof isolation.applied !== 'boolean') {
+        throw new Error('Unable to verify air-gap mode. Reload setup before continuing.');
+      }
+      if (networkMode === 'offline' && !isolation.enabled) {
+        throw new Error('Open Air-gap settings, enter or create the shared touchscreen PIN to enable isolation, then return to setup.');
+      }
+      if (networkMode === 'connect' && (isolation.enabled || isolation.applied)) {
+        throw new Error('Air-gap mode is enabled or still active. Use System > Air-gap settings to disable it and reboot before connecting.');
+      }
+    }
     if (step === 'finish') {
       await setSetupState('completed');
       const response = await fetch('/cgi-bin/reboot.sh', {method: 'POST'});
@@ -241,7 +266,7 @@
       initialized = false;
       return;
     }
-    if (step === 'display') {
+    if (step === 'display' && !airgapDisplay) {
       const selected = page.querySelector('input[name="setup-display"]:checked');
       if (!selected) throw new Error('Choose a display interface before continuing.');
       await request('/cgi-bin/set_display_mode.sh', {

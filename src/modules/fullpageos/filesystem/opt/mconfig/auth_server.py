@@ -28,6 +28,27 @@ IDLE_SECONDS = 5 * 60
 APPLIED_MODE = Path("/run/re3d-security/mode")
 MAX_ENTRIES = 4096
 ROOT = Path(__file__).resolve().parent
+AIRGAP_ENABLED = Path("/etc/re3d-airgap/enabled")
+AIRGAP_APPLIED = Path("/run/re3d-airgap/enabled")
+
+
+def airgap_status():
+    enabled, applied = AIRGAP_ENABLED.exists(), AIRGAP_APPLIED.exists()
+    return {"enabled": enabled, "applied": applied, "reboot_required": enabled != applied}
+
+
+def change_airgap(enabled):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(10)
+        connection.connect("/run/re3d-airgap/settings.sock")
+        connection.sendall(json.dumps({"enabled": enabled}).encode() + b"\n")
+        with connection.makefile("rb") as stream:
+            result = json.loads(stream.readline(1025))
+    if (not isinstance(result, dict) or type(result.get("status")) is not int
+            or result["status"] not in (200, 400, 500)
+            or (result["status"] != 200 and not isinstance(result.get("error"), str))):
+        raise ValueError("Invalid air-gap helper response")
+    return result.pop("status"), result
 
 
 def password_hash(password, salt):
@@ -163,6 +184,10 @@ class AuthState:
             if record is not None:
                 if not isinstance(record, dict):
                     raise ValueError("Invalid authentication state")
+                if set(record) == {"mode", "pin"} and record["mode"] == "off":
+                    validate_credential(record["pin"])
+                    self.record = record
+                    return
                 validate_credential({key: record[key] for key in ("salt", "hash") if key in record})
                 if set(record) != {"salt", "hash"}:
                     if (set(record) != {"salt", "hash", "mode", "pin"}
@@ -181,6 +206,14 @@ class AuthState:
     @property
     def has_pin(self):
         return self.record is not None and self.record.get("pin") is not None
+
+    @property
+    def has_password(self):
+        return self.record is not None and "salt" in self.record
+
+    @property
+    def touchscreen_locked(self):
+        return self.mode == "lockdown" or AIRGAP_APPLIED.exists()
 
     @property
     def applied_mode(self):
@@ -207,7 +240,7 @@ class AuthState:
         self.pin_sessions.clear()
 
     def verify(self, password):
-        return self.record is not None and hmac.compare_digest(
+        return self.has_password and hmac.compare_digest(
             password_hash(password, self.record["salt"]), self.record["hash"])
 
     def verify_pin(self, pin):
@@ -269,9 +302,11 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.send_header("X-Re3D-HTTPS-Required", "1")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        frame_ancestors = ("http://localhost" if self.local and urlsplit(self.path).path in
+                           ("/auth/settings", "/auth/airgap-settings") else "'none'")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                         "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; "
+                         f"style-src 'self' 'unsafe-inline'; frame-ancestors {frame_ancestors}; "
                          "frame-src 'self' http://localhost:8081; "
                          "base-uri 'none'; form-action 'self'")
         if cookie is not None:
@@ -323,8 +358,8 @@ class AuthHandler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         path = url.path
         if path == "/auth/printer-status":
-            if not self.local or self.state.mode != "lockdown":
-                self.reply(403, {"error": "Locked-screen printer status is only available locally in Lockdown"})
+            if not self.local or not self.state.touchscreen_locked:
+                self.reply(403, {"error": "Locked-screen printer status is only available locally in a PIN-protected mode"})
                 return
             try:
                 self.reply(200, kiosk_printer_status())
@@ -338,10 +373,10 @@ class AuthHandler(BaseHTTPRequestHandler):
                     self.reply(401, b"", https_required=True)
                     return
                 self.state.prune()
-                if self.local and self.state.mode == "lockdown":
+                if self.local and self.state.touchscreen_locked:
                     allowed = self.token(PIN_COOKIE) in self.state.pin_sessions
                 else:
-                    allowed = self.state.record is None or self.local or self.token() in self.state.sessions
+                    allowed = not self.state.has_password or self.local or self.token() in self.state.sessions
                 self.reply(204 if allowed else 401, b"")
             elif self.remote_http and (
                     self.state.mode == "lockdown"
@@ -350,14 +385,23 @@ class AuthHandler(BaseHTTPRequestHandler):
                 # Initial setup and Lockdown use TLS; Basic also permits unencrypted HTTP.
                 self.require_https()
             elif path == "/auth/status":
-                self.reply(200, {"enabled": self.state.record is not None, "mode": self.state.mode,
+                self.reply(200, {"enabled": self.state.has_password, "mode": self.state.mode,
                                 "local": self.local, "has_pin": self.state.has_pin,
+                                "touchscreen_locked": self.state.touchscreen_locked,
+                                "airgap_enabled": AIRGAP_ENABLED.exists(),
                                 "applied_mode": self.state.applied_mode,
                                 "reboot_required": self.state.reboot_required})
+            elif path == "/auth/airgap":
+                self.reply(200, {**airgap_status(), "local": self.local,
+                                 "has_password": self.state.has_password,
+                                 "has_pin": self.state.has_pin, "security_mode": self.state.mode})
+            elif path == "/auth/airgap-settings":
+                self.reply(200, (ROOT / "airgap.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/auth/kiosk-status" and self.local:
                 self.state.prune()
                 self.reply(200, {"unlocked": self.token(PIN_COOKIE) in self.state.pin_sessions,
-                                "mode": self.state.mode, "idle_seconds": IDLE_SECONDS})
+                                "mode": self.state.mode, "idle_seconds": IDLE_SECONDS,
+                                "touchscreen_locked": self.state.touchscreen_locked})
             elif path == "/auth/kiosk" and self.local:
                 self.reply(200, (ROOT / "kiosk.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/auth/kiosk-client.js":
@@ -392,15 +436,15 @@ class AuthHandler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError("Expected an object")
-            for key in ("password", "current", "new", "pin", "ssh_current", "ssh_new"):
+            for key in ("password", "current", "new", "pin", "pin_confirm", "current_pin", "ssh_current", "ssh_new"):
                 if key in data and (not isinstance(data[key], str) or len(data[key]) > 1024):
                     raise ValueError("Passwords must be strings of at most 1024 characters")
         except (ValueError, UnicodeError) as error:
             self.reply(400, {"error": str(error)})
             return
         if self.path == "/auth/emergency-stop":
-            if not self.local or self.state.mode != "lockdown":
-                self.reply(403, {"error": "Locked-screen emergency stop is only available locally in Lockdown"})
+            if not self.local or not self.state.touchscreen_locked:
+                self.reply(403, {"error": "Locked-screen emergency stop is only available locally in a PIN-protected mode"})
                 return
             try:
                 if kiosk_printer_request("/printer/emergency_stop", "POST") != "ok":
@@ -420,6 +464,8 @@ class AuthHandler(BaseHTTPRequestHandler):
                      if self.path == "/auth/reboot"
                      else "Could not check Lockdown requirements. Check that the Configurator service is running, then try again."
                      if self.path == "/auth/readiness"
+                     else "Could not save air-gap settings. Check re3d-airgap-helper.service logs and reload to verify the saved state."
+                     if self.path == "/auth/airgap"
                      else "Could not save settings or verify prerequisites; settings were not changed")
             self.reply(500, {"error": error})
 
@@ -429,8 +475,8 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(426, {"error": "Use HTTPS before configuring Lockdown or submitting passwords outside Basic mode"})
             return
         if self.path in ("/auth/pin", "/auth/activity", "/auth/lock"):
-            if not self.local or self.state.mode != "lockdown":
-                self.reply(403, {"error": "Touchscreen PIN access is only available locally in Lockdown"})
+            if not self.local or not self.state.touchscreen_locked:
+                self.reply(403, {"error": "Touchscreen PIN access is only available locally in a PIN-protected mode"})
                 return
             self.state.prune()
             token = self.token(PIN_COOKIE)
@@ -460,7 +506,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 self.state.revoke_connections()
             self.reply(200, {"ok": True}, cookie="")
             return
-        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness", "/auth/reboot"):
+        if self.path not in ("/auth/login", "/auth/password", "/auth/ssh-password", "/auth/readiness", "/auth/reboot", "/auth/airgap"):
             self.reply(404, {"error": "Not found"})
             return
         address = self.headers.get("X-Real-IP", "")
@@ -470,29 +516,64 @@ class AuthHandler(BaseHTTPRequestHandler):
             self.reply(400, {"error": "Missing client address"})
             return
         if not self.state.attempt("readiness:" + address if self.path == "/auth/readiness" else address):
-            self.reply(429, {"error": "Too many password attempts. Wait 60 seconds and try again."})
+            self.reply(429, {"error": "Too many authentication attempts. Wait 60 seconds and try again."})
             return
         if self.path == "/auth/reboot":
-            if self.state.record is not None and self.token() not in self.state.sessions:
+            airgap_pending = airgap_status()["reboot_required"]
+            pin_session = self.local and self.token(PIN_COOKIE) in self.state.pin_sessions
+            admin_session = self.token() in self.state.sessions
+            if airgap_pending and not (admin_session or pin_session):
+                self.reply(403, {"error": "Verify the touchscreen PIN in Air-gap settings before rebooting"})
+            elif self.state.has_password and not (admin_session or airgap_pending and pin_session):
                 self.reply(403, {"error": "Sign in with the web administrator password before rebooting"})
-            elif not self.state.reboot_required:
+            elif not self.state.reboot_required and not airgap_status()["reboot_required"]:
                 self.reply(409, {"error": "These security settings do not require a reboot"})
             else:
                 status, result = request_reboot()
                 self.reply(status, result)
             return
         if self.path == "/auth/login":
-            if self.local and self.state.mode == "lockdown":
+            if self.local and self.state.touchscreen_locked:
                 self.reply(403, {"error": "Use the touchscreen PIN to unlock this display"})
-            elif self.state.record is None:
+            elif not self.state.has_password:
                 self.reply(200, {"ok": True})
             elif not self.state.verify(data.get("password", "")):
                 self.reply(403, {"error": "Incorrect password"})
             else:
                 self.reply(200, {"ok": True}, cookie=self.state.session())
             return
-        if self.state.record is not None and not self.state.verify(data.get("current", "")):
+        if self.path == "/auth/airgap":
+            if not self.local:
+                self.reply(403, {"error": "Change air-gap mode on the printer touchscreen, not a remote browser"})
+            elif type(data.get("enabled")) is not bool:
+                self.reply(400, {"error": "Air-gap enabled must be a boolean"})
+            else:
+                pin = data.get("pin", "")
+                if self.state.has_pin:
+                    if not self.state.verify_pin(pin):
+                        self.reply(403, {"error": "Incorrect touchscreen PIN"})
+                        return
+                else:
+                    if not data["enabled"]:
+                        self.reply(409, {"error": "No touchscreen PIN is configured. Create one when enabling air-gapped mode."})
+                        return
+                    if not pin.isascii() or not pin.isdigit() or len(pin) < 4 or pin != data.get("pin_confirm"):
+                        self.reply(400, {"error": "Create and confirm a touchscreen PIN of at least 4 digits"})
+                        return
+                    record = dict(self.state.record) if self.state.record else {}
+                    record.update(mode=self.state.mode, pin=credential(pin))
+                    self.state.save(record)
+                status, result = change_airgap(data["enabled"])
+                self.reply(status, {**result, "has_pin": self.state.has_pin,
+                                    "has_password": self.state.has_password, "security_mode": self.state.mode},
+                           cookie=self.state.session(kiosk=True) if status == 200 else None, cookie_name=PIN_COOKIE)
+            return
+        if self.state.has_password and not self.state.verify(data.get("current", "")):
             self.reply(403, {"error": "Current password is incorrect"})
+            return
+        if (self.path == "/auth/password" and not self.state.has_password and self.state.has_pin
+                and not self.state.verify_pin(data.get("current_pin", ""))):
+            self.reply(403, {"error": "The existing touchscreen PIN is required before configuring administrator protection"})
             return
         if self.path == "/auth/readiness":
             self.reply(200, lockdown_readiness())
@@ -501,18 +582,18 @@ class AuthHandler(BaseHTTPRequestHandler):
             status, result = change_ssh_password(data.get("ssh_current", ""), data.get("ssh_new", ""))
             self.reply(status, result)
             return
-        mode = data.get("mode", self.state.mode if self.state.record else "basic")
+        mode = data.get("mode", self.state.mode if self.state.has_password else "basic")
         if data.get("disable") is True:
             mode = "off"
         if mode not in ("off", "basic", "lockdown"):
             self.reply(400, {"error": "Choose Off, Basic or Lockdown"})
             return
         if mode == "off":
-            self.state.save(None)
+            self.state.save({"mode": "off", "pin": self.state.record["pin"]} if self.state.has_pin else None)
             self.reply(200, {"ok": True, "enabled": False}, cookie="")
             return
         password = data.get("new", "")
-        keep_password = self.state.record is not None and not password and "mode" in data
+        keep_password = self.state.has_password and not password and "mode" in data
         if not keep_password and len(password) < 4:
             self.reply(400, {"error": "Use a password of at least 4 characters"})
             return

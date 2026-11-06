@@ -82,7 +82,7 @@ input, select {
 select { text-overflow: ellipsis }
 input:hover, select:hover { border-color: var(--muted) }
 input:focus, select:focus { border-color: var(--brand-700); box-shadow: var(--focus-ring) }
-button {
+button, .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -98,14 +98,15 @@ button {
   font-weight: 600;
   letter-spacing: .1px;
   cursor: pointer;
+  text-decoration: none;
   transition: background .15s, border-color .15s, transform .1s;
 }
-button:hover { background: var(--surface-3); border-color: var(--muted) }
-button:active { background: var(--surface-0); transform: translateY(1px) }
+button:hover, .btn:hover { background: var(--surface-3); border-color: var(--muted); color: var(--fg) }
+button:active, .btn:active { background: var(--surface-0); transform: translateY(1px) }
 button:focus-visible, a:focus-visible { outline: none; box-shadow: var(--focus-ring) }
 button:disabled { opacity: .45; cursor: not-allowed; transform: none }
 .btn-primary { background: var(--brand); border-color: transparent; color: var(--on-action) }
-.btn-primary:hover { background: var(--brand-600); border-color: transparent }
+.btn-primary:hover { background: var(--brand-600); border-color: transparent; color: var(--on-action) }
 .btn-primary:active { background: var(--brand-700) }
 .btn-ghost { background: transparent }
 #logout { margin-top: 12px }

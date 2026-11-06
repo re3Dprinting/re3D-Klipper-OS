@@ -24,6 +24,10 @@ class AuthTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.state = auth.AuthState(Path(self.directory.name) / "password.json")
+        for name in ("AIRGAP_ENABLED", "AIRGAP_APPLIED"):
+            patcher = patch.object(auth, name, Path(self.directory.name) / name)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.server = auth.ThreadingHTTPServer(("127.0.0.1", 0), auth.AuthHandler)
         self.server.state = self.state
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -53,6 +57,236 @@ class AuthTests(unittest.TestCase):
         status, _, cookie = self.request("password", {"new": PASSWORD})
         self.assertEqual(status, 200)
         return cookie.split(";")[0]
+
+    def test_settings_can_be_embedded_only_by_the_local_touchscreen_wrapper(self):
+        auth.AIRGAP_APPLIED.touch()
+        for path in ("/auth/airgap-settings", "/auth/airgap-settings?setup=machine", "/auth/settings"):
+            for address in ("127.0.0.1", "::1", "192.168.1.2"):
+                with self.subTest(path=path, address=address):
+                    connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+                    self.addCleanup(connection.close)
+                    connection.request("GET", path, headers={"X-Real-IP": address,
+                                                             "X-Forwarded-Proto": "https"})
+                    response = connection.getresponse()
+                    body = response.read()
+                    self.assertEqual(response.status, 200)
+                    policy = response.getheader("Content-Security-Policy")
+                    ancestor = "http://localhost" if address in ("127.0.0.1", "::1") else "'none'"
+                    self.assertIn(f"frame-ancestors {ancestor};", policy)
+                    self.assertIn(b'<script src="/auth/kiosk-client.js"></script>', body)
+        for path in ("/auth/kiosk", "/auth/login"):
+            connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+            self.addCleanup(connection.close)
+            connection.request("GET", path, headers={"X-Real-IP": "127.0.0.1"})
+            response = connection.getresponse()
+            response.read()
+            self.assertIn("frame-ancestors 'none';", response.getheader("Content-Security-Policy"))
+
+    def test_airgap_changes_require_only_a_local_shared_pin(self):
+        self.state.save({"mode": "off", "pin": auth.credential("1234")})
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:
+            self.assertEqual(self.request("airgap", {"enabled": True, "pin": "1234"})[0], 403)
+            for data in ({"enabled": True}, {"enabled": False, "pin": "wrong"},
+                         {"enabled": False, "current": PASSWORD}):
+                self.assertEqual(self.request("airgap", data, address="127.0.0.1")[0], 403)
+            change.assert_not_called()
+            for enabled in (True, False):
+                status, _, cookie = self.request("airgap", {"enabled": enabled, "pin": "1234"},
+                                                 address="127.0.0.1")
+                self.assertEqual(status, 200)
+                self.assertIn("re3d_kiosk=", cookie)
+                self.assertNotIn("re3d_session=", cookie)
+                self.assertFalse(self.state.sessions)
+                change.assert_called_with(enabled)
+            self.assertFalse(self.state.has_password)
+
+    def test_airgap_creates_a_confirmed_pin_without_an_administrator_or_lockdown(self):
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:
+            for pin, confirm in (("1234", "4321"), ("123", "123"), ("\u0661\u0662\u0663\u0664", "\u0661\u0662\u0663\u0664")):
+                self.assertEqual(self.request("airgap", {"enabled": True, "pin": pin, "pin_confirm": confirm},
+                                              address="127.0.0.1")[0], 400)
+                self.assertIsNone(self.state.record)
+            change.assert_not_called()
+            self.assertEqual(self.request("airgap", {"enabled": True, "pin": "1234", "pin_confirm": "1234"},
+                                          address="127.0.0.1")[0], 200)
+            change.assert_called_once_with(True)
+        saved = auth.AuthState(self.state.path)
+        self.assertEqual(saved.mode, "off")
+        self.assertFalse(saved.has_password)
+        self.assertFalse(saved.verify(""))
+        self.assertTrue(saved.has_pin)
+        self.assertTrue(saved.verify_pin("1234"))
+        status = self.request("status", address="127.0.0.1")[1]
+        self.assertFalse(status["enabled"])
+        self.assertTrue(status["has_pin"])
+        self.assertEqual(status["mode"], "off")
+        self.assertEqual(self.request("check")[0], 204)
+
+    def test_airgap_missing_pin_cannot_authorize_disable(self):
+        with patch.object(auth, "change_airgap") as change:
+            self.assertEqual(self.request("airgap", {"enabled": False},
+                                          address="127.0.0.1")[0], 409)
+            change.assert_not_called()
+
+    def test_airgap_pin_session_cannot_replace_the_pin_on_a_later_save(self):
+        self.state.save({"mode": "off", "pin": auth.credential("1234")})
+        cookie = "re3d_kiosk=" + self.state.session(kiosk=True)
+        with patch.object(auth, "change_airgap") as change:
+            self.assertEqual(self.request("airgap", {"enabled": False}, cookie=cookie,
+                                          address="127.0.0.1")[0], 403)
+            change.assert_not_called()
+
+    def test_airgap_preserves_pin_when_administrator_protection_is_removed(self):
+        self.enable()
+        self.request("password", {"current": PASSWORD, "mode": "basic", "pin": "1234"})
+        pin = self.state.record["pin"].copy()
+        for marker in (auth.AIRGAP_ENABLED, auth.AIRGAP_APPLIED):
+            marker.touch()
+        self.assertEqual(self.request("password", {"disable": True, "current": PASSWORD})[0], 200)
+        self.assertEqual(self.state.record, {"mode": "off", "pin": pin})
+        self.assertTrue(auth.AuthState(self.state.path).verify_pin("1234"))
+        self.assertEqual(self.request("check", address="127.0.0.1")[0], 401)
+
+    def test_pin_only_administrator_creation_requires_the_existing_pin(self):
+        self.state.save({"mode": "off", "pin": auth.credential("1234")})
+        pin = self.state.record["pin"].copy()
+        cookie = "re3d_kiosk=" + self.state.session(kiosk=True)
+        for data in ({"new": PASSWORD, "pin": "9999"},
+                     {"disable": True},
+                     {"new": PASSWORD, "current_pin": "wrong"}):
+            self.assertEqual(self.request("password", data, cookie=cookie)[0], 403)
+            self.assertEqual(self.state.record, {"mode": "off", "pin": pin})
+        self.assertEqual(self.request("password", {"new": PASSWORD, "current_pin": "1234"})[0], 200)
+        self.assertTrue(self.state.verify(PASSWORD))
+        self.assertEqual(self.state.record["pin"], pin)
+
+    def test_airgap_status_distinguishes_pending_enable_and_pending_disable(self):
+        for enabled, applied in ((False, False), (True, False), (True, True), (False, True)):
+            for path, present in ((auth.AIRGAP_ENABLED, enabled), (auth.AIRGAP_APPLIED, applied)):
+                path.touch() if present else path.unlink(missing_ok=True)
+            status, body, _ = self.request("airgap", address="127.0.0.1")
+            self.assertEqual(status, 200)
+            self.assertEqual(body, {"enabled": enabled, "applied": applied,
+                                   "reboot_required": enabled != applied,
+                                   "local": True, "has_password": False,
+                                   "has_pin": False, "security_mode": "off"})
+
+    def test_airgap_requires_a_shared_pin_and_reuses_it_without_replacing_credentials(self):
+        self.lockdown()
+        record = self.state.record.copy()
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})) as change:
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD},
+                                          address="127.0.0.1")[0], 403)
+            change.assert_not_called()
+            self.assertEqual(self.request("airgap", {"enabled": True, "pin": "1234"},
+                                          address="127.0.0.1")[0], 200)
+            self.assertEqual(self.state.record, record)
+            self.assertTrue(self.state.verify_pin("1234"))
+            self.assertEqual(self.state.mode, "lockdown")
+
+    def test_airgap_can_add_a_pin_without_changing_a_basic_administrator(self):
+        self.enable()
+        password = {key: self.state.record[key] for key in ("salt", "hash")}
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})):
+            self.assertEqual(self.request("airgap", {"enabled": True, "pin": "1234", "pin_confirm": "1234"},
+                                          address="127.0.0.1")[0], 200)
+        self.assertEqual(self.state.mode, "basic")
+        self.assertTrue(self.state.verify(PASSWORD))
+        self.assertEqual({key: self.state.record[key] for key in ("salt", "hash")}, password)
+
+    def test_airgap_pin_protects_local_control_and_stays_required_until_reboot_after_disable(self):
+        self.state.save({"mode": "off", "pin": auth.credential("1234")})
+        auth.AIRGAP_APPLIED.touch()
+        self.assertEqual(self.request("check", address="127.0.0.1")[0], 401)
+        status, _, cookie = self.request("pin", {"pin": "1234"}, address="127.0.0.1")
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("check", address="127.0.0.1", cookie=cookie)[0], 204)
+        self.assertTrue(self.request("status", address="127.0.0.1")[1]["touchscreen_locked"])
+        self.assertTrue(self.request("kiosk-status", address="127.0.0.1")[1]["touchscreen_locked"])
+        self.assertTrue(self.request("kiosk-client.js", address="127.0.0.1")[1])
+        self.assertEqual(self.request("lock", {}, address="127.0.0.1", cookie=cookie)[0], 200)
+        self.assertEqual(self.request("check", address="127.0.0.1", cookie=cookie)[0], 401)
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})):
+            self.assertEqual(self.request("airgap", {"enabled": False, "pin": "1234"},
+                                          address="127.0.0.1")[0], 200)
+        self.assertTrue(self.state.touchscreen_locked)
+
+    def test_airgap_locked_screen_preserves_telemetry_and_emergency_stop(self):
+        self.enable()
+        auth.AIRGAP_APPLIED.touch()
+        with patch.object(auth, "kiosk_printer_status", return_value={"state": "printing"}), \
+                patch.object(auth, "kiosk_printer_request", return_value="ok"):
+            self.assertEqual(self.request("printer-status", address="127.0.0.1")[0], 200)
+            self.assertEqual(self.request("emergency-stop", {}, address="127.0.0.1")[0], 200)
+            self.assertEqual(self.request("printer-status")[0], 403)
+
+    def test_airgap_changes_require_same_origin_and_strict_boolean(self):
+        self.enable()
+        with patch.object(auth, "change_airgap") as change:
+            self.assertEqual(self.request("airgap", {"enabled": True, "current": PASSWORD},
+                                          address="127.0.0.1", Origin="https://attacker.example")[0], 403)
+            self.assertEqual(self.request("airgap", {"enabled": "true", "current": PASSWORD},
+                                          address="127.0.0.1")[0], 400)
+            change.assert_not_called()
+
+    def test_airgap_helper_errors_are_reported_without_claiming_success(self):
+        self.state.save({"mode": "off", "pin": auth.credential("1234")})
+        with patch.object(auth, "change_airgap", side_effect=OSError("unavailable")), \
+                self.assertLogs(level="ERROR"):
+            status, body, _ = self.request("airgap", {"enabled": False, "pin": "1234"},
+                                           address="127.0.0.1")
+        self.assertEqual(status, 500)
+        self.assertIn("reload to verify", body["error"])
+
+    def test_airgap_pin_creation_is_reported_after_helper_failure(self):
+        with patch.object(auth, "change_airgap", side_effect=OSError("unavailable")), \
+                self.assertLogs(level="ERROR"):
+            self.assertEqual(self.request("airgap", {"enabled": True, "pin": "1234", "pin_confirm": "1234"},
+                                          address="127.0.0.1")[0], 500)
+        self.assertTrue(self.request("airgap", address="127.0.0.1")[1]["has_pin"])
+        self.assertTrue(self.state.verify_pin("1234"))
+        self.assertFalse(self.state.has_password)
+        self.assertFalse(self.state.pin_sessions)
+        self.assertFalse(self.state.sessions)
+
+    def test_pending_airgap_policy_can_reboot_with_only_a_local_pin_session(self):
+        with patch.object(auth, "change_airgap", return_value=(200, {"ok": True})):
+            _, _, cookie = self.request("airgap", {"enabled": True, "pin": "1234", "pin_confirm": "1234"},
+                                        address="127.0.0.1")
+        auth.AIRGAP_ENABLED.touch()
+        with patch.object(auth, "request_reboot", return_value=(200, {"ok": True})) as reboot:
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1")[0], 403)
+            self.assertEqual(self.request("reboot", {}, cookie=cookie)[0], 403)
+            reboot.assert_not_called()
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1", cookie=cookie)[0], 200)
+            reboot.assert_called_once()
+        with patch.object(auth, "request_reboot", return_value=(409, {"error": "Printer is printing"})):
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1", cookie=cookie)[0], 409)
+
+    def test_expired_pin_session_cannot_reboot_pending_airgap(self):
+        self.state.save({"mode": "off", "pin": auth.credential("1234")})
+        token = self.state.session(kiosk=True)
+        self.state.pin_sessions[token] = 0
+        auth.AIRGAP_APPLIED.touch()
+        with patch.object(auth, "request_reboot") as reboot:
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1", cookie="re3d_kiosk=" + token)[0], 403)
+            reboot.assert_not_called()
+
+    def test_pin_session_cannot_authorize_an_unrelated_administrator_reboot(self):
+        self.enable()
+        cookie = "re3d_kiosk=" + self.state.session(kiosk=True)
+        with patch.object(auth.AuthState, "reboot_required", new_callable=PropertyMock, return_value=True), \
+                patch.object(auth, "request_reboot") as reboot:
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1", cookie=cookie)[0], 403)
+            reboot.assert_not_called()
+
+    def test_pending_airgap_policy_can_reboot_with_an_administrator_session(self):
+        cookie = self.enable()
+        auth.AIRGAP_ENABLED.touch()
+        with patch.object(auth, "request_reboot", return_value=(200, {"ok": True})) as reboot:
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1")[0], 403)
+            self.assertEqual(self.request("reboot", {}, address="127.0.0.1", cookie=cookie)[0], 200)
+            reboot.assert_called_once()
 
     def test_locked_screen_status_and_stop_are_local_only_without_a_pin_session(self):
         self.lockdown()
@@ -490,6 +724,17 @@ class AuthTests(unittest.TestCase):
         self.state.path.write_text(json.dumps(record))
         with self.assertRaises(ValueError):
             auth.AuthState(self.state.path)
+
+    def test_pin_only_state_rejects_missing_malformed_or_wrong_mode_credentials(self):
+        pin = auth.credential("1234")
+        for record in ({"mode": "off", "pin": None}, {"mode": "off", "pin": "1234"},
+                       {"mode": "off", "pin": {"salt": "00", "hash": "11"}},
+                       {"mode": "basic", "pin": pin}, {"mode": "lockdown", "pin": pin},
+                       {"mode": "off", "pin": pin, "extra": True}):
+            with self.subTest(record=record):
+                self.state.path.write_text(json.dumps(record))
+                with self.assertRaises(ValueError):
+                    auth.AuthState(self.state.path)
 
     def test_lockdown_requires_pin_and_ssh_password_before_persisting(self):
         self.assertEqual(self.request("password", {"mode": "lockdown", "new": PASSWORD})[0], 400)

@@ -1,5 +1,7 @@
 (async () => {
-  if (location.pathname.startsWith('/auth/')) return;
+  const authPage = location.pathname.startsWith('/auth/');
+  if (authPage && (top === self
+      || !['/auth/settings', '/auth/airgap-settings'].includes(location.pathname))) return;
   const marker = 'data-re3d-kiosk-client';
   if (document.documentElement.hasAttribute(marker)) return;
   document.documentElement.setAttribute(marker, '');
@@ -7,7 +9,7 @@
   if (!response.ok) throw new Error('Could not check touchscreen security mode');
   const state = await response.json();
   if (!state.local) return;
-  if (state.mode !== 'lockdown') {
+  if (!state.touchscreen_locked) {
     addEventListener('click', event => {
       const link = event.target.closest?.('a[href]');
       if (!link || event.defaultPrevented) return;

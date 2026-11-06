@@ -323,7 +323,7 @@
 
   <!-- Left column: system actions -->
   <div class="sys-col">
-    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-37</span></div>
+    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-38</span></div>
 
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
@@ -354,20 +354,24 @@
     <div class="card sys-card">
       <div class="sys-title">Printer Security</div>
       <div class="sys-subtitle">
-        Choose Off, Basic interface protection, or Lockdown with a separate touchscreen PIN,
-        restricted network services and SSH access using a non-default pi password or existing keys.
-        Change the separate pi account password in Security settings.
-        The administrator password is required to change mode, password or PIN.
+        Choose Off, Basic browser protection, or Lockdown with a touchscreen PIN and restricted services.
+        Manage web credentials and the separate pi password in Security settings.
       </div>
       <div class="sys-subtitle">
-        HTTPS encrypts your connection, but browsers may flag the printer's self-signed certificate as untrusted.
-        Verify the printer and certificate fingerprint before trusting it on your device.
-        Basic allows unencrypted HTTP; Lockdown requires HTTPS.
+        Basic permits unencrypted HTTP; Lockdown requires HTTPS.
+        Verify the printer's certificate fingerprint before trusting it.
       </div>
       <div class="btn-row">
-        <a class="btn-ghost" href="/auth/settings">Security settings</a>
-        <a class="btn-ghost" href="/auth/login">Login / logout</a>
+        <a class="btn btn-ghost" href="/auth/settings">Security settings</a>
+        <a class="btn btn-ghost" href="/auth/login">Login / logout</a>
       </div>
+    </div>
+
+    <div class="card sys-card">
+      <div class="sys-title">Air-gapped mode</div>
+      <div class="sys-subtitle">Disable Ethernet, wireless and physical keyboards; keep touchscreen and USB access.
+        Enable or disable with the shared touchscreen PIN, then reboot. No administrator password needed.</div>
+      <div class="btn-row"><a class="btn btn-ghost" href="/auth/airgap-settings">Air-gap settings</a></div>
     </div>
 
     <!-- Display Mode -->
@@ -697,6 +701,19 @@
     if (updateCard) updateCard.classList.add('sys-disabled');
 
     try{
+      const isolationResponse = await fetch('/auth/airgap', {cache:'no-store'});
+      if (!isolationResponse.ok) throw new Error('Unable to verify air-gap mode');
+      const isolation = await isolationResponse.json();
+      if (typeof isolation.enabled !== 'boolean' || typeof isolation.applied !== 'boolean') {
+        throw new Error('Invalid air-gap status');
+      }
+      if (isolation.enabled || isolation.applied) {
+        applyUpdateConnectivity(false);
+        setUpdatePill('Air-gapped mode', 'muted');
+        if (offlineHint) offlineHint.textContent = 'Updates are disabled by air-gap policy.';
+        if (outUpdate) outUpdate.textContent = 'Disable air-gapped mode on the touchscreen and reboot before updating.';
+        return;
+      }
       const r = await fetch('/cgi-bin/check_update_connectivity.sh?ts=' + Date.now(), {cache:'no-store'});
       if (!r.ok){
         throw new Error('HTTP ' + r.status);
@@ -1001,12 +1018,16 @@
       if (!r.ok || !securityResponse.ok) throw new Error('Could not load display/security mode');
       const security = await securityResponse.json();
       displayLockedDown = security.mode === 'lockdown' || security.applied_mode === 'lockdown';
+      const airgapped = security.airgap_enabled || security.touchscreen_locked && security.mode !== 'lockdown';
+      displayLockedDown = displayLockedDown || airgapped;
       const mode = (await r.text()).trim();
       if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid display mode response');
       applyDisplayMode(displayLockedDown ? 'mainsail' : mode);
       if (displayLockedDown && modeHint) {
         modeHint.style.display = 'block';
-        modeHint.textContent = 'KlipperScreen is disabled in Lockdown. Change security mode and reboot first.';
+        modeHint.textContent = airgapped
+          ? 'Air-gapped mode requires PIN-protected Mainsail. Disable air-gapping and reboot to restore your saved display preference.'
+          : 'KlipperScreen is disabled in Lockdown. Change security mode and reboot first.';
       }
     } catch(error) {
       if (btnMainsail) btnMainsail.disabled = true;

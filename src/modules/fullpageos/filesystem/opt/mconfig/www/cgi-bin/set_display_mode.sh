@@ -30,6 +30,11 @@ if [ "$MODE" = "klipperscreen" ] && [ -f /etc/re3d-security/lockdown ]; then
   exit 0
 fi
 
+if [ "$MODE" = "klipperscreen" ] && { [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; }; then
+  reply "409 Conflict" '{"status":"error","message":"Air-gapped mode requires the PIN-protected Mainsail touchscreen. Disable air-gapping and reboot before using KlipperScreen."}'
+  exit 1
+fi
+
 if [ "$MODE" = "mainsail" ] || [ "$MODE" = "klipperscreen" ]; then
   if ! printf '%s' "$MODE" > /etc/re3d-display-mode; then
     reply "500 Internal Server Error" '{"status":"error","message":"Unable to save display mode."}'

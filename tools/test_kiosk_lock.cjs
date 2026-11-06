@@ -17,7 +17,7 @@ function clientDocument() {
   }};
 }
 
-async function fixture(search = '') {
+async function fixture(search = '', mode = 'lockdown') {
   const elements = new Map();
   const listeners = {};
   const intervals = new Map();
@@ -46,11 +46,11 @@ async function fixture(search = '') {
       calls.push([url, body]);
       if (fail) throw new Error('Network unavailable');
       let data = {};
-      if (url === '/auth/status') data = {mode:'lockdown'};
+      if (url === '/auth/status') data = {mode, touchscreen_locked:true};
       if (url === '/auth/printer-status') data = telemetry;
       if (url === '/auth/lock') session = false;
       if (url === '/auth/pin') session = body.pin === '1234';
-      if (url === '/auth/kiosk-status') data = {unlocked:session};
+      if (url === '/auth/kiosk-status') data = {unlocked:session, mode, touchscreen_locked:true};
       return {ok:true, json:async () => data};
     }
   };
@@ -66,6 +66,18 @@ async function fixture(search = '') {
     setTime(value) { now = value; }, expire() { session = false; }, fail() { fail = true; }
   };
 }
+
+test('air-gapped Basic and Off modes use the shared lock and never redirect to unprotected control', async () => {
+  for (const mode of ['basic', 'off']) {
+    const f = await fixture('', mode);
+    await f.unlock();
+    await f.intervals.get(5000)();
+    assert.equal(f.element('printer').src, '/');
+    assert.equal(f.calls.some(([url]) => url === 'redirect'), false);
+    await f.element('lock-now').click();
+    assert.equal(f.element('printer').src, 'about:blank');
+  }
+});
 
 test('startup and manual locking unload printer control, and PIN unlock does not reveal the PIN', async () => {
   const f = await fixture();
@@ -127,7 +139,7 @@ test('activity hook does not treat timers as user input and redirects direct kio
   const messages = [];
   const context = {
     document:clientDocument(),
-    fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true})}),
+    fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true, touchscreen_locked:true})}),
     location:{pathname:'/', replace(url) { messages.push(url); }},
     top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
     addEventListener(event, callback) { hooks.push([event, callback]); }
@@ -187,7 +199,7 @@ test('the Mainsail Configurator link requests embedded navigation instead of rep
   const messages = [];
   vm.runInNewContext(client, {
     document:clientDocument(),
-    fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true})}),
+    fetch:async () => ({ok:true, json:async () => ({mode:'lockdown', local:true, touchscreen_locked:true})}),
     location:{pathname:'/', href:'http://localhost/'}, URL,
     top:{}, self:{}, parent:{postMessage(...args) { messages.push(args); }},
     addEventListener(event, callback) { hooks.set(event, callback); }
@@ -210,7 +222,7 @@ test('Basic and Off bypass Mainsail service-worker navigation using the Configur
     const redirects = [];
     vm.runInNewContext(client, {
       document:clientDocument(),
-      fetch:async () => ({ok:true, json:async () => ({mode, local:true})}),
+      fetch:async () => ({ok:true, json:async () => ({mode, local:true, touchscreen_locked:false})}),
       location:{pathname:'/', origin, href:origin + '/',
         assign(url) { redirects.push(url); }, replace() { assert.fail('Must not enter the PIN wrapper'); }},
       URL, addEventListener(event, callback) { hooks.set(event, callback); }
@@ -243,7 +255,7 @@ test('extension and HTML injection share a document guard across isolated worlds
     document, location:{pathname:'/'},
     fetch:async () => {
       checks++;
-      return {ok:true, json:async () => ({mode:'basic', local:true})};
+      return {ok:true, json:async () => ({mode:'basic', local:true, touchscreen_locked:false})};
     },
     addEventListener(event) { hooks.push(event); }
   };
@@ -252,6 +264,84 @@ test('extension and HTML injection share a document guard across isolated worlds
   await flush();
   assert.equal(checks, 1);
   assert.deepEqual(hooks, ['click']);
+});
+
+test('air-gapped Basic and Off navigation retains the PIN wrapper and activity hooks', async () => {
+  const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
+  for (const mode of ['basic', 'off']) {
+    const hooks = new Map();
+    const messages = [];
+    const self = {};
+    const context = {
+      document:clientDocument(),
+      fetch:async () => ({ok:true, json:async () => ({mode, local:true, touchscreen_locked:true})}),
+      location:{pathname:'/', href:'http://localhost/',
+        replace(url) { messages.push(url); },
+        assign() { assert.fail('Air-gap navigation must not bypass the PIN wrapper'); }},
+      URL, top:self, self, parent:{postMessage(...args) { messages.push(args); }},
+      addEventListener(event, callback) { hooks.set(event, callback); }
+    };
+    vm.runInNewContext(client, context);
+    await flush();
+    assert.deepEqual(messages, ['http://localhost/auth/kiosk']);
+    messages.length = 0;
+    context.top = {};
+    context.document = clientDocument();
+    vm.runInNewContext(client, context);
+    await flush();
+    hooks.get('pointerdown')();
+    assert.equal(messages[0][0].type, 're3d-activity');
+    let prevented = false;
+    hooks.get('click')({target:{closest() { return {href:'http://localhost/configurator/'}; }},
+      preventDefault() { prevented = true; }, stopImmediatePropagation() {}});
+    assert.equal(prevented, true);
+    assert.equal(messages[1][0].type, 're3d-configurator');
+    assert.equal(messages[1][1], 'http://localhost');
+  }
+});
+
+test('embedded security settings retain activity reporting without redirecting or bypassing the idle lock', async () => {
+  const client = fs.readFileSync(path.join(assets, 'kiosk-client.js'), 'utf8');
+  for (const pathname of ['/auth/airgap-settings', '/auth/settings']) {
+    const hooks = new Map();
+    const messages = [];
+    const self = {};
+    let checks = 0;
+    const context = {
+      document:clientDocument(),
+      fetch:async () => {
+        checks++;
+        return {ok:true, json:async () => ({local:true, touchscreen_locked:true})};
+      },
+      location:{pathname, replace() { assert.fail('Settings must remain visible'); }},
+      top:{}, self, parent:{postMessage(...args) { messages.push(args); }},
+      addEventListener(event, callback) { hooks.set(event, callback); }
+    };
+    vm.runInNewContext(client, context);
+    await flush();
+    assert.equal(checks, 1);
+    assert.equal(messages.length, 0);
+    hooks.get('pointerdown')();
+    assert.equal(messages[0][0].type, 're3d-activity');
+    assert.equal(messages[0][1], 'http://localhost');
+    context.top = self;
+    context.document = clientDocument();
+    vm.runInNewContext(client, context);
+    await flush();
+    assert.equal(checks, 1, 'Standalone settings must not enter the PIN wrapper');
+  }
+  const f = await fixture('', 'off');
+  await f.unlock();
+  const message = {source:f.element('printer').contentWindow,
+    origin:'http://localhost:8081', data:{type:'re3d-activity'}};
+  f.setTime(299000);
+  f.listeners.message(message);
+  f.setTime(300000);
+  f.intervals.get(1000)();
+  assert.notEqual(f.element('printer').src, 'about:blank');
+  f.setTime(599000);
+  f.intervals.get(1000)();
+  assert.equal(f.element('printer').src, 'about:blank');
 });
 
 test('PIN layout uses the available screen and stretches the keypad on touchscreen displays', () => {

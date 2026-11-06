@@ -39,7 +39,10 @@ async function mount(info = { hostname: 'printer', interfaces: [] }) {
         if (response.error) throw response.error;
         return { ok: response.ok, status: 503, json: async () => response.info };
       }
-      if (url === '/cgi-bin/scan_wifi.sh') return { json: async () => [] };
+      if (url === '/cgi-bin/scan_wifi.sh') return {
+        ok: !response.scanError, status: response.scanError ? 403 : 200,
+        json: async () => response.scanError ? {error: response.scanError} : []
+      };
       if (url === '/cgi-bin/set_hostname.sh') return { text: async () => 'Hostname updated.' };
       throw new Error(`Unexpected request: ${url}`);
     }
@@ -47,6 +50,13 @@ async function mount(info = { hostname: 'printer', interfaces: [] }) {
   await new Promise(resolve => setImmediate(resolve));
   return { elements, requests, response };
 }
+
+test('air-gap scan rejection is visible rather than an empty successful scan', async () => {
+  const page = await mount();
+  page.response.scanError = 'Network operations are disabled by air-gap policy.';
+  await page.elements['btn-scan'].listeners.click();
+  assert.match(page.elements['wifi-list'].innerHTML, /air-gap policy/);
+});
 
 test('Network Info exists only in Network; System actions remain and scripts parse', () => {
   for (const id of ['netinfo', 'ni-host', 'ni-ifs']) {

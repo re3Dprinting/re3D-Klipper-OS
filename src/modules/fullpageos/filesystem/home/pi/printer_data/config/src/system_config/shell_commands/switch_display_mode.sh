@@ -6,6 +6,11 @@ set -euo pipefail
 
 MODE="${1:-}"
 
+if [ "$MODE" = "klipperscreen" ] && { [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; }; then
+  echo "ERROR: Air-gapped mode requires the PIN-protected Mainsail touchscreen. Disable air-gapping and reboot first." >&2
+  exit 1
+fi
+
 if [ "$MODE" = "klipperscreen" ] && [ -f /etc/re3d-security/lockdown ]; then
   echo "ERROR: KlipperScreen is disabled in Lockdown. Change security mode and reboot first." >&2
   exit 1

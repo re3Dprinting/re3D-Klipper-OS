@@ -159,7 +159,7 @@ function element() {
 }
 
 async function mount({ saved = 'machine', failure = '', flashing = false, openBox = false, legacyPreview = false,
-  machineType = 'Gigabot 4', machineStatus = 200 } = {}) {
+  machineType = 'Gigabot 4', machineStatus = 200, airgap = {enabled: false, applied: false} } = {}) {
   const elements = new Map();
   const byId = id => {
     if (!elements.has(id)) elements.set(id, element());
@@ -169,7 +169,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
   byId('setup-network-connect').checked = false;
   byId('setup-network-offline').value = 'offline';
   byId('setup-network-offline').checked = false;
-  const state = { step: saved, failure, flashing };
+  const state = { step: saved, failure, flashing, airgap };
   byId('page').parentElement = element();
   const bodyClasses = new Set();
   const requests = [];
@@ -183,7 +183,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
     },
     URLSearchParams, console,
     window: { scrollTo() {}, addEventListener(name, fn) { events[name] = fn; } },
-    document: { getElementById: byId, body: { classList: {
+    document: { getElementById: byId, createElement: element, body: { classList: {
       add(name) { bodyClasses.add(name); }, remove(name) { bodyClasses.delete(name); }
     } } },
     cleanupTabArtifacts() {}, currentTab: null,
@@ -191,6 +191,7 @@ async function mount({ saved = 'machine', failure = '', flashing = false, openBo
     fetch: async (url, options = {}) => {
       requests.push({ url, options });
       if (state.failure === url) throw new Error('Connection lost');
+      if (url === '/auth/airgap') return {ok: true, json: async () => state.airgap};
       if (url.endsWith('get_machine_type.sh')) {
         return {ok: machineStatus === 200, status: machineStatus, text: async () => machineType};
       }
@@ -223,7 +224,7 @@ async function mountDisplay() {
   const wizard = await mount();
   wizard.events['re3d-machine-result']({ detail: { ok: true } });
   await wizard.click('setup-next');
-  await wizard.selectNetwork('offline');
+  await wizard.selectNetwork('connect');
   await wizard.click('setup-next');
   return wizard;
 }
@@ -273,7 +274,7 @@ test('exiting or reloading at any unfinished step starts over at Machine', async
     wizard.events['re3d-machine-result']({ detail: { ok: true } });
     for (let count = 0; count < advances; count++) {
       if (wizard.byId('setup-title').textContent === 'Choose your network mode') {
-        await wizard.selectNetwork('offline');
+        await wizard.selectNetwork('connect');
       }
       await wizard.click('setup-next');
     }
@@ -339,8 +340,9 @@ test('network choices appear only in the wizard and require a selection before c
   assert.match(index, /id="setup-network-choice" class="card" hidden/);
   assert.match(index, /Connect to network/);
   assert.match(index, /Air-gapped mode/);
-  assert.match(index, /not network isolation/);
-  assert.match(index, /not disabled or disconnected/);
+  assert.match(index, /Isolation takes effect only after reboot/);
+  assert.match(index, /enter or create the shared PIN/);
+  assert.match(index, /No administrator password is required/);
   const wizard = await mount();
   assert.equal(wizard.byId('setup-network-choice').hidden, true);
   wizard.events['re3d-machine-result']({ detail: { ok: true } });
@@ -353,8 +355,8 @@ test('network choices appear only in the wizard and require a selection before c
   assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
 });
 
-test('offline setup avoids network controls and adapter actions; switching to Connect loads controls', async () => {
-  const wizard = await mount();
+test('air-gapped setup requires a saved policy without invoking adapter actions', async () => {
+  const wizard = await mount({airgap: {enabled: true, applied: false}});
   wizard.events['re3d-machine-result']({ detail: { ok: true } });
   await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
@@ -375,6 +377,37 @@ test('offline setup avoids network controls and adapter actions; switching to Co
   assert.equal(wizard.byId('setup-network-offline-note').hidden, false);
   assert.equal(wizard.byId('setup-next').disabled, false);
   assert.deepEqual(wizard.loads, ['machine', 'network']);
+});
+
+test('choosing air-gap does not pretend isolation was saved, and Connect cannot bypass active isolation', async () => {
+  const wizard = await mount();
+  wizard.events['re3d-machine-result']({detail: {ok: true}});
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
+  await wizard.click('setup-next');
+  assert.match(wizard.byId('setup-status').textContent, /Open Air-gap settings/);
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your network mode');
+  wizard.state.airgap = {enabled: false, applied: true};
+  await wizard.selectNetwork('connect');
+  await wizard.click('setup-next');
+  assert.match(wizard.byId('setup-status').textContent, /disable it and reboot/);
+  wizard.state.failure = '/auth/airgap';
+  await wizard.click('setup-next');
+  assert.match(wizard.byId('setup-status').textContent, /Connection lost/);
+});
+
+test('air-gapped display step forces PIN-protected Mainsail without overwriting the saved preference', async () => {
+  const wizard = await mount({airgap: {enabled: true, applied: false}});
+  wizard.events['re3d-machine-result']({detail: {ok: true}});
+  await wizard.click('setup-next');
+  await wizard.selectNetwork('offline');
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Choose your display');
+  assert.equal(wizard.byId('setup-status').textContent, '');
+  assert.match(wizard.byId('page').appended[0].textContent, /PIN-protected Mainsail/);
+  await wizard.click('setup-next');
+  assert.equal(wizard.byId('setup-title').textContent, 'Ready to finish');
+  assert.equal(wizard.requests.some(request => request.url.includes('set_display_mode.sh')), false);
 });
 
 test('manual launch and all previously saved steps start at Machine', async () => {
@@ -455,13 +488,14 @@ test('open-box flow has a dedicated welcome and one precautions page, preserves 
   await wizard.selectNetwork('connect');
   assert.deepEqual(wizard.loads, ['network']);
   await wizard.selectNetwork('offline');
+  wizard.state.airgap = {enabled: true, applied: false};
   await wizard.click('setup-next');
   assert.equal(wizard.byId('setup-title').textContent, 'Ready to finish');
   assert.match(wizard.byId('page').innerHTML, /already configured by operations/);
   await wizard.click('setup-next');
   assert.equal(wizard.state.step, 'completed');
   assert.deepEqual(wizard.requests.map(r => r.url),
-    ['/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/get_machine_type.sh', '/cgi-bin/setup.py', '/cgi-bin/reboot.sh']);
+    ['/cgi-bin/setup.py', '/cgi-bin/setup.py', '/cgi-bin/get_machine_type.sh', '/auth/airgap', '/cgi-bin/setup.py', '/cgi-bin/reboot.sh']);
   const writes = wizard.requests.filter(r => r.options.method === 'POST' && r.url.endsWith('setup.py'));
   assert.deepEqual(writes.map(r => JSON.parse(r.options.body).step), ['openbox', 'completed']);
 });
@@ -578,7 +612,7 @@ test('machine lookup failures and unknown names are explicit rather than showing
 });
 
 test('exiting unfinished open-box setup keeps it scheduled and reopening starts at the first slide', async () => {
-  const wizard = await mount({ saved: 'completed', openBox: true });
+  const wizard = await mount({ saved: 'completed', openBox: true, airgap: {enabled: true, applied: true} });
   await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
@@ -608,7 +642,7 @@ test('open-box initialization and completion failures remain explicit and do not
   const flashing = await mount({ openBox: true, flashing: true });
   assert.equal(flashing.byId('setup-next').disabled, true);
   assert.match(flashing.byId('setup-status').textContent, /flashing/);
-  const wizard = await mount({ saved: 'openbox', openBox: true });
+  const wizard = await mount({ saved: 'openbox', openBox: true, airgap: {enabled: true, applied: false} });
   await wizard.click('setup-next');
   await wizard.click('setup-next');
   await wizard.selectNetwork('offline');
