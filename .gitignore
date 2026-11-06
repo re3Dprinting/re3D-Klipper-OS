@@ -8,3 +8,5 @@ src/workspace/*
 src/workspace*/*
 src/variants/*
 !src/variants/no-acceleration
+__pycache__/
+*.py[cod]
