@@ -68,6 +68,7 @@ ln -sf /etc/nginx/sites-available/re3d-configurator /etc/nginx/sites-enabled/re3
 systemctl enable re3d-security.service re3d-auth.service re3d-auth-tls.service re3d-auth-revoke.path re3d-ssh-password.service
 systemctl enable re3d-airgap.service re3d-airgap-helper.service
 if [[ "$MODE" == "live" ]]; then
+  python3 /opt/mconfig/prepare_keyboard.py
   bash /opt/mconfig/prepare_auth_tls.sh
   nginx -t
   systemctl daemon-reload
