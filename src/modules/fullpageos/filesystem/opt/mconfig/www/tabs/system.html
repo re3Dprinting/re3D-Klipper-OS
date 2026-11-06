@@ -354,29 +354,24 @@
     <div class="card sys-card">
       <div class="sys-title">Printer Security</div>
       <div class="sys-subtitle">
-        Choose Off, Basic interface protection, or Lockdown with a separate touchscreen PIN,
-        restricted network services and SSH access using a non-default pi password or existing keys.
-        Change the separate pi account password in Security settings.
-        The administrator password is required to change mode, password or PIN.
+        Choose Off, Basic browser protection, or Lockdown with a touchscreen PIN and restricted services.
+        Manage web credentials and the separate pi password in Security settings.
       </div>
       <div class="sys-subtitle">
-        HTTPS encrypts your connection, but browsers may flag the printer's self-signed certificate as untrusted.
-        Verify the printer and certificate fingerprint before trusting it on your device.
-        Basic allows unencrypted HTTP; Lockdown requires HTTPS.
+        Basic permits unencrypted HTTP; Lockdown requires HTTPS.
+        Verify the printer's certificate fingerprint before trusting it.
       </div>
       <div class="btn-row">
-        <a class="btn-ghost" href="/auth/settings">Security settings</a>
-        <a class="btn-ghost" href="/auth/login">Login / logout</a>
+        <a class="btn btn-ghost" href="/auth/settings">Security settings</a>
+        <a class="btn btn-ghost" href="/auth/login">Login / logout</a>
       </div>
     </div>
 
     <div class="card sys-card">
       <div class="sys-title">Air-gapped mode</div>
-      <div class="sys-subtitle">Disable all external network interfaces, wireless radios and physical keyboards.
-        Touchscreen controls, mainboard USB and USB drives remain available.
-        The touchscreen uses Mainsail with the shared Lockdown PIN; create a PIN if none exists.
-        Enabling and disabling require only the shared touchscreen PIN and a reboot, not an administrator password.</div>
-      <div class="btn-row"><a class="btn-ghost" href="/auth/airgap-settings">Air-gap settings</a></div>
+      <div class="sys-subtitle">Disable Ethernet, wireless and physical keyboards; keep touchscreen and USB access.
+        Enable or disable with the shared touchscreen PIN, then reboot. No administrator password needed.</div>
+      <div class="btn-row"><a class="btn btn-ghost" href="/auth/airgap-settings">Air-gap settings</a></div>
     </div>
 
     <!-- Display Mode -->

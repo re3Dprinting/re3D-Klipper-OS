@@ -70,6 +70,22 @@ test('mode uses two visible, labelled radio choices instead of a native dropdown
   assert.deepEqual(f.calls.at(-1), {url: '/auth/airgap', body: {enabled: false, pin: '1234'}});
 });
 
+test('air-gap and System settings use panel button styles and keep details collapsed', () => {
+  assert.match(html, /<button id="save" class="btn-primary"/);
+  assert.match(html, /<button id="reboot" class="btn-ghost"/);
+  assert.match(html, /<a id="return" class="btn btn-ghost"/);
+  assert.match(html, /<details class="security-help">/);
+  assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
+  assert.match(html, /including Ethernet, Wi-Fi and Bluetooth/);
+  assert.match(html, /USB drives can transfer untrusted files/);
+  const system = fs.readFileSync(path.join(assets, 'www', 'tabs', 'system.html'), 'utf8');
+  for (const url of ['/auth/settings', '/auth/login', '/auth/airgap-settings']) {
+    assert.ok(system.includes(`class="btn btn-ghost" href="${url}"`));
+  }
+  const css = fs.readFileSync(path.join(assets, 'security.css'), 'utf8');
+  assert.match(css, /button, \.btn \{/);
+});
+
 test('air-gap settings save a strict boolean and PIN without claiming immediate isolation', async () => {
   const f = await fixture();
   await f.save(true);

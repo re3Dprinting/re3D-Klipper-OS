@@ -7,16 +7,17 @@
   <link rel="stylesheet" href="/auth/security.css">
 </head>
 <body>
-<main class="security-card">
+<main class="security-card settings-card">
   <h1>Air-gapped mode</h1>
-  <p>After reboot, all external network interfaces, Wi-Fi and Bluetooth are disabled.
-    Physical keyboards are blocked. The touchscreen, on-screen keyboard, printer mainboard
-    and USB drives remain available.</p>
-  <p>The touchscreen uses PIN-protected Mainsail while air-gapped. Its PIN is shared with
-    Lockdown mode; your saved display preference is retained for when you leave air-gapped mode.</p>
-  <p>This is software-enforced isolation, not a substitute for unplugging Ethernet and removing
-    wireless hardware where a physical air gap is required. USB drives can still transfer untrusted files.</p>
-  <p id="state" role="status">Loading air-gap settings...</p>
+  <p>Disable all external networking, including Ethernet, Wi-Fi and Bluetooth, and block physical keyboards.
+    Touchscreen typing, mainboard USB and USB drives stay available.</p>
+  <details class="security-help">
+    <summary>Touchscreen and isolation details</summary>
+    <p>Uses Mainsail with the shared Lockdown PIN. Your display preference returns after leaving air-gap mode.</p>
+    <p>Software isolation only: unplug Ethernet and remove radios for a physical air gap.
+      USB drives can transfer untrusted files.</p>
+  </details>
+  <p id="state" class="notice" role="status">Loading air-gap settings...</p>
   <form id="settings">
     <div role="radiogroup" aria-labelledby="mode-label">
       <div id="mode-label">Mode after reboot</div>
@@ -42,11 +43,11 @@
           maxlength="1024" autocomplete="new-password" disabled>
       </div>
     </div>
-    <button id="save" type="submit" disabled>Save for next reboot</button>
+    <button id="save" class="btn-primary" type="submit" disabled>Save for next reboot</button>
   </form>
-  <p id="message" role="status" aria-live="polite"></p>
-  <button id="reboot" type="button" hidden>Reboot now</button>
-  <p><a id="return" href="http://localhost:8081/#system">Return to Configurator</a></p>
+  <p id="message" class="status-message" role="status" aria-live="polite"></p>
+  <button id="reboot" class="btn-ghost" type="button" hidden>Reboot now</button>
+  <footer class="security-footer"><a id="return" class="btn btn-ghost" href="http://localhost:8081/#system">Return to Configurator</a></footer>
 </main>
 <script>
 (() => {
@@ -84,8 +85,8 @@
     el('pin-confirm').disabled = !state.local || busy || !creating;
     el('save').disabled = !state.local || busy || !state.has_pin && !creating;
     el('pin-help').textContent = !state.local ? 'Use the printer touchscreen to change this setting.'
-      : state.has_pin ? 'Enter the shared touchscreen PIN to enable or disable air-gapping. No administrator password is required.'
-        : 'Create and confirm a touchscreen PIN to enable air-gapping. Lockdown is not required; both modes share this PIN.';
+      : state.has_pin ? 'Enter the shared touchscreen PIN to change mode. No administrator password needed.'
+        : 'Create a shared touchscreen PIN (4+ digits). No Lockdown setup needed.';
   }
   function render(resetSelection = true) {
     el('state').textContent = state.applied ? 'Air-gap isolation is active.' : 'Air-gap isolation is not active.';
@@ -116,7 +117,7 @@
       const result = await request('/auth/airgap', {enabled: el('enabled').checked, pin,
         ...(needsPin ? {pin_confirm: el('pin-confirm').value} : {})});
       state = {...state, ...result};
-      el('message').textContent = 'Saved. Finish setup to reboot, or reboot now when the printer is idle. No isolation change takes effect until reboot.';
+      el('message').textContent = 'Saved. Reboot when idle to apply. No isolation change takes effect until reboot.';
     } catch (error) {
       el('message').textContent = error.message;
       try { state = {...state, ...await request('/auth/airgap')}; }
