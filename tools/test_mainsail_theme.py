@@ -110,7 +110,7 @@ class MainsailThemeTests(unittest.TestCase):
         self.assertEqual(opacity, .8)
         self.assertIn('pointer-events: none;', pattern)
 
-    def test_sidebar_selection_uses_a_tinted_tile_instead_of_an_edge_bar(self):
+    def test_sidebar_selection_uses_the_native_edge_line_in_the_brand_yellow(self):
         theme = (SOURCE / 'common/mainsail.css').read_text(encoding='utf-8')
         scope = '.theme--dark.v-navigation-drawer '
 
@@ -118,14 +118,19 @@ class MainsailThemeTests(unittest.TestCase):
             return re.search(re.escape(scope + selector) + r'\s*\{([^}]+)\}', theme)[1]
 
         active = declarations('.v-list-item--active')
-        self.assertIn('background: rgba(255,212,0,.1);', active)
-        self.assertIn('border-inline: 0 !important;', active)
+        self.assertIn('background: var(--re3d-surface-3);', active)
+        self.assertNotIn('border-inline:', theme)
         self.assertIn('box-shadow: none;', active)
-        self.assertIn('background: rgba(255,212,0,.16);',
+        self.assertIn('border-right: 4px solid var(--re3d-brand);',
+                      declarations('.active-nav-item'))
+        self.assertIn('--re3d-brand: #FFD400;', theme)
+        self.assertIn('background: var(--re3d-surface-3);',
                       declarations('.v-list-item--active:hover'))
-        self.assertIn('border-radius: var(--re3d-radius-sm);',
-                      declarations('.v-list-item:not(.sidebar-logo)'))
-        self.assertIn('color: var(--re3d-brand);',
+        item = declarations('.v-list-item:not(.sidebar-logo)')
+        self.assertIn('border-radius: 0;', item)
+        self.assertIn('margin: 0;', item)
+        self.assertNotIn('margin-inline:', theme)
+        self.assertIn('color: var(--re3d-fg);',
                       declarations('.v-list-item--active .v-icon'))
         self.assertIn('opacity: 0;', declarations('.v-list-item--active::before'))
         self.assertIn('box-shadow: inset var(--re3d-focus) !important;', theme)
@@ -195,7 +200,7 @@ class MainsailThemeTests(unittest.TestCase):
                                 self.assertTrue((theme / imported).is_file())
                             for label in labels:
                                 self.assertIn('content: "' + label + '"', custom)
-                            self.assertIn(' v1.4.3-38', custom)
+                            self.assertIn(' v1.4.3-39', custom)
 
     def test_updater_deploys_theme_generator_and_common_assets(self):
         update = (ROOT / 'tools/re3d-os-update.sh').read_text(encoding='utf-8')

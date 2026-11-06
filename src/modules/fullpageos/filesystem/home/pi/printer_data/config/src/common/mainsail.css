@@ -99,8 +99,8 @@
 }
 
 .theme--dark.v-navigation-drawer .v-list-item:not(.sidebar-logo) {
-    margin: 6px 8px;
-    border-radius: var(--re3d-radius-sm);
+    margin: 0;
+    border-radius: 0;
     color: var(--re3d-muted);
 }
 
@@ -121,14 +121,17 @@
 }
 
 .theme--dark.v-navigation-drawer .v-list-item--active {
-    background: rgba(255,212,0,.1);
+    background: var(--re3d-surface-3);
     color: var(--re3d-fg) !important;
-    border-inline: 0 !important;
     box-shadow: none;
 }
 
+.theme--dark.v-navigation-drawer .active-nav-item {
+    border-right: 4px solid var(--re3d-brand);
+}
+
 .theme--dark.v-navigation-drawer .v-list-item--active:hover {
-    background: rgba(255,212,0,.16);
+    background: var(--re3d-surface-3);
 }
 
 .theme--dark.v-navigation-drawer .v-list-item--active .v-list-item__title {
@@ -136,12 +139,8 @@
     font-weight: 600;
 }
 
-.theme--dark.v-navigation-drawer--mini-variant .v-list-item:not(.sidebar-logo) {
-    margin-inline: 4px;
-}
-
 .theme--dark.v-navigation-drawer .v-list-item--active .v-icon {
-    color: var(--re3d-brand);
+    color: var(--re3d-fg);
 }
 
 .theme--dark.v-navigation-drawer .v-list-item--active::before {
