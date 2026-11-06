@@ -94,13 +94,12 @@ test('cards share the borderless charcoal treatment without changing control bou
   assert.match(styles, /--brand-700:\s*#E6BF00/);
 });
 
-test('standalone screens and switcher use offline Lato with Roboto fallback', () => {
+test('standalone screens use offline Lato with Roboto fallback', () => {
   const filesystem = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'filesystem');
   for (const [file, font] of [
     ['home/pi/wait.html', '../../opt/mconfig/www/fonts/Lato-Regular.ttf'],
     ['opt/mconfig/www/tabs/updating.html', '/fonts/Lato-Regular.ttf'],
     ['opt/mconfig/www/tabs/report.html', '/fonts/Lato-Regular.ttf'],
-    ['home/pi/url-switcher/options.html', 'Lato-Regular.ttf'],
   ]) {
     const screen = fs.readFileSync(path.join(filesystem, file), 'utf8');
     assert.ok(screen.includes(`url("${font}")`), file);
@@ -111,14 +110,31 @@ test('standalone screens and switcher use offline Lato with Roboto fallback', ()
     assert.ok(fs.statSync(resolved).size > 0, `${file}: font exists`);
     assert.doesNotMatch(screen, /fonts\.googleapis\.com|fonts\.gstatic\.com/, file);
   }
-  const switcher = path.join(filesystem, 'home/pi/url-switcher');
-  const manifest = JSON.parse(fs.readFileSync(path.join(switcher, 'manifest.json'), 'utf8'));
-  assert.ok(manifest.web_accessible_resources.some(entry => entry.resources.includes('Lato-Regular.ttf')));
-  assert.match(fs.readFileSync(path.join(switcher, 'inject.css'), 'utf8'),
-    /chrome-extension:\/\/__MSG_@@extension_id__\/Lato-Regular\.ttf/);
-  assert.match(fs.readFileSync(path.join(switcher, 'OFL.txt'), 'utf8'), /SIL OPEN FONT LICENSE Version 1\.1/);
+});
+
+test('retired switcher and video splash are not shipped or redeployed', () => {
+  const filesystem = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'filesystem');
+  for (const file of [
+    'home/pi/url-switcher/manifest.json',
+    'home/pi/url-switcher/bg.js',
+    'home/pi/url-switcher/config.json',
+    'home/pi/url-switcher/inject.css',
+    'home/pi/url-switcher/options.html',
+    'home/pi/url-switcher/Lato-Regular.ttf',
+    'home/pi/url-switcher/OFL.txt',
+    'home/pi/re3D_logo_animation.mp4',
+    'home/pi/printer_data/config/src/system_config/shell_commands/splash_video.sh',
+    'root_init/etc/systemd/system/splash_video.service',
+  ]) {
+    assert.equal(fs.existsSync(path.join(filesystem, file)), false, file);
+  }
   const updater = fs.readFileSync(path.join(__dirname, 're3d-os-update.sh'), 'utf8');
-  assert.ok(updater.includes('"${SRC_URL_SWITCHER}/" "${DST_URL_SWITCHER}/"'));
+  assert.doesNotMatch(updater, /SRC_URL_SWITCHER|DST_URL_SWITCHER/);
+  assert.ok(updater.includes('systemctl disable splash_video.service'));
+  assert.ok(fs.statSync(path.join(filesystem, 'boot/splash.png')).size > 0);
+  const splash = fs.readFileSync(path.join(filesystem,
+    'root_init/etc/systemd/system/splashscreen.service'), 'utf8');
+  assert.ok(splash.includes('/boot/firmware/splash.png'));
 });
 
 test('report dark palette matches the workspace while preserving light mode and technical fonts', () => {
