@@ -140,7 +140,28 @@ jobs:
         run: |
           pigz -1 build.img
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Image
+        id: upload-image
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
         with:
           name: build.img.gz
           path: build.img.gz
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Wait before retrying image upload
+        if: ${{ steps.upload-image.outcome == 'failure' }}
+        run: |
+          echo "::warning::Image upload failed; retrying in 60 seconds."
+          sleep 60
+
+      - name: Retry Image Upload
+        if: ${{ steps.upload-image.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build.img.gz
+          path: build.img.gz
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
