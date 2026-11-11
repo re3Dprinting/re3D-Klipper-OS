@@ -18,11 +18,44 @@ jobs:
           sudo docker image prune -af || true
           df -h
 
+      - name: Configure apt mirrors
+        run: |
+          set -euo pipefail
+          mirror=""
+          for candidate in https://archive.ubuntu.com/ubuntu https://mirrors.edge.kernel.org/ubuntu; do
+            available=true
+            for suite in noble noble-updates noble-backports noble-security; do
+              if ! curl --fail --silent --show-error --location \
+                --connect-timeout 10 --max-time 20 --output /dev/null \
+                "${candidate}/dists/${suite}/InRelease"; then
+                echo "::warning::Cannot reach ${candidate} (${suite}); trying the next mirror."
+                available=false
+                break
+              fi
+            done
+            if [ "$available" = true ]; then
+              mirror="$candidate"
+              break
+            fi
+          done
+          if [ -z "$mirror" ]; then
+            echo "::error::No Ubuntu mirror is reachable. Check runner DNS/network connectivity and rerun the job."
+            exit 1
+          fi
+          echo "Using Ubuntu mirror: $mirror"
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E \
+                "s#mirror\\+file:/etc/apt/apt-mirrors.txt|https?://(azure\\.archive|archive|security)\\.ubuntu\\.com/ubuntu#${mirror}#g" \
+                "$source"
+            fi
+          done
+
       - name: Update apt
-        run: sudo apt-get update
+        run: sudo apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any update
 
       - name: Install Dependencies
-        run: sudo apt-get install -y coreutils p7zip-full qemu-user-static python3-git rsync pigz
+        run: sudo apt-get -o Acquire::Retries=5 install -y coreutils p7zip-full qemu-user-static python3-git rsync pigz
 
       - name: Checkout CustomPiOS
         uses: actions/checkout@v4
