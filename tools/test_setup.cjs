@@ -12,6 +12,64 @@ const scripts = path.join(filesystem, 'opt', 'custompios', 'scripts');
 const bash = process.env.BASH || (process.platform === 'win32'
   ? path.join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe') : 'bash');
 
+test('filament diameter option loads, follows FFF selection, and submits explicitly', async () => {
+  const html = fs.readFileSync(path.join(www, 'tabs', 'machine.html'), 'utf8');
+  const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  for (const saved of [true, false, undefined]) {
+    const elements = new Map();
+    function element(id) {
+      if (!elements.has(id)) elements.set(id, {
+        checked: false, hidden: true, value: '', events: {},
+        classList: { add() {}, remove() {} },
+        addEventListener(name, callback) { this.events[name] = callback; },
+        querySelectorAll: () => [], focus() {}
+      });
+      return elements.get(id);
+    }
+    const radios = [...html.matchAll(/name="type-radio" value="([^"]+)"/g)].map(([, name]) => {
+      const radio = element(name);
+      radio.value = name;
+      radio.closest = () => element('card-' + name);
+      return radio;
+    });
+    const requests = [];
+    vm.runInNewContext(source, {
+      URLSearchParams, window: {},
+      document: {
+        getElementById: element,
+        querySelectorAll: selector => selector === '.machine-card' ? [] : radios,
+        addEventListener() {}, removeEventListener() {}
+      },
+      fetch: async (url, options) => {
+        if (url.endsWith('get_machine_type.sh')) {
+          return { ok: true, text: async () => 'Terabot 4' };
+        }
+        if (url.endsWith('get_machine_options.sh')) {
+          return { ok: true, json: async () => ({ filament_175: saved }) };
+        }
+        requests.push(options.body);
+        return { ok: true, text: async () => 'Updated.' };
+      }
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(element('machine-type-hidden').value, 'Terabot 4');
+    assert.equal(element('chk-filament').checked, !!saved);
+    assert.equal(element('opt-filament').hidden, false);
+    for (const radio of radios) {
+      radios.forEach(item => { item.checked = item === radio; });
+      radio.events.change();
+      const fff = ['Gigabot 4', 'Gigabot 4 XLT', 'Terabot 4'].includes(radio.value);
+      assert.equal(element('opt-filament').hidden, !fff, radio.value);
+      for (const checked of [true, false]) {
+        element('chk-filament').checked = checked;
+        await element('form-machine').events.submit({ preventDefault() {} });
+        assert.equal(requests.at(-1).get('type'), radio.value);
+        assert.equal(requests.at(-1).get('filament_175'), fff && checked ? 'true' : 'false');
+      }
+    }
+  }
+});
+
 test('wizard loader uses a fresh script URL on each visit and reports load failures', () => {
   const index = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
   const loader = index.match(/<script id="setup-loader">([\s\S]*?)<\/script>/)[1];

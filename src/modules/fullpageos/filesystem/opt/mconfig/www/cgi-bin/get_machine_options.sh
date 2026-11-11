@@ -11,7 +11,7 @@ echo
 config_file="/home/pi/printer_data/config/.master.cfg"
 
 if [[ ! -f "$config_file" ]]; then
-  echo '{"crammer":false,"heater_bed":false,"mesh_compensation":false,"slice_microswiss_hotends":false}'
+  echo '{"crammer":false,"heater_bed":false,"mesh_compensation":false,"slice_microswiss_hotends":false,"filament_175":false}'
   exit 0
 fi
 
@@ -19,11 +19,13 @@ crammer="$(awk -F= '/^crammer_enabled=/{print $2; exit}' "$config_file" | tr -d 
 heater="$(awk -F= '/^heater_bed_enabled=/{print $2; exit}' "$config_file" | tr -d '[:space:]')"
 mesh="$(awk -F= '/^mesh_compensation_enabled=/{print $2; exit}' "$config_file" | tr -d '[:space:]')"
 hotends="$(awk -F= '/^slice_microswiss_hotends_enabled=/{print $2; exit}' "$config_file" | tr -d '[:space:]')"
+filament="$(awk -F= '/^filament_175_enabled=/{print $2; exit}' "$config_file" | tr -d '[:space:]')"
 
 [[ "$crammer" == "true" ]] || crammer="false"
 [[ "$heater"  == "true" ]] || heater="false"
 [[ "$mesh"    == "true" ]] || mesh="false"
 [[ "$hotends" == "true" ]] || hotends="false"
+[[ "$filament" == "true" ]] || filament="false"
 
-printf '{"crammer":%s,"heater_bed":%s,"mesh_compensation":%s,"slice_microswiss_hotends":%s}\n' \
-  "$crammer" "$heater" "$mesh" "$hotends"
+printf '{"crammer":%s,"heater_bed":%s,"mesh_compensation":%s,"slice_microswiss_hotends":%s,"filament_175":%s}\n' \
+  "$crammer" "$heater" "$mesh" "$hotends" "$filament"

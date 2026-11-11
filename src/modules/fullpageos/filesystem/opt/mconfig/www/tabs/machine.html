@@ -149,6 +149,17 @@
           </label>
         </div>
 
+        <div id="opt-filament" class="opt-row" hidden>
+          <div>
+            <div class="opt-label" id="label-filament">1.75 mm Filament</div>
+            <div class="opt-desc">Set both extruders to 1.75 mm instead of 2.85 mm</div>
+          </div>
+          <label class="tog">
+            <input type="checkbox" id="chk-filament" aria-labelledby="label-filament">
+            <span class="tog-track"></span>
+          </label>
+        </div>
+
         <!-- Crammer: X-line printers only -->
         <div id="opt-crammer" class="opt-row" hidden>
           <div>
@@ -204,14 +215,14 @@
 
   // Which options each machine exposes
   const MACHINE_OPTS = {
-    'Gigabot 4':      ['mesh', 'hotends'],
-    'Gigabot 4 XLT':  ['mesh', 'hotends'],
-    'Terabot 4':      [],
+    'Gigabot 4':      ['mesh', 'hotends', 'filament'],
+    'Gigabot 4 XLT':  ['mesh', 'hotends', 'filament'],
+    'Terabot 4':      ['filament'],
     'GigabotX 2':     ['crammer', 'heater'],
     'GigabotX XLT 2': ['crammer', 'heater'],
     'TerabotX 2':     ['crammer', 'heater'],
   };
-  const OPT_IDS = { mesh: 'opt-mesh', hotends: 'opt-hotends', crammer: 'opt-crammer', heater: 'opt-heater' };
+  const OPT_IDS = { mesh: 'opt-mesh', hotends: 'opt-hotends', filament: 'opt-filament', crammer: 'opt-crammer', heater: 'opt-heater' };
   const optSection = document.getElementById('machine-options');
 
   function updateOptionsVisibility(machineType) {
@@ -254,10 +265,12 @@
         const opts = await optsResp.json();
         const chkMesh    = document.getElementById('chk-mesh');
         const chkHotends = document.getElementById('chk-hotends');
+        const chkFilament = document.getElementById('chk-filament');
         const chkCrammer = document.getElementById('chk-crammer');
         const chkHeater  = document.getElementById('chk-heater');
         if (chkMesh)    chkMesh.checked    = !!opts.mesh_compensation;
         if (chkHotends) chkHotends.checked = !!opts.slice_microswiss_hotends;
+        if (chkFilament) chkFilament.checked = !!opts.filament_175;
         if (chkCrammer) chkCrammer.checked = !!opts.crammer;
         if (chkHeater)  chkHeater.checked  = !!opts.heater_bed;
       }
@@ -336,6 +349,7 @@
         params.set('type', hidden.value);
         params.set('mesh_compensation', document.getElementById('chk-mesh')?.checked    ? 'true' : 'false');
         params.set('slice_microswiss_hotends', MACHINE_OPTS[hidden.value]?.includes('hotends') && document.getElementById('chk-hotends')?.checked ? 'true' : 'false');
+        params.set('filament_175', MACHINE_OPTS[hidden.value]?.includes('filament') && document.getElementById('chk-filament')?.checked ? 'true' : 'false');
         params.set('crammer',           document.getElementById('chk-crammer')?.checked ? 'true' : 'false');
         params.set('heater_bed',        document.getElementById('chk-heater')?.checked  ? 'true' : 'false');
         if (setupMode) form.querySelectorAll('input, button').forEach(el => { el.disabled = true; });

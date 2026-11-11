@@ -1,7 +1,7 @@
 #!/bin/bash
 # /opt/mconfig/www/cgi-bin/set_machine_type.sh
 # CGI wrapper: read POST body, URL-decode, call set_machine_type, then patch
-# optional feature flags (crammer, heater_bed, mesh_compensation) if provided.
+# optional feature flags if provided.
 
 set -euo pipefail
 
@@ -64,6 +64,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
   patch_flag "heater_bed"
   patch_flag "mesh_compensation"
   patch_flag "slice_microswiss_hotends"
+  patch_flag "filament_175"
 fi
 
 printf 'Content-Type: text/plain\r\n\r\n%s\n' "$out"
