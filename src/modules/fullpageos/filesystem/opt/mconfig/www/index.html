@@ -525,6 +525,7 @@
     </div>
     <div class="nav-caption">WORKSPACE</div>
     <nav class="tabs" id="tabbar" aria-label="Configurator sections">
+      <button class="tab" data-page="news"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10 M7 12h4 M7 16h4 M15 12h2 M15 16h2"/></svg>News</button>
       <button class="tab" data-page="machine"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z M3 8l9 5 9-5 M12 13v8"/></svg>Machine</button>
       <button class="tab" data-page="network"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a14 14 0 0 1 18 0 M6 12a9 9 0 0 1 12 0 M9 16a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r=".7"/></svg>Network</button>
       <button class="tab" data-page="tuning"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v5m0 4v9 M12 3v10m0 4v4 M19 3v2m0 4v12 M2 8h6 M9 17h6 M16 5h6"/></svg>Tuning</button>
@@ -550,7 +551,7 @@
       <p id="setup-description"></p>
     </header>
     <header class="page-header">
-      <div class="page-eyebrow">Machine configuration</div>
+      <div class="page-eyebrow" id="page-eyebrow">re:3D community</div>
       <h1 class="page-title" id="page-title">Machine</h1>
       <p class="page-description" id="page-description">Choose your printer and configure its hardware.</p>
     </header>
@@ -597,7 +598,7 @@
    - Cleans previous tab’s styles/scripts via data attributes
 ─────────────────────────────────────────────────────────────────────────── */
 
-const TABS = ['machine','network','tuning','shaper','calibration','troubleshoot','recovery','system'];
+const TABS = ['news','machine','network','tuning','shaper','calibration','troubleshoot','recovery','system'];
 const titleEl = document.getElementById('page-title');
 const descriptionEl = document.getElementById('page-description');
 const hostEl  = document.getElementById('page');
@@ -617,8 +618,10 @@ function setActiveTab(name){
     }
   });
   const label = prettyName(name);
+  document.getElementById('page-eyebrow').textContent = name === 'news' ? 're:3D community' : 'Machine configuration';
   titleEl.innerHTML = label.html ?? label.text;
   const descriptions = {
+    news: 'The latest news, research, and stories from re:3D.',
     machine: 'Choose your printer and configure its hardware.',
     network: 'Connect your printer and manage its network identity.',
     tuning: 'Fine-tune temperature control and level your print bed.',
@@ -633,6 +636,7 @@ function setActiveTab(name){
 
 function prettyName(pg){
   const m = {
+    news:'News',
     machine:'Machine', network:'Network', tuning:'Tuning',
     shaper:'Input Shaper', calibration:'Calibration',
     troubleshoot:'Troubleshooting',
@@ -671,7 +675,7 @@ function runScriptNode(node, tabName){
 }
 
 async function loadTab(name){
-  if (!TABS.includes(name)) name = 'machine';
+  if (!TABS.includes(name)) name = 'news';
   if (currentTab === name) return;
 
   const url = `tabs/${name}.html?cachebust=${Date.now()}`;
@@ -733,12 +737,12 @@ tabbar.querySelectorAll('.tab[data-page]').forEach(btn=>{
 
 // deep-link on load
 if (new URLSearchParams(location.search).get('setup') !== '1') {
-  loadTab((location.hash || '#machine').slice(1));
+  loadTab((location.hash || '#news').slice(1));
 }
 
 // back/forward support
 window.addEventListener('hashchange', ()=>{
-  if (!window.re3dSetup) loadTab((location.hash||'#machine').slice(1));
+  if (!window.re3dSetup) loadTab((location.hash||'#news').slice(1));
 });
 window.addEventListener('resize', () => {
   if (currentTab) setActiveTab(currentTab);
