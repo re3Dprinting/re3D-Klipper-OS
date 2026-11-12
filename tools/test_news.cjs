@@ -64,6 +64,30 @@ function descendants(node, tag) {
   ]);
 }
 
+test('platform shortcuts precede stories with accessible external links and locally bundled icons', () => {
+  const nav = html.match(/<nav class="news-platforms"[^>]*>([\s\S]*?)<\/nav>/);
+  assert.ok(nav);
+  assert.ok(html.indexOf(nav[0]) < html.indexOf('<div class="news-toolbar">'));
+  const links = [...nav[1].matchAll(/<a ([^>]+)><img ([^>]+)><\/a>/g)];
+  assert.equal(links.length, 8);
+  const hosts = new Set();
+  for (const [, anchor, image] of links) {
+    hosts.add(new URL(anchor.match(/href="([^"]+)"/)[1]).hostname);
+    assert.match(anchor, /target="_blank"/);
+    assert.match(anchor, /rel="noopener noreferrer"/);
+    assert.match(anchor, /aria-label="[^"]+ \(opens in a new tab\)"/);
+    const source = image.match(/src="([^"]+)"/)[1];
+    assert.ok(source.startsWith('/img/'));
+    const bytes = fs.readFileSync(path.join(www, source));
+    assert.equal(bytes.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
+  }
+  assert.deepEqual(hosts, new Set([
+    'www.facebook.com', 'www.instagram.com', 'www.youtube.com', 'www.thingiverse.com',
+    'cults3d.com', 're3d.zendesk.com', 'www.linkedin.com', 'github.com'
+  ]));
+});
+
 test('News is first and default, while explicit Machine links and guided setup are retained', () => {
   assert.equal(index.match(/class="tab" data-page="([^"]+)"/)[1], 'news');
   assert.match(index, /const TABS = \['news','machine'/);

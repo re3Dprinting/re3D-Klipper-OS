@@ -1,4 +1,9 @@
 <style>
+  .news-platforms{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+  .news-platforms a{display:flex;width:48px;height:48px;border-radius:12px;transition:opacity .15s}
+  .news-platforms a:hover{opacity:.8}
+  .news-platforms a:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+  .news-platforms img{display:block;width:48px;height:48px}
   .news-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
   .news-toolbar h2{margin:0 0 6px;font-size:22px;letter-spacing:-.4px}
   .news-toolbar p{margin:0;color:var(--muted);font-size:13px}
@@ -22,6 +27,16 @@
 </style>
 
 <section id="news-page" aria-label="re:3D news">
+  <nav class="news-platforms" aria-label="re:3D platforms">
+    <a href="https://www.facebook.com/re3Dprinting/" target="_blank" rel="noopener noreferrer" title="Facebook" aria-label="Facebook (opens in a new tab)"><img src="/img/platform-facebook.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.instagram.com/re3dprinting/" target="_blank" rel="noopener noreferrer" title="Instagram" aria-label="Instagram (opens in a new tab)"><img src="/img/platform-instagram.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.youtube.com/user/GigaBot3D" target="_blank" rel="noopener noreferrer" title="YouTube" aria-label="YouTube (opens in a new tab)"><img src="/img/platform-youtube.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.thingiverse.com/re3dprinting/designs" target="_blank" rel="noopener noreferrer" title="Thingiverse" aria-label="Thingiverse (opens in a new tab)"><img src="/img/platform-thingiverse.webp" width="48" height="48" alt=""></a>
+    <a href="https://cults3d.com/en/users/re3D/creations" target="_blank" rel="noopener noreferrer" title="Cults3D" aria-label="Cults3D (opens in a new tab)"><img src="/img/platform-cults3d.webp" width="48" height="48" alt=""></a>
+    <a href="https://re3d.zendesk.com/hc/en-us/community/topics" target="_blank" rel="noopener noreferrer" title="Zendesk community" aria-label="Zendesk community (opens in a new tab)"><img src="/img/platform-zendesk.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.linkedin.com/company/2992773/" target="_blank" rel="noopener noreferrer" title="LinkedIn" aria-label="LinkedIn (opens in a new tab)"><img src="/img/platform-linkedin.webp" width="48" height="48" alt=""></a>
+    <a href="https://github.com/re3Dprinting" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub (opens in a new tab)"><img src="/img/platform-github.webp" width="48" height="48" alt=""></a>
+  </nav>
   <div class="news-toolbar">
     <div><h2>News, Research &amp; Stories</h2><p>Big ideas. Real-world impact. Made with re:3D.</p></div>
     <div class="news-actions">
