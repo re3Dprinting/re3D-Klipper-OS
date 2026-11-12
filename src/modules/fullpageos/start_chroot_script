@@ -367,14 +367,30 @@ sudo -u "${BASE_USER}" bash -lc '
     echo "${1}.nopillow"
   }
 
+  _moonraker_pip_install() {
+    local attempt
+    for attempt in 1 2; do
+      if ~/moonraker-env/bin/python -m pip install "$@"; then
+        return 0
+      fi
+      echo "WARNING: Moonraker pip install attempt $attempt failed." >&2
+      if [ "$attempt" -eq 1 ]; then
+        sleep 10
+      fi
+    done
+    echo "WARNING: Retrying Moonraker pip install with PyPI only (without piwheels)." >&2
+    env -u PIP_EXTRA_INDEX_URL PIP_CONFIG_FILE=/dev/null \
+      ~/moonraker-env/bin/python -m pip install --index-url https://pypi.org/simple "$@"
+  }
+
   if [ ! -d "$HOME/moonraker-env/bin" ]; then
     echo "Creating moonraker-env..."
     python3 -m venv ~/moonraker-env
-    ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
+    _moonraker_pip_install --upgrade pip setuptools wheel --no-cache-dir
     _link_system_pillow
     REQS_FILE="$HOME/moonraker/scripts/moonraker-requirements.txt"
     FILTERED=$(_reqs_without_pillow "$REQS_FILE")
-    ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$FILTERED"
+    _moonraker_pip_install --no-cache-dir -r "$FILTERED"
 
     REQS_HASH=$(md5sum "$REQS_FILE" | cut -d" " -f1)
     echo "$REQS_HASH" > "$HOME/moonraker-env/.requirements-hash"
@@ -387,9 +403,9 @@ sudo -u "${BASE_USER}" bash -lc '
 
     if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$REQS_HASH" ]; then
       echo "Requirements changed, updating packages..."
-      ~/moonraker-env/bin/python -m pip install --upgrade pip setuptools wheel --no-cache-dir
+      _moonraker_pip_install --upgrade pip setuptools wheel --no-cache-dir
       FILTERED=$(_reqs_without_pillow "$REQS_FILE")
-      ~/moonraker-env/bin/python -m pip install --no-cache-dir -r "$FILTERED"
+      _moonraker_pip_install --no-cache-dir -r "$FILTERED"
       echo "$REQS_HASH" > "$HASH_FILE"
     else
       echo "Requirements unchanged, skipping pip install"
@@ -561,7 +577,7 @@ sudo -u "${BASE_USER}" bash -lc '
 
 # 8) NGINX as reverse proxy + static hosting for Mainsail
 step_start "NGINX Install & Config"
-apt-get install -y nginx
+apt-get install -y nginx openssl nftables
 
 cat >/etc/nginx/conf.d/upstreams.conf <<'EOF'
 # /etc/nginx/conf.d/upstreams.conf
@@ -639,7 +655,7 @@ EOF
 sudo -u "${BASE_USER}" mkdir -p /home/"${BASE_USER}"/mainsail
 rm -f /etc/nginx/sites-enabled/default || true
 ln -sf /etc/nginx/sites-available/mainsail /etc/nginx/sites-enabled/mainsail
-systemctl restart nginx
+bash /opt/mconfig/install_auth.sh image
 
 sudo -u "${BASE_USER}" bash -lc '
   set -e
@@ -735,6 +751,7 @@ awk '1;/^\/\/ ---------- icon handling/{print "\
 })();\n"}' \
 /home/pi/virtual_keyboard/background.js > /home/pi/virtual_keyboard/background.js.tmp \
 && mv /home/pi/virtual_keyboard/background.js.tmp /home/pi/virtual_keyboard/background.js
+python3 /opt/mconfig/prepare_keyboard.py
 step_end
 
 # --- Minimal Crowsnest unattended install (no .config) ---
@@ -1048,6 +1065,9 @@ step_end
 ###############################################################################
 
 touch /etc/firstboot-splash
+install -d -m 0755 /var/lib/re3d-setup
+printf 'machine\n' > /var/lib/re3d-setup/step
+chmod 0755 /opt/mconfig/www/cgi-bin/setup.py
 
 echo "server time.nist.gov" >> /etc/ntp.conf
 echo "server ntp.ubuntu.com" >> /etc/ntp.conf

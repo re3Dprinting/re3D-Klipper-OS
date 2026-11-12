@@ -66,6 +66,10 @@
   .sys-card.sys-disabled{
     pointer-events:none;
   }
+  .sys-devops{border-top:1px solid var(--border);padding-top:12px}
+  .sys-devops summary{cursor:pointer;font-size:12px;color:var(--muted)}
+  .sys-devops-body{display:grid;gap:10px;margin-top:12px}
+  .sys-devops input{width:100%;min-width:0}
 
   .sys-title{
     display:flex;
@@ -323,7 +327,7 @@
 
   <!-- Left column: system actions -->
   <div class="sys-col">
-    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-35</span></div>
+    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-44</span></div>
 
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
@@ -338,6 +342,20 @@
       <div class="hint" id="update-offline-hint" style="display:none;margin-top:2px;">
         Internet connection required to check for or install updates.
       </div>
+      <div class="hint" id="update-branch-current">Loading update branch...</div>
+      <details class="sys-devops">
+        <summary>DevOps</summary>
+        <div class="sys-devops-body">
+          <div class="hint">Test a branch from re3D-Klipper-OS. The saved branch survives updates and reboots. Other software repositories are unaffected. Development branches may be unstable.</div>
+          <label for="update-branch">Update branch</label>
+          <input id="update-branch" type="text" maxlength="255" placeholder="devel" autocomplete="off" spellcheck="false" disabled>
+          <div class="btn-row">
+            <button type="button" class="btn-ghost" id="update-branch-save" disabled>Save branch</button>
+            <button type="button" class="btn-ghost" id="update-branch-reset" disabled>Use devel</button>
+          </div>
+          <div class="hint" id="update-branch-status" role="status" aria-live="polite"></div>
+        </div>
+      </details>
       <div id="klipper-card-warn" style="display:none;
         background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:6px;
         padding:8px 12px; margin-top:6px; color:#fed7aa; font-size:12.5px; line-height:1.4;">
@@ -349,6 +367,29 @@
         <button type="button" class="btn-primary" id="btn-update" disabled>Run Update</button>
       </div>
       <div class="sys-out mono" id="out-update"></div>
+    </div>
+
+    <div class="card sys-card">
+      <div class="sys-title">Printer Security</div>
+      <div class="sys-subtitle">
+        Choose Off, Basic browser protection, or Lockdown with a touchscreen PIN and restricted services.
+        Manage web credentials and the separate pi password in Security settings.
+      </div>
+      <div class="sys-subtitle">
+        Basic permits unencrypted HTTP; Lockdown requires HTTPS.
+        Verify the printer's certificate fingerprint before trusting it.
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-ghost" href="/auth/settings">Security settings</a>
+        <a class="btn btn-ghost" href="/auth/login">Login / logout</a>
+      </div>
+    </div>
+
+    <div class="card sys-card">
+      <div class="sys-title">Air-gapped mode</div>
+      <div class="sys-subtitle">Disable Ethernet, wireless and physical keyboards; keep touchscreen and USB access.
+        Enable or disable with the shared touchscreen PIN, then reboot. No administrator password needed.</div>
+      <div class="btn-row"><a class="btn btn-ghost" href="/auth/airgap-settings">Air-gap settings</a></div>
     </div>
 
     <!-- Display Mode -->
@@ -363,6 +404,24 @@
         <button type="button" class="btn-ghost" id="btn-use-klipperscreen" disabled>KlipperScreen</button>
       </div>
       <div class="hint" id="display-mode-hint" style="display:none;margin-top:4px;"></div>
+    </div>
+
+    <div class="card sys-card">
+      <div class="sys-title">Guided Setup</div>
+      <div class="sys-subtitle">Walk through machine, network, and display settings. Each visit starts at Machine.</div>
+      <div class="btn-row">
+        <a class="btn btn-ghost" href="/?setup=1">Open Setup Wizard</a>
+      </div>
+    </div>
+
+    <!-- Mainboard Firmware -->
+    <div class="card sys-card">
+      <div class="sys-title">Customer Open-box Setup</div>
+      <div class="sys-subtitle">For operations: schedule the customer welcome, precautions, and network setup for the next boot. Machine and display settings are preserved.</div>
+      <div class="btn-row">
+        <button type="button" class="btn-ghost" id="btn-schedule-openbox">Schedule Open-box Setup</button>
+      </div>
+      <div class="hint" id="openbox-schedule-result" role="status" aria-live="polite"></div>
     </div>
 
     <!-- Mainboard Firmware -->
@@ -527,6 +586,62 @@
   </div>
 </div>
 
+<div class="modal-wrap" id="openbox-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="openbox-modal-title">
+    <h3 id="openbox-modal-title">Schedule customer open-box setup?</h3>
+    <p>The next boot will show the unpacking guide and network choices instead of normal setup or printer control. This does not reboot now. The guide will keep appearing on boot until the customer finishes it.</p>
+    <p>The guide summarizes key steps from the Gigabot 4 Getting Started Guide. Customers should still read the complete guide before operating the printer.</p>
+    <div class="actions">
+      <button type="button" class="btn-ghost" id="openbox-cancel">Cancel</button>
+      <button type="button" id="openbox-schedule">Schedule for next boot</button>
+    </div>
+    <div class="hint" id="openbox-schedule-status" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script id="openbox-scheduler">
+(() => {
+  const button = document.getElementById('btn-schedule-openbox');
+  const modal = document.getElementById('openbox-modal');
+  const cancel = document.getElementById('openbox-cancel');
+  const schedule = document.getElementById('openbox-schedule');
+  const status = document.getElementById('openbox-schedule-status');
+  const result = document.getElementById('openbox-schedule-result');
+  button.addEventListener('click', () => {
+    status.textContent = '';
+    modal.hidden = false;
+    cancel.focus();
+  });
+  cancel.addEventListener('click', () => {
+    modal.hidden = true;
+    button.focus();
+  });
+  schedule.addEventListener('click', async () => {
+    schedule.disabled = true;
+    cancel.disabled = true;
+    status.textContent = 'Scheduling...';
+    try {
+      const response = await fetch('/cgi-bin/setup.py', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({step: 'openbox'}),
+        cache: 'no-store'
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || `Request failed (${response.status})`);
+      modal.hidden = true;
+      result.textContent = 'Open-box setup scheduled for the next boot. The printer has not been rebooted.';
+      button.focus();
+    } catch (error) {
+      status.textContent = `Unable to schedule open-box setup: ${error.message || error}`;
+    } finally {
+      schedule.disabled = false;
+      cancel.disabled = false;
+    }
+  });
+})();
+</script>
+
 <script>
 (() => {
   // ---- OS / Configurator Update: check + run ----
@@ -536,10 +651,80 @@
   const updatePill      = document.getElementById('update-check-pill');
   const updateCard      = document.getElementById('update-card');
   const offlineHint     = document.getElementById('update-offline-hint');
+  const branchInput     = document.getElementById('update-branch');
+  const branchSave      = document.getElementById('update-branch-save');
+  const branchReset     = document.getElementById('update-branch-reset');
+  const branchCurrent   = document.getElementById('update-branch-current');
+  const branchStatus    = document.getElementById('update-branch-status');
 
   // "canUpdate" = "this machine can actually reach the update source"
   let canUpdate = false;
   let connectivityChecked = false;
+  let savedBranch = null;
+  let branchBusy = false;
+  let checkingUpdates = false;
+
+  function branchReady(){
+    return savedBranch !== null && !branchBusy && branchInput.value === savedBranch;
+  }
+
+  function syncUpdateControls(){
+    const ready = canUpdate && branchReady() && !checkingUpdates;
+    if (btnUpdate) btnUpdate.disabled = !ready;
+    if (btnCheckUpdate) btnCheckUpdate.disabled = !ready;
+    if (branchInput) branchInput.disabled = !canUpdate || branchBusy || checkingUpdates;
+    if (branchSave) branchSave.disabled = !canUpdate || branchBusy || checkingUpdates;
+    if (branchReset) branchReset.disabled = !canUpdate || branchBusy || checkingUpdates;
+  }
+
+  async function loadUpdateBranch(){
+    try{
+      const r = await fetch('/cgi-bin/update_branch.sh', {cache:'no-store'});
+      const text = (await r.text()).trim();
+      if (!r.ok || !text) throw new Error(text || 'HTTP ' + r.status);
+      savedBranch = text;
+      branchInput.value = text;
+      branchCurrent.textContent = 'Update branch: ' + text;
+    }catch(err){
+      branchCurrent.textContent = 'Unable to load update branch.';
+      branchStatus.textContent = 'Error: ' + err.message;
+    }
+    syncUpdateControls();
+  }
+
+  async function saveUpdateBranch(branch){
+    if (!canUpdate || branchBusy || checkingUpdates) return;
+    branchBusy = true;
+    syncUpdateControls();
+    branchStatus.textContent = 'Verifying and saving branch...';
+    try{
+      const r = await fetch('/cgi-bin/update_branch.sh', {
+        method:'POST', cache:'no-store',
+        headers:{'Content-Type':'text/plain; charset=utf-8'}, body:branch
+      });
+      const text = (await r.text()).trim();
+      if (!r.ok || !text) throw new Error(text || 'HTTP ' + r.status);
+      savedBranch = text;
+      branchInput.value = text;
+      branchCurrent.textContent = 'Update branch: ' + text;
+      branchStatus.textContent = 'Saved. Future updates will use ' + text + ' until you change it.';
+      setUpdatePill('Branch changed; check required', 'muted');
+      if (outUpdate) outUpdate.textContent = '';
+    }catch(err){
+      branchStatus.textContent = 'Branch not saved: ' + err.message;
+    }finally{
+      branchBusy = false;
+      syncUpdateControls();
+    }
+    if (branchReady()) await checkForUpdates(false);
+  }
+
+  if (branchInput) branchInput.addEventListener('input', () => {
+    branchStatus.textContent = branchInput.value === savedBranch ? '' : 'Save this branch before checking or running updates.';
+    syncUpdateControls();
+  });
+  if (branchSave) branchSave.addEventListener('click', () => saveUpdateBranch(branchInput.value));
+  if (branchReset) branchReset.addEventListener('click', () => saveUpdateBranch('devel'));
 
   function setUpdatePill(text, tone){
     if (!updatePill) return;
@@ -573,8 +758,6 @@
     if (canUpdate){
       if (updateCard) updateCard.classList.remove('sys-disabled');
       if (offlineHint) offlineHint.style.display = 'none';
-      if (btnUpdate) btnUpdate.disabled = false;
-      if (btnCheckUpdate) btnCheckUpdate.disabled = false;
 
       // Reset pill to show it's ready to check for updates
       setUpdatePill('Ready to check', 'muted');
@@ -591,6 +774,7 @@
         outUpdate.textContent = 'Updates require an active internet connection.';
       }
     }
+    syncUpdateControls();
   }
 
   async function checkUpdateConnectivity(){
@@ -604,6 +788,19 @@
     if (updateCard) updateCard.classList.add('sys-disabled');
 
     try{
+      const isolationResponse = await fetch('/auth/airgap', {cache:'no-store'});
+      if (!isolationResponse.ok) throw new Error('Unable to verify air-gap mode');
+      const isolation = await isolationResponse.json();
+      if (typeof isolation.enabled !== 'boolean' || typeof isolation.applied !== 'boolean') {
+        throw new Error('Invalid air-gap status');
+      }
+      if (isolation.enabled || isolation.applied) {
+        applyUpdateConnectivity(false);
+        setUpdatePill('Air-gapped mode', 'muted');
+        if (offlineHint) offlineHint.textContent = 'Updates are disabled by air-gap policy.';
+        if (outUpdate) outUpdate.textContent = 'Disable air-gapped mode on the touchscreen and reboot before updating.';
+        return;
+      }
       const r = await fetch('/cgi-bin/check_update_connectivity.sh?ts=' + Date.now(), {cache:'no-store'});
       if (!r.ok){
         throw new Error('HTTP ' + r.status);
@@ -631,6 +828,9 @@
       setUpdatePill('No internet for updates', 'error');
       return;
     }
+    if (!branchReady() || checkingUpdates) return;
+    checkingUpdates = true;
+    syncUpdateControls();
 
     if (updatePill){
       setUpdatePill(manual ? 'Checking…' : 'Auto-checking…', 'muted');
@@ -673,7 +873,7 @@
           if (reflashWrap) reflashWrap.style.display = 'none';
         }
       }else{
-        setUpdatePill('Check complete', 'muted');
+        setUpdatePill('Check failed', 'error');
       }
 
       if (outUpdate && text){
@@ -684,6 +884,9 @@
       if (outUpdate){
         outUpdate.textContent = 'Error during update check: ' + err;
       }
+    }finally{
+      checkingUpdates = false;
+      syncUpdateControls();
     }
   }
 
@@ -695,6 +898,7 @@
 
   // Auto-connectivity check + auto-update-check when System tab loads
   (async () => {
+    await loadUpdateBranch();
     await checkUpdateConnectivity();
     if (canUpdate){
       checkForUpdates(false);
@@ -708,7 +912,7 @@
   const updateStatus    = document.getElementById('update-status');
 
   function openUpdateModal(){
-    if (!updateModal || !canUpdate) return;
+    if (!updateModal || !canUpdate || !branchReady()) return;
     updateModal.hidden = false;
     if (updateStatus) updateStatus.textContent = '';
     if (updateRunBtn) updateRunBtn.disabled = false;
@@ -743,7 +947,7 @@
 
   if (updateRunBtn){
     updateRunBtn.addEventListener('click', () => {
-      if (!canUpdate) return;
+      if (!canUpdate || !branchReady() || checkingUpdates) return;
       if (updateStatus) updateStatus.textContent = 'Starting update…';
       updateRunBtn.disabled = true;
       if (updateCancelBtn) updateCancelBtn.disabled = true;
@@ -897,14 +1101,35 @@
   const btnKlipperscreen  = document.getElementById('btn-use-klipperscreen');
   const modePill          = document.getElementById('display-mode-pill');
   const modeHint          = document.getElementById('display-mode-hint');
+  let displayLockedDown = false;
 
   async function loadDisplayMode(){
     try {
-      const r = await fetch('/cgi-bin/get_display_mode.sh', {cache:'no-store'});
-      const mode = r.ok ? (await r.text()).trim() : 'mainsail';
-      applyDisplayMode(mode);
-    } catch(_) {
-      applyDisplayMode('mainsail');
+      const [r, securityResponse] = await Promise.all([
+        fetch('/cgi-bin/get_display_mode.sh', {cache:'no-store'}),
+        fetch('/auth/status', {cache:'no-store'})
+      ]);
+      if (!r.ok || !securityResponse.ok) throw new Error('Could not load display/security mode');
+      const security = await securityResponse.json();
+      displayLockedDown = security.mode === 'lockdown' || security.applied_mode === 'lockdown';
+      const airgapped = security.airgap_enabled || security.touchscreen_locked && security.mode !== 'lockdown';
+      displayLockedDown = displayLockedDown || airgapped;
+      const mode = (await r.text()).trim();
+      if (!['mainsail', 'klipperscreen'].includes(mode)) throw new Error('Invalid display mode response');
+      applyDisplayMode(displayLockedDown ? 'mainsail' : mode);
+      if (displayLockedDown && modeHint) {
+        modeHint.style.display = 'block';
+        modeHint.textContent = airgapped
+          ? 'Air-gapped mode requires PIN-protected Mainsail. Disable air-gapping and reboot to restore your saved display preference.'
+          : 'KlipperScreen is disabled in Lockdown. Change security mode and reboot first.';
+      }
+    } catch(error) {
+      if (btnMainsail) btnMainsail.disabled = true;
+      if (btnKlipperscreen) btnKlipperscreen.disabled = true;
+      if (modeHint) {
+        modeHint.style.display = 'block';
+        modeHint.textContent = error.message;
+      }
     }
   }
 
@@ -920,7 +1145,7 @@
       modePill.style.borderColor = 'var(--success)';
     }
     if (btnMainsail)      { btnMainsail.disabled      = (mode !== 'klipperscreen'); }
-    if (btnKlipperscreen) { btnKlipperscreen.disabled  = (mode === 'klipperscreen'); }
+    if (btnKlipperscreen) { btnKlipperscreen.disabled  = displayLockedDown || (mode === 'klipperscreen'); }
   }
 
   async function setDisplayMode(mode){
@@ -930,16 +1155,20 @@
     if (btnMainsail)      btnMainsail.disabled      = true;
     if (btnKlipperscreen) btnKlipperscreen.disabled  = true;
     try {
-      await fetch('/cgi-bin/set_display_mode.sh', {
+      const response = await fetch('/cgi-bin/set_display_mode.sh', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded',
                   'Content-Length': ('mode=' + mode).length},
         body: 'mode=' + mode,
         cache: 'no-store'
       });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'ok') throw new Error(result.message || 'Display mode was not saved');
       modeHint.textContent = 'Mode saved — rebooting…';
-    } catch(_) {
-      modeHint.textContent = 'Request sent — rebooting…';
+    } catch(error) {
+      modeHint.textContent = error.message;
+      if (btnMainsail) btnMainsail.disabled = false;
+      if (btnKlipperscreen) btnKlipperscreen.disabled = displayLockedDown;
     }
   }
 

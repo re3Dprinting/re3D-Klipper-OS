@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; then
+  echo "[re3D-OS update] ERROR: Updates are disabled in air-gapped mode." >&2
+  exit 1
+fi
+
 BRANCH="${1:-devel}"   # passed from bootstrap (not strictly required here)
 LOG_TAG="[re3D-OS update]"
 
@@ -52,6 +57,8 @@ SRC_RELOAD="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/c
 SRC_SETUP="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/setup_printer.py"
 SRC_SHELL_CMDS="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/config/src/system_config/shell_commands"
 SRC_WAIT_HTML="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/wait.html"
+SRC_URL_SWITCHER="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/url-switcher"
+SRC_KIOSK_UI="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/re3d-kiosk-ui"
 SRC_BED_CYCLING="${REPO_DIR}/src/modules/fullpageos/filesystem/home/pi/printer_data/gcodes/Bed Cycling"
 
 # Target locations on the LIVE system
@@ -64,6 +71,8 @@ DST_SETUP="/home/pi/printer_data/config/src/setup_printer.py"
 DST_SHELL_CMDS="/usr/local/bin"
 DST_SHELL_CFG="/home/pi/printer_data/config"
 DST_WAIT_HTML="/home/pi/wait.html"
+DST_URL_SWITCHER="/home/pi/url-switcher"
+DST_KIOSK_UI="/home/pi/re3d-kiosk-ui"
 DST_BED_CYCLING="/home/pi/printer_data/gcodes/Bed Cycling"
 
 # ---------- Start ----------
@@ -76,7 +85,7 @@ log "${LOG_TAG} Branch/tag: ${BRANCH}"
 log "${LOG_TAG} Repo dir:   ${REPO_DIR}"
 log "${LOG_TAG} ------------------------------------------"
 
-# Safety check for repo clone (bootstrap already cloned / checked out devel)
+# Safety check for repo clone (bootstrap already checked out the selected ref)
 if [ ! -d "${REPO_DIR}/.git" ]; then
   log "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
   set_status "error"
@@ -115,12 +124,22 @@ fi
 
 log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
+chmod 0755 "${DST_MCONFIG}/cgi-bin/setup.py"
 
 # Sync wait.html (first-boot / flash UI) if changed
 if [ -f "${SRC_WAIT_HTML}" ]; then
   rsync -a --checksum "${SRC_WAIT_HTML}" "${DST_WAIT_HTML}"
   chown pi:pi "${DST_WAIT_HTML}" 2>/dev/null || true
 fi
+
+if [ -d "${SRC_URL_SWITCHER}" ]; then
+  log "${LOG_TAG} Syncing display switcher UI and bundled font..."
+  rsync -a --checksum --chown=pi:pi "${SRC_URL_SWITCHER}/" "${DST_URL_SWITCHER}/"
+fi
+
+log "${LOG_TAG} Deploying touchscreen-only Mainsail controls..."
+install -d -m 0755 -o pi -g pi "${DST_KIOSK_UI}"
+install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"
 
 # ---------- 1b) Recovery monitor daemon ----------
 SRC_RECOVERY_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/recovery_monitor.py"
@@ -157,7 +176,7 @@ if [ -d "${SRC_SYSTEMD}" ]; then
       log "${LOG_TAG}   updated ${svc_name}"
       _RELOAD_NEEDED=1
     fi
-  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 \( -name '*.service' -o -name '*.timer' \) -print0)
+  done < <(find "${SRC_SYSTEMD}" -maxdepth 1 \( -name '*.service' -o -name '*.timer' -o -name '*.path' \) -print0)
   if [ "${_RELOAD_NEEDED}" -eq 1 ]; then
     systemctl daemon-reload || true
     log "${LOG_TAG} systemd daemon-reload done"
@@ -178,6 +197,21 @@ if [ -d "${SRC_SYSTEMD}" ]; then
 else
   log "${LOG_TAG} WARNING: ${SRC_SYSTEMD} not found, skipping service file deploy."
 fi
+
+# Deploy password service assets outside the mirrored public web directory.
+log "${LOG_TAG} Deploying optional HTTPS interface authentication..."
+install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth_server.py" /opt/mconfig/auth_server.py
+install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth.html" /opt/mconfig/auth.html
+for security_asset in security_policy.py ssh_password.py kiosk.html kiosk-client.js security.css airgap.py airgap.html prepare_keyboard.py; do
+  install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/${security_asset}" "/opt/mconfig/${security_asset}"
+done
+install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/install_auth.sh" /opt/mconfig/install_auth.sh
+install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/prepare_auth_tls.sh" /opt/mconfig/prepare_auth_tls.sh
+install -d -m 0755 /opt/mconfig/nginx
+for auth_config in "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/nginx/"*.conf; do
+  install -m 0644 "${auth_config}" /opt/mconfig/nginx/
+done
+bash /opt/mconfig/install_auth.sh live
 
 # ---------- 2) Klipper configs: FFF ----------
 set_progress 20
@@ -453,6 +487,7 @@ fi
 # e) Update kiosk scripts (including new re3d-session wrapper)
 for src_dst in \
   "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/re3d-session:/opt/custompios/scripts/re3d-session" \
+  "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/scripts/get_url:/opt/custompios/scripts/get_url" \
   "${SRC_RUN_ONEPAGEOS}:/opt/custompios/scripts/run_onepageos" \
   "${SRC_CHROMIUM_SCRIPT}:/opt/custompios/scripts/start_chromium_browser" \
   "${SRC_FULLSCREEN}:/opt/custompios/scripts/fullscreen" \
@@ -588,7 +623,8 @@ DROPIN_EOF
 systemctl disable NetworkManager-wait-online.service || true
 systemctl daemon-reload || true
 
-for svc in klipper moonraker mainsail nginx crowsnest; do
+# Security-gated backends and the display must switch together at reboot, without killing this CGI updater.
+for svc in klipper mainsail; do
   log "${LOG_TAG} Restarting ${svc}.service (best-effort)..."
   systemctl restart "${svc}.service" || true
 done

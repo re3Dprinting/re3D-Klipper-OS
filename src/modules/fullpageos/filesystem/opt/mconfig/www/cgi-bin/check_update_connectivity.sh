@@ -2,6 +2,9 @@
 # /cgi-bin/check_update_connectivity.sh
 # Truthfully answers: "Can this machine reach the update repo using git?"
 
+. "$(dirname "$0")/_cgi_common.sh"
+require_network
+
 echo "Content-Type: application/json"
 echo ""
 

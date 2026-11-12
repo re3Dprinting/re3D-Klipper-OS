@@ -3,6 +3,9 @@
 # Returns JSON array of visible WiFi networks via nmcli.
 # Each entry: {"ssid":"...","signal":N,"security":"WPA2","freq":"2.4","in_use":bool}
 
+. "$(dirname "$0")/_cgi_common.sh"
+require_network
+
 printf 'Content-Type: application/json\r\n\r\n'
 
 export PATH="/usr/sbin:/sbin:/usr/bin:/bin"

@@ -25,6 +25,7 @@ mesh_compensation_enabled=$mesh_compensation_enabled
 EOF
     if [[ "$section" == "fff" ]]; then
         printf 'slice_microswiss_hotends_enabled=false\n' >>"$config_file"
+        printf 'filament_175_enabled=false\n' >>"$config_file"
     fi
 }
 

@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>re:3D Touchscreen Lock</title>
+  <link rel="stylesheet" href="/auth/security.css">
+</head>
+<body class="kiosk-page">
+<main id="lock" class="security-card pin-card" aria-labelledby="pin-heading">
+  <header class="security-brand">
+    <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
+    <span class="brand-caption">Touchscreen access</span>
+  </header>
+  <div class="pin-intro">
+    <h1 id="pin-heading">Touchscreen locked</h1>
+    <p>Enter your PIN to unlock. The printer continues operating while locked.</p>
+    <section class="locked-printer-status" aria-label="Live printer status">
+      <strong id="print-state">Connecting to printer...</strong>
+      <p id="heater-status">Checking heater temperatures...</p>
+      <p id="telemetry-status" role="status" aria-live="polite"></p>
+    </section>
+    <button id="emergency-stop" class="btn-emergency" type="button">EMERGENCY STOP</button>
+    <p class="emergency-help">Stops heaters and motion in Klipper. No PIN needed. Software stop cannot cut power; use the physical stop or power switch if unsafe.</p>
+    <p id="emergency-status" class="status-message" role="alert"></p>
+  </div>
+  <form id="form">
+    <label for="pin">Touchscreen PIN</label>
+    <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,}" minlength="4"
+           maxlength="1024" autocomplete="off" required>
+    <div id="keys">
+      <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+      <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+      <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+      <button class="key-action" type="button">Clear</button><button type="button">0</button><button class="key-action" type="button">Back</button>
+    </div>
+    <button id="unlock" class="btn-primary" type="submit">Unlock</button>
+  </form>
+  <p id="status" class="status-message" role="status" aria-live="polite">Checking security mode...</p>
+</main>
+<section id="screen" hidden>
+  <div id="toolbar">
+    <div class="toolbar-copy">
+      <img class="brand-logo" src="/auth/logo.png" alt="re:3D">
+      <span>Locks after 5 minutes idle</span>
+    </div>
+    <div class="toolbar-actions">
+      <button id="printer-control" class="btn-ghost" type="button">Printer</button>
+      <button id="configurator" class="btn-ghost" type="button">Configurator</button>
+      <button id="lock-now" class="btn-ghost" type="button">Lock</button>
+    </div>
+  </div>
+  <iframe id="printer" title="Printer control"></iframe>
+</section>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  let unlocked = false;
+  let busy = false;
+  let lastActivity = performance.now();
+  let dirty = false;
+  let reporting = false;
+  let lastReport = -Infinity;
+  let stopping = false;
+  let readingStatus = false;
+  async function refreshPrinterStatus() {
+    if (readingStatus || unlocked) return;
+    readingStatus = true;
+    try {
+      const state = await request('printer-status');
+      const names = {standby:'Ready', printing:'Printing', paused:'Print paused',
+        complete:'Print complete', cancelled:'Print cancelled', error:'Print error'};
+      el('print-state').textContent = state.firmware !== 'ready'
+        ? 'Printer ' + state.firmware
+        : (names[state.state] || state.state)
+          + (['printing', 'paused'].includes(state.state) ? ` - ${Math.round(state.progress * 100)}%` : '');
+      el('heater-status').textContent = state.heaters.length
+        ? state.heaters.map(heater => {
+          const label = heater.name === 'heater_bed' ? 'Bed'
+            : heater.name === 'extruder' ? 'Nozzle'
+              : heater.name.replace(/^heater_generic /, '').replaceAll('_', ' ');
+          return `${label}: ${heater.temperature.toFixed(1)} / ${heater.target.toFixed(0)} \u00b0C`;
+        }).join('\n') : 'No heaters configured.';
+      el('telemetry-status').textContent = 'Live - updates every 5 seconds';
+    } catch (error) {
+      el('print-state').textContent = 'Printer status unavailable';
+      el('heater-status').textContent = 'Temperatures unavailable - do not assume heaters are cold.';
+      el('telemetry-status').textContent = error.message;
+    } finally { readingStatus = false; }
+  }
+  const initialView = new URLSearchParams(location.search).get('view') === 'configurator'
+    ? 'http://localhost:8081/' : '/';
+  function navigate(url) {
+    if (!unlocked) return;
+    el('printer').src = url;
+    lastActivity = performance.now();
+    reportActivity();
+  }
+  async function request(path, data) {
+    const response = await fetch('/auth/' + path, {
+      method:data ? 'POST' : 'GET', cache:'no-store',
+      headers:data ? {'Content-Type':'application/json'} : {},
+      body:data ? JSON.stringify(data) : undefined
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Touchscreen authentication failed');
+    return result;
+  }
+  function showLock(message = '') {
+    unlocked = false;
+    dirty = false;
+    el('printer').src = 'about:blank';
+    el('screen').hidden = true;
+    el('lock').hidden = false;
+    el('pin').value = '';
+    el('status').textContent = message;
+    refreshPrinterStatus();
+  }
+  async function lock() {
+    showLock();
+    try { await request('lock', {}); }
+    catch (error) { el('status').textContent = error.message; }
+  }
+  async function reportActivity() {
+    if (reporting || !unlocked) return;
+    reporting = true;
+    dirty = false;
+    lastReport = performance.now();
+    try { await request('activity', {}); }
+    catch (error) { showLock(error.message); }
+    finally { reporting = false; }
+  }
+  el('keys').addEventListener('click', event => {
+    if (event.target.tagName !== 'BUTTON') return;
+    const key = event.target.textContent;
+    if (key === 'Clear') el('pin').value = '';
+    else if (key === 'Back') el('pin').value = el('pin').value.slice(0, -1);
+    else el('pin').value += key;
+  });
+  el('form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    try {
+      await request('pin', {pin:el('pin').value});
+      el('pin').value = '';
+      el('status').textContent = '';
+      unlocked = true;
+      lastActivity = performance.now();
+      lastReport = -Infinity;
+      el('lock').hidden = true;
+      el('screen').hidden = false;
+      el('printer').src = initialView;
+    } catch (error) { el('status').textContent = error.message; }
+    finally { busy = false; }
+  });
+  el('lock-now').addEventListener('click', lock);
+  el('printer-control').addEventListener('click', () => navigate('/'));
+  el('configurator').addEventListener('click', () => navigate('http://localhost:8081/'));
+  el('emergency-stop').addEventListener('click', async () => {
+    if (stopping) return;
+    stopping = true;
+    el('emergency-stop').disabled = true;
+    el('emergency-status').textContent = 'Sending emergency stop...';
+    try {
+      await request('emergency-stop', {});
+      el('emergency-status').textContent = 'Emergency stop acknowledged by Klipper. Check the printer; recovery is required before printing again.';
+    } catch (error) {
+      el('emergency-status').textContent = error.message.includes('physical emergency stop')
+        ? error.message : error.message
+          + ' Stop NOT confirmed. Use the physical emergency stop or power switch if unsafe.';
+    } finally {
+      stopping = false;
+      el('emergency-stop').disabled = false;
+      refreshPrinterStatus();
+    }
+  });
+  addEventListener('message', event => {
+    if (event.source !== el('printer').contentWindow
+        || !['http://localhost', 'http://localhost:8081'].includes(event.origin)
+        || !unlocked) return;
+    if (event.data?.type === 're3d-configurator') {
+      navigate('http://localhost:8081/');
+      return;
+    }
+    if (event.data?.type !== 're3d-activity') return;
+    lastActivity = performance.now();
+    dirty = true;
+    if (performance.now() - lastReport >= 1000) reportActivity();
+  });
+  setInterval(() => {
+    if (unlocked && performance.now() - lastActivity >= 300000) lock();
+  }, 1000);
+  setInterval(async () => {
+    refreshPrinterStatus();
+    if (!unlocked) return;
+    try {
+      if (dirty) {
+        await reportActivity();
+      }
+      if (!unlocked) return;
+      const state = await request('kiosk-status');
+      if (typeof state.touchscreen_locked !== 'boolean') throw new Error('Unable to verify touchscreen protection');
+      if (!state.touchscreen_locked) { location.replace('/'); return; }
+      if (!state.unlocked) showLock('Touchscreen session ended. Enter your PIN again.');
+    } catch (error) { showLock(error.message); }
+  }, 5000);
+  (async () => {
+    try {
+      const state = await request('status');
+      if (typeof state.touchscreen_locked !== 'boolean') throw new Error('Unable to verify touchscreen protection');
+      if (!state.touchscreen_locked) { location.replace('/'); return; }
+      await request('lock', {});
+      showLock();
+    } catch (error) { showLock(error.message); }
+  })();
+})();
+</script>
+</body>
+</html>

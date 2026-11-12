@@ -4,6 +4,8 @@
 # Disconnect from or forget (delete saved profile) a WiFi network.
 
 set -eo pipefail
+. "$(dirname "$0")/_cgi_common.sh"
+require_network
 
 echo "Content-Type: text/plain"
 echo

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "re3D Kiosk UI",
+  "version": "1.1.0",
+  "description": "Touchscreen navigation and Mainsail Upload & Print shortcut visibility.",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "css": ["mainsail.css"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["http://localhost/*", "https://localhost/*", "http://127.0.0.1/*", "https://127.0.0.1/*"],
+      "js": ["kiosk-client.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ]
+}

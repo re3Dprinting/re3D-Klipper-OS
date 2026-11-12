@@ -1,11 +1,26 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>URL Switcher Options</title>
 <style>
-  body { font: 14px system-ui, sans-serif; margin: 24px; }
-  label { display:block; margin:12px 0 4px; }
-  input, select { width: 520px; max-width: 100%; }
-  button { margin-top: 16px; padding: 8px 12px; }
+  @font-face {
+    font-family: Lato;
+    src: url("Lato-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+  }
+  :root { color-scheme: dark }
+  * { box-sizing: border-box }
+  body { font: 14px/1.5 Lato, Roboto, Arial, sans-serif; margin: 0; padding: 40px; min-height: 100vh; background: radial-gradient(ellipse at 90% 50%, rgba(57,59,62,.3), transparent 65%), #181b20; color: #F2F2F2 }
+  h1 { margin-top: 0 }
+  label { display:block; margin:12px 0 4px; color: #bcbec0 }
+  input, select { display: block; width: 520px; max-width: 100%; margin-top: 4px; padding: 12px 14px; border: 1px solid #494D54; border-radius: 10px; background: #14171b; color: #F2F2F2; font: inherit }
+  button { margin-top: 16px; padding: 10px 16px; min-height: 44px; border: none; border-radius: 10px; background: #FFD400; color: #181b20; font: inherit; font-weight: 600; cursor: pointer }
+  button:hover { background: #FFE04D }
+  button:active { background: #E6BF00 }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid #FFD400; outline-offset: 3px }
+  @media (max-width: 599px) { body { padding: 16px } }
 </style>
 <h1>URL Switcher</h1>
 <label>URL A <input id="a"></label>

@@ -8,18 +8,23 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <style>
+    @font-face{
+      font-family:Lato;
+      src:url("/fonts/Lato-Regular.ttf") format("truetype");
+      font-style:normal;font-weight:400;font-display:swap;
+    }
     /* Match the configurator palette; keep inline so this page stands alone during updates. */
     :root{
       color-scheme: dark;
       --bg: #121314;
-      --card: #1F2023;
-      --surface-0: #17181A;
-      --surface-2: #292B2F;
+      --card: #181b20;
+      --surface-0: #14171b;
+      --surface-2: #23272c;
       --border: #32353A;
-      --accent: #E7C547;
-      --accent-soft:#CEB147;
-      --text: #EEF0F3;
-      --muted: #ACAFB8;
+      --accent: #FFD400;
+      --accent-soft:#E6BF00;
+      --text: #F2F2F2;
+      --muted: #bcbec0;
       --dim: #999DA6;
       --warn:#f97316;
     }
@@ -36,7 +41,7 @@
       justify-content:center;
       background:var(--bg);
       color:var(--text);
-      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      font-family:Lato,Roboto,Arial,sans-serif;
       padding:24px 32px;
       overflow:hidden;
     }
@@ -47,8 +52,9 @@
       max-height:calc(100dvh - 48px);
       overflow:auto;
       background:var(--card);
+      background-image:radial-gradient(ellipse at 90% 50%,rgba(57,59,62,.3),transparent 65%);
       border-radius:16px;
-      border:1px solid var(--border);
+      border:none;
       padding:32px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);
       display:flex;

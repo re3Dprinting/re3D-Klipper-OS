@@ -1,0 +1,4 @@
+/* Loaded only by kiosk launchers, not by the shared Mainsail theme. */
+.v-application .topbar .upload-and-start-button {
+  display: none !important;
+}

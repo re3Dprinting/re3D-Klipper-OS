@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH="${1:-devel}"   # default branch/tag to track
+if [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; then
+  echo "[re3D-OS bootstrap] ERROR: Updates are disabled in air-gapped mode." >&2
+  exit 1
+fi
+
+. /usr/local/bin/re3d-update-config.sh
+load_update_branch "$@"
 REPO_DIR="/opt/re3d-os-src"
-REPO_URL="https://github.com/re3Dprinting/re3D-Klipper-OS.git"
+REPO_URL="${UPDATE_REPO_URL}"
 REAL_SCRIPT="${REPO_DIR}/tools/re3d-os-update.sh"
 LOG_TAG="[re3D-OS bootstrap]"
 
@@ -28,26 +34,34 @@ fi
 cd "${REPO_DIR}"
 
 echo "${LOG_TAG} Fetching latest from origin..."
-if git fetch origin 2>&1; then
+if git fetch --prune origin 2>&1; then
+  if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
+    TARGET="refs/remotes/origin/${BRANCH}"
+  elif [ "$#" -gt 0 ] && git show-ref --verify --quiet "refs/tags/${BRANCH}"; then
+    TARGET="refs/tags/${BRANCH}"
+  else
+    echo "${LOG_TAG} ERROR: Requested branch '${BRANCH}' not found."
+    exit 1
+  fi
+
   # Throw away ANY local changes/untracked files – this is a deployment clone.
   echo "${LOG_TAG} Resetting local changes..."
   git reset --hard HEAD
   git clean -fd
 
   # --- Try to align to requested branch/tag ---
-  if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
+  if [ "${TARGET}" = "refs/remotes/origin/${BRANCH}" ]; then
     echo "${LOG_TAG} Checking out origin/${BRANCH}..."
-    git checkout -B "${BRANCH}" "origin/${BRANCH}"
-    git reset --hard "origin/${BRANCH}"
-  elif git show-ref --verify --quiet "refs/tags/${BRANCH}"; then
+    git checkout -B "${BRANCH}" "${TARGET}"
+    git reset --hard "${TARGET}"
+  else
     echo "${LOG_TAG} Checking out tag ${BRANCH}..."
     git checkout -f "refs/tags/${BRANCH}"
     git reset --hard "refs/tags/${BRANCH}"
-  else
-    echo "${LOG_TAG} WARNING: Branch or tag '${BRANCH}' not found; staying on current HEAD."
   fi
 else
-  echo "${LOG_TAG} WARNING: git fetch failed (offline?). Using existing repo at HEAD."
+  echo "${LOG_TAG} ERROR: git fetch failed; update aborted."
+  exit 1
 fi
 chmod 755 "${REAL_SCRIPT}" || true
 # --- Hand off to real updater inside repo ---

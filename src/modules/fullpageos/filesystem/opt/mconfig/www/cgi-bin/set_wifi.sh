@@ -5,6 +5,8 @@
 # Use "-" as PSK for open networks.
 
 set -eo pipefail
+. "$(dirname "$0")/_cgi_common.sh"
+require_network
 
 MODE="cli"
 [[ -n "${REQUEST_METHOD:-}" ]] && MODE="cgi"

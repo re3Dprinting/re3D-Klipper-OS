@@ -35,10 +35,25 @@ flags=(
   --disable-features=TranslateUI
   --autoplay-policy=no-user-gesture-required
   --disk-cache-size=500000000
-  --load-extension=/home/pi/virtual_keyboard
+  --load-extension=/home/pi/virtual_keyboard,/home/pi/re3d-kiosk-ui
 )
 
 # ---------- One-time splash branch ----------
+if [[ -f /etc/re3d-security/lockdown || -f /run/re3d-airgap/enabled ]]; then
+  # A fresh kiosk profile cannot restore a previous PIN session or printer websocket.
+  PROFILE="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/re3d-kiosk.XXXXXX")" || exit 1
+  trap 'rm -r -- "$PROFILE"' EXIT
+  flags+=("--user-data-dir=$PROFILE" --disk-cache-size=10485760)
+  [[ ! -f "$FIRSTBOOT_FLAG" ]] || touch "$UI_STARTED"
+  CHROME_BIN="$(command -v chromium-browser || command -v chromium || true)"
+  if [[ -z "$CHROME_BIN" ]]; then
+    echo "[$(date)] Lockdown: Chromium is unavailable; refusing an unprotected fallback." >>"$LOG"
+    exit 1
+  fi
+  "$CHROME_BIN" "${flags[@]}" --app=http://localhost/auth/kiosk
+  exit $?
+fi
+
 if [[ -f "$FIRSTBOOT_FLAG" ]]; then
   {
     echo "[$(date)] firstboot: flag present; display backend: $PLATFORM"

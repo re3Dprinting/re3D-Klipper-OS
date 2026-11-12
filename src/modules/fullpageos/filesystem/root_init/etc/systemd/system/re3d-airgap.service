@@ -1,0 +1,20 @@
+[Unit]
+Description=Apply re3D air-gap isolation before networking and the display
+DefaultDependencies=no
+After=local-fs.target nftables.service systemd-udevd.service systemd-sysctl.service
+Before=network-pre.target re3d-security.service display-manager.service
+Wants=network-pre.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/mconfig/airgap.py --apply
+RemainAfterExit=true
+RuntimeDirectory=re3d-airgap
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target
