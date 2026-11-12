@@ -140,6 +140,7 @@ fi
 log "${LOG_TAG} Deploying touchscreen-only Mainsail controls..."
 install -d -m 0755 -o pi -g pi "${DST_KIOSK_UI}"
 install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"
+install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/external-background.js" "${SRC_KIOSK_UI}/external-navigation.js" "${SRC_KIOSK_UI}/external-error.html" "${DST_KIOSK_UI}/"
 
 # ---------- 1b) Recovery monitor daemon ----------
 SRC_RECOVERY_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/recovery_monitor.py"

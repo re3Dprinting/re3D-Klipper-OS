@@ -156,8 +156,13 @@ test('upload shortcut is hidden by a kiosk-only stylesheet, never the shared Mai
     js: ['kiosk-client.js'],
     all_frames: true,
     run_at: 'document_start'
+  }, {
+    matches: ['http://*/*', 'https://*/*'],
+    js: ['external-navigation.js'],
+    all_frames: true,
+    run_at: 'document_idle'
   }]);
-  assert.equal(manifest.permissions, undefined);
+  assert.deepEqual(manifest.permissions, ['tabs', 'storage', 'webNavigation']);
   const css = fs.readFileSync(path.join(extension, 'mainsail.css'), 'utf8');
   assert.match(css, /\.v-application \.topbar \.upload-and-start-button\s*\{\s*display: none !important;\s*\}/);
   assert.doesNotMatch(css, /emergency-button|save-config-button|nth-child|@media/);
