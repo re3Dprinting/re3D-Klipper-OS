@@ -50,11 +50,12 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
     'bed-level-grid': grid, 'bed-level-refresh': refresh, 'bed-level-start': start,
     'bed-level-shimstock': shimstock, 'out-bed-level': out, 'pid-go': pidGo
   };
-  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-speed', 'belt-clear', 'out-belt']){
+  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-speed', 'belt-sgt', 'belt-clear', 'out-belt']){
     elements[id] = element();
   }
   elements['belt-axis'].value = 'x';
   elements['belt-speed'].value = '50';
+  elements['belt-sgt'].value = 'current';
   elements['belt-clear'].checked = false;
   const requests = [];
   const history = [];
@@ -99,11 +100,17 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
       if (payload.script.startsWith('SET_TMC_FIELD')){
         const failure = onSet ? onSet(payload.script) : null;
         if (failure) return { ok: true, status: 200, json: async () => ({ error: { message: failure } }) };
-        for (const match of payload.script.matchAll(/STEPPER=(\w+) FIELD=(\w+) VALUE=(\d+)/g)){
+        for (const match of payload.script.matchAll(/STEPPER=(\w+) FIELD=(\w+) VALUE=(-?\d+)/g)){
           registers[match[1] + ':' + match[2]] = Number(match[3]);
           if (match[2] === 'en_pwm_mode'){
             const key = match[1] + ':gconf';
             registers[key] = ((registers[key] ?? 0) & ~4) | (Number(match[3]) << 2);
+          }
+          if (match[2] === 'sgt' || match[2] === 'sfilt'){
+            const key = match[1] + ':coolconf';
+            const mask = match[2] === 'sgt' ? 127 << 16 : 1 << 24;
+            const bits = match[2] === 'sgt' ? (Number(match[3]) & 127) << 16 : Number(match[3]) << 24;
+            registers[key] = ((registers[key] ?? 0) & ~mask) | bits;
           }
         }
         return { ok: true, status: 200, json: async () => ({ result: 'ok' }) };
@@ -733,5 +740,82 @@ test('different test speeds cannot share a baseline, and invalid speed values do
   page.elements['belt-clear'].checked = true;
   await page.elements['belt-run'].click();
   assert.match(page.elements['out-belt'].textContent, /Test speed must be 25 or 50/);
+  assert.equal(beltMotionRequests(page).length, count);
+});
+
+test('measurement SGT and filtering are applied to both Y motors and exact signed settings are restored', async () => {
+  const initialRegisters = { 'stepper_y:coolconf': 0x007b0000, 'stepper_y1:coolconf': 0x01100000 };
+  const status = beltPrinterStatus();
+  status.motion_report.live_velocity = 25;
+  const originalConfig = JSON.stringify(status.configfile.settings);
+  const page = await mountBelt({
+    status, initialRegisters,
+    onSample: status => {
+      for (const [stepper, value] of [['stepper_y', 124], ['stepper_y1', 146]]){
+        assert.equal(page.registers[stepper + ':sfilt'], 1);
+        const sgt = page.registers[stepper + ':sgt'];
+        status['tmc5160 ' + stepper].drv_status.sg_result = sgt >= 16 ? value : 0;
+      }
+      return null;
+    }
+  });
+  page.elements['belt-axis'].value = 'y';
+  page.elements['belt-speed'].value = '25';
+  page.elements['belt-sgt'].value = '16';
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /stepper_y: median 124.*SGT=16/);
+  assert.match(page.elements['out-belt'].textContent, /stepper_y1: median 146.*SGT=16/);
+  assert.equal(page.registers['stepper_y:sgt'], -5);
+  assert.equal(page.registers['stepper_y:sfilt'], 0);
+  assert.equal(page.registers['stepper_y:coolconf'], initialRegisters['stepper_y:coolconf']);
+  assert.equal(page.registers['stepper_y1:coolconf'], initialRegisters['stepper_y1:coolconf']);
+  assert.equal(JSON.stringify(status.configfile.settings), originalConfig);
+  await page.elements['belt-reference'].click();
+  page.elements['belt-sgt'].value = '32';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Reference settings differ; comparison withheld/);
+});
+
+test('sampling errors restore signed SGT and the filter, while current-setting mode preserves negative SGT', async () => {
+  const initialRegisters = { 'stepper_x:coolconf': 0x00400000 };
+  const page = await mountBelt({ initialRegisters,
+    onMove: () => { assert.equal(page.registers['stepper_x:sgt'], -64); },
+    onSample: () => ({ error: { message: 'No driver response' } })
+  });
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /No driver response/);
+  assert.equal(page.registers['stepper_x:sgt'], -64);
+  assert.equal(page.registers['stepper_x:sfilt'], 0);
+  assert.equal(page.registers['stepper_x:coolconf'], initialRegisters['stepper_x:coolconf']);
+});
+
+test('a zero signal suggests a bounded SGT increase and upper-limit measurements cannot be saved', async () => {
+  const status = beltPrinterStatus();
+  status.motion_report.live_velocity = 25;
+  status['tmc5160 stepper_x'].drv_status.sg_result = 0;
+  const page = await mountBelt({ status });
+  page.elements['belt-speed'].value = '25';
+  page.elements['belt-sgt'].value = '16';
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /SGT=16, SFILT=1/);
+  assert.match(page.elements['out-belt'].textContent, /Try measurement SGT 32/);
+  page.elements['belt-sgt'].value = '63';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Already at the least sensitive SGT/);
+  assert.equal(page.elements['belt-reference'].disabled, true);
+  status['tmc5160 stepper_x'].drv_status.sg_result = 1023;
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /SG_RESULT=1023 at SGT=63/);
+  assert.match(page.elements['out-belt'].textContent, /Lower measurement SGT/);
+  assert.equal(page.elements['belt-reference'].disabled, true);
+  assert.equal(page.storage.size, 0);
+  const count = beltMotionRequests(page).length;
+  page.elements['belt-sgt'].value = '64';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Invalid measurement SGT/);
   assert.equal(beltMotionRequests(page).length, count);
 });

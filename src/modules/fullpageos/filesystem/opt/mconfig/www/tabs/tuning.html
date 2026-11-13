@@ -226,6 +226,22 @@
       </div>
     </div>
     <div>
+      <label for="belt-sgt">Measurement sensitivity (SGT)</label>
+      <select id="belt-sgt">
+        <option value="current">Current driver setting</option>
+        <option value="16">16 (less sensitive)</option>
+        <option value="32">32</option>
+        <option value="48">48</option>
+        <option value="63">63 (least sensitive)</option>
+      </select>
+      <div class="hint">
+        If readings remain zero at 25 mm/s, try 16, then increase only if needed.
+        Higher SGT is less sensitive. This affects the measurement scale, not belt tension.
+        The test enables StallGuard filtering and restores the original SGT and filter afterward.
+        Use the same speed and SGT for before/after comparisons.
+      </div>
+    </div>
+    <div>
       <div class="hint">
         Test moves only the selected axis between 20% and 80% of its configured travel at the selected speed,
         then returns to the starting test point. It does not home or raise Z.
@@ -318,6 +334,7 @@
   const beltStop = document.getElementById('belt-stop');
   const beltAxis = document.getElementById('belt-axis');
   const beltSpeedSelect = document.getElementById('belt-speed');
+  const beltSgtSelect = document.getElementById('belt-sgt');
   const beltClear = document.getElementById('belt-clear');
   const bedStartZ = 101.3;
   const bedMoonraker = (localStorage.getItem('moonrakerUrl') ||
@@ -646,6 +663,8 @@
 
   async function beltRestore(drivers){
     const script = drivers.flatMap(driver => [
+      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=sgt VALUE=${beltSgtValue(driver.coolconf)}`,
+      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=sfilt VALUE=${(driver.coolconf >>> 24) & 1}`,
       `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=tcoolthrs VALUE=${driver.tcoolthrs}`,
       `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=${driver.thigh}`,
       `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=en_pwm_mode VALUE=${(driver.gconf >> 2) & 1}`
@@ -660,6 +679,11 @@
     }
   }
 
+  function beltSgtValue(coolconf){
+    const value = (coolconf >>> 16) & 127;
+    return value >= 64 ? value - 128 : value;
+  }
+
   beltRun.addEventListener('click', async () => {
     if (bedBusy || pidGo.disabled) return;
     beltResult = null;
@@ -670,7 +694,8 @@
     }
     bedBusy = true;
     beltAborted = false;
-    const controls = [pidGo, bedRefresh, bedStart, bedShimstock, ...bedPoints, beltRun, beltAxis, beltSpeedSelect, beltClear];
+    const controls = [pidGo, bedRefresh, bedStart, bedShimstock, ...bedPoints, beltRun, beltAxis,
+      beltSpeedSelect, beltSgtSelect, beltClear];
     const disabled = controls.map(control => control.disabled);
     controls.forEach(control => { control.disabled = true; });
     beltStop.disabled = false;
@@ -680,6 +705,10 @@
       if (!['x', 'y'].includes(axis)) throw new Error('Invalid test axis.');
       beltSpeed = Number(beltSpeedSelect.value);
       if (![25, 50].includes(beltSpeed)) throw new Error('Test speed must be 25 or 50 mm/s.');
+      const requestedSgt = beltSgtSelect.value;
+      if (!['current', '16', '32', '48', '63'].includes(requestedSgt)){
+        throw new Error('Invalid measurement SGT selection.');
+      }
       preview('out-belt', 'Checking drivers and printer status...');
       const state = await beltState(axis);
       beltCheck();
@@ -691,12 +720,15 @@
         const gconf = await beltRegister(driver.stepper, 'GCONF');
         if (coolconf & 15) throw new Error(`${driver.stepper}: live CoolStep is enabled; disable it before testing.`);
         if (gconf & (1 << 15)) throw new Error(`${driver.stepper}: live driver stop mode is enabled; disable it before testing.`);
-        registers.push({ ...driver, tcoolthrs, thigh, coolconf, gconf });
+        const sgt = requestedSgt === 'current' ? beltSgtValue(coolconf) : Number(requestedSgt);
+        registers.push({ ...driver, tcoolthrs, thigh, coolconf, gconf, sgt });
       }
       beltCheck();
       restore = registers;
       await bedRequest('/printer/gcode/script', { script: registers.flatMap(driver => [
         `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=en_pwm_mode VALUE=0`,
+        `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=sgt VALUE=${driver.sgt}`,
+        `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=sfilt VALUE=1`,
         `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=tcoolthrs VALUE=1048575`,
         `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=0`
       ]).join('\n') });
@@ -706,28 +738,36 @@
       await beltMove(axis, state.low);
       const positioned = await beltState(axis, true);
       if (positioned.signature !== state.signature) throw new Error('Printer settings changed before sampling.');
-      await beltSweep(axis, state.high, state.drivers, samples, readings);
-      await beltSweep(axis, state.low, state.drivers, samples, readings);
+      await beltSweep(axis, state.high, registers, samples, readings);
+      await beltSweep(axis, state.low, registers, samples, readings);
       const final = await beltState(axis, true);
       if (final.signature !== state.signature) throw new Error('Printer settings changed during the test. Repeat with unchanged settings.');
       beltCheck();
       const previous = restore;
       restore = [];
       await beltRestore(previous);
-      const signature = JSON.stringify({ state: state.signature, registers });
+      const signature = JSON.stringify({ state: state.signature, registers, filter: 1 });
       if (Object.values(samples).some(values => values.length < 3)){
         throw new Error('Insufficient steady-speed samples. No comparison result was produced.');
       }
-      const zeroDrivers = state.drivers.filter(driver => samples[driver.stepper].every(value => value === 0));
+      const zeroDrivers = registers.filter(driver => samples[driver.stepper].every(value => value === 0));
       if (zeroDrivers.length){
         const details = zeroDrivers.map(driver => {
           const reading = readings[driver.stepper];
           return `${driver.stepper}: SG_RESULT=0 in all ${samples[driver.stepper].length} moving samples, ` +
-            `CS_ACTUAL=${reading.currentScale}, stallguard=${reading.stallguard}`;
+            `CS_ACTUAL=${reading.currentScale}, stallguard=${reading.stallguard}, SGT=${driver.sgt}, SFILT=1`;
         }).join('; ');
+        const nextSgt = [16, 32, 48, 63].find(value => zeroDrivers.every(driver => value > driver.sgt));
         throw new Error(`${details} at ${beltSpeed} mm/s. No usable belt-load result or reference. ` +
-          (beltSpeed === 50 ? 'Try 25 mm/s. ' : 'Check motor load and StallGuard sensitivity. ') +
+          (beltSpeed === 50 ? 'Try 25 mm/s. ' :
+            nextSgt !== undefined ? `Try measurement SGT ${nextSgt} (less sensitive). ` :
+            'Already at the least sensitive SGT; verify motor load and driver measurements before further tests. ') +
           'Do not infer belt tension or tighten belts from these zeros.');
+      }
+      const highDrivers = registers.filter(driver => samples[driver.stepper].every(value => value === 1023));
+      if (highDrivers.length){
+        throw new Error(highDrivers.map(driver => `${driver.stepper}: SG_RESULT=1023 at SGT=${driver.sgt}`).join('; ') +
+          '. Measurement is at the upper limit. Lower measurement SGT; no usable reference was produced.');
       }
       const results = Object.fromEntries(Object.entries(samples).map(([name, values]) => [name, beltSummary(values)]));
       const stored = localStorage.getItem(beltReferenceKey(axis));
@@ -738,12 +778,13 @@
       const lines = Object.entries(results).map(([name, result]) => {
         const baseline = reference?.results?.[name]?.median;
         const delta = comparable && Number.isFinite(baseline) ? `; reference ${baseline}, change ${(result.median - baseline).toFixed(1)}` : '';
-        return `${name}: median ${result.median}, range ${result.min}-${result.max}, ${result.count} samples${delta}`;
+        const sgt = registers.find(driver => driver.stepper === name).sgt;
+        return `${name}: median ${result.median}, range ${result.min}-${result.max}, ${result.count} samples, SGT=${sgt}${delta}`;
       });
       lines.push(zeroReference ? 'Saved reference contains all-zero readings; comparison withheld. Save this result as a new reference.' :
         reference && !comparable ? 'Reference settings differ; comparison withheld.' :
         'Relative load only. Inspect belt tension, friction and alignment; no calibrated target is available.');
-      preview('out-belt', 'Test complete.\n' + lines.join('\n'));
+      preview('out-belt', `Test complete.\nSpeed ${beltSpeed} mm/s, StallGuard filtering enabled.\n` + lines.join('\n'));
       beltResult = { axis, signature, results };
       beltReference.disabled = false;
     } catch (error){
