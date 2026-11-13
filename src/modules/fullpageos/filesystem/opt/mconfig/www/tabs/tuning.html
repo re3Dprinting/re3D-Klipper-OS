@@ -1,4 +1,4 @@
-<!-- Tuning: PID and manual bed leveling -->
+<!-- Tuning: PID, manual bed leveling, and belt load comparison -->
 <style>
   .out{
     margin-top:8px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);
@@ -204,6 +204,39 @@
     </div>
     <div class="out mono" id="out-bed-level" role="status" aria-live="polite">Loading printer status...</div>
   </section>
+  <section class="card grid" aria-labelledby="belt-title">
+    <div class="card-title" id="belt-title">Belt Tension Assistance</div>
+    <div class="hint">
+      Compare StallGuard motor load before and after small belt adjustments.
+      Lower readings generally indicate higher load, but friction, alignment, speed, motor temperature and current
+      also affect the result. These are not tension units or a pass/fail test; Prusa's target numbers do not apply.
+      Supports Cartesian printers with TMC5160 or TMC2130 drivers in spreadCycle.
+    </div>
+    <div class="row">
+      <div>
+        <label for="belt-axis">Axis</label>
+        <select id="belt-axis"><option value="x">X</option><option value="y">Y (all motors)</option></select>
+      </div>
+      <div class="hint">
+        Test moves only the selected axis between 20% and 80% of its configured travel at 50 mm/s,
+        then returns to the starting test point. It does not home or raise Z.
+        StallGuard measurement thresholds are temporarily enabled and restored after testing.
+      </div>
+    </div>
+    <label class="check-row">
+      <input type="checkbox" id="belt-clear">
+      <span>Bed is clear, XYZ are homed, and the nozzle clears the entire test path.</span>
+    </label>
+    <div class="btn-row" style="justify-content:flex-start">
+      <button type="button" id="belt-run">Run Belt Load Test</button>
+      <button type="button" id="belt-reference" disabled>Use Result as Reference</button>
+      <button type="button" id="belt-stop" class="btn-danger" disabled>Emergency Stop</button>
+    </div>
+    <div class="out mono" id="out-belt" role="status" aria-live="polite">
+      Home and clear the printer before testing. Never adjust belts while motors are moving.
+      References are saved in this browser; compare only the same printer and motion settings.
+    </div>
+  </section>
 </div>
 
 <!-- Fullscreen PID overlay -->
@@ -270,6 +303,11 @@
   const bedStart = document.getElementById('bed-level-start');
   const bedShimstock = document.getElementById('bed-level-shimstock');
   const pidGo = document.getElementById('pid-go');
+  const beltRun = document.getElementById('belt-run');
+  const beltReference = document.getElementById('belt-reference');
+  const beltStop = document.getElementById('belt-stop');
+  const beltAxis = document.getElementById('belt-axis');
+  const beltClear = document.getElementById('belt-clear');
   const bedStartZ = 101.3;
   const bedMoonraker = (localStorage.getItem('moonrakerUrl') ||
     `http://${location.hostname || 'localhost'}:7125`).replace(/\/+$/, '');
@@ -277,7 +315,7 @@
 
   async function bedRequest(endpoint, payload){
     const response = await fetch(bedMoonraker + endpoint, {
-      method: 'POST',
+      method: payload === undefined ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
@@ -351,10 +389,11 @@
   }
 
   async function runBedAction(point, action = 'refresh'){
-    if (bedBusy) return;
+    if (bedBusy || pidGo.disabled) return;
     const start = action === 'start';
     const pidDisabled = pidGo.disabled;
     bedBusy = true;
+    beltRun.disabled = true;
     pidGo.disabled = true;
     bedRefresh.disabled = true;
     bedStart.disabled = true;
@@ -404,6 +443,7 @@
       preview('out-bed-level', 'Error: ' + err.message);
     } finally {
       bedBusy = false;
+      beltRun.disabled = false;
       pidGo.disabled = pidDisabled;
       bedRefresh.disabled = false;
       bedStart.disabled = false;
@@ -417,6 +457,304 @@
   bedStart.addEventListener('click', () => runBedAction(null, 'start'));
   bedShimstock.addEventListener('click', () => runBedAction(null, 'shimstock'));
   bedPoints.forEach(point => point.addEventListener('click', () => runBedAction(point)));
+
+  const beltSpeed = 50;
+  let beltResult = null;
+  let beltAborted = false;
+
+  function beltDrivers(settings, axis){
+    if (settings?.printer?.kinematics !== 'cartesian'){
+      throw new Error('Belt load testing requires Cartesian kinematics.');
+    }
+    const steppers = Object.keys(settings).filter(name =>
+      new RegExp(`^stepper_${axis}\\d*$`).test(name)).sort();
+    if (!steppers.includes(`stepper_${axis}`)){
+      throw new Error('Selected axis has no configured stepper.');
+    }
+    return steppers.map(stepper => {
+      const name = Object.keys(settings).find(key =>
+        /^(tmc5160|tmc2130) /.test(key) && key.split(' ')[1] === stepper);
+      if (!name){
+        throw new Error(`${stepper}: requires a readable TMC5160 or TMC2130 driver (Azteeg is unsupported).`);
+      }
+      const driver = settings[name];
+      if ((driver.stealthchop_threshold ?? 0) !== 0 || (driver.driver_semin ?? 0) !== 0){
+        throw new Error(`${stepper}: use spreadCycle with CoolStep disabled before testing. Driver settings were not changed.`);
+      }
+      return { name, stepper };
+    });
+  }
+
+  async function beltState(axis, allowMotion = false){
+    const state = await bedStatus(true, allowMotion);
+    const result = await bedRequest('/printer/objects/query', { objects: {
+      configfile: ['settings'], toolhead: ['max_velocity', 'max_accel', 'square_corner_velocity', 'position'],
+      gcode_move: ['speed_factor']
+    } });
+    const settings = result.status?.configfile?.settings;
+    const drivers = beltDrivers(settings, axis);
+    const motion = result.status.toolhead;
+    const index = axis === 'x' ? 0 : 1;
+    const stationaryPosition = [motion?.position?.[1 - index], motion?.position?.[2]];
+    if (stationaryPosition.some(value => !Number.isFinite(value))){
+      throw new Error('Stationary-axis positions are unavailable.');
+    }
+    if (!Number.isFinite(motion?.max_velocity) || motion.max_velocity < beltSpeed ||
+        !Number.isFinite(motion.max_accel) || motion.max_accel <= 0 ||
+        result.status.gcode_move?.speed_factor !== 1){
+      throw new Error('Test requires a velocity limit of at least 50 mm/s, positive acceleration, and a 100% speed factor.');
+    }
+    const current = await bedRequest('/printer/objects/query', {
+      objects: Object.fromEntries(drivers.map(driver => [driver.name, ['run_current']]))
+    });
+    const currents = drivers.map(driver => current.status?.[driver.name]?.run_current);
+    if (currents.some(value => !Number.isFinite(value) || value <= 0)){
+      throw new Error('Live motor currents are unavailable.');
+    }
+    // Include the effective configuration and runtime limits, not just the axis label.
+    const signature = JSON.stringify({ settings, currents, stationaryPosition, speed: beltSpeed,
+      maxVelocity: motion.max_velocity, maxAccel: motion.max_accel,
+      squareCornerVelocity: motion.square_corner_velocity });
+    const limits = state.axes[index];
+    const low = Number((limits[0] + (limits[2] - limits[0]) / 8).toFixed(3));
+    const high = Number((limits[2] - (limits[2] - limits[0]) / 8).toFixed(3));
+    if (high - low < 200){
+      throw new Error('At least 200 mm of test travel is required for steady-speed load samples.');
+    }
+    return { drivers, signature, low, high };
+  }
+
+  function beltCheck(){
+    if (beltAborted) throw new Error('Emergency stop requested. Restart Klipper before further motion.');
+    if (!beltRun.isConnected) throw new Error('Test tab was closed. The queued move may still finish; no further moves will be sent.');
+  }
+
+  async function beltMove(axis, position){
+    beltCheck();
+    await bedRequest('/printer/gcode/script', { script: [
+      'SAVE_GCODE_STATE NAME=mconfig_belt', 'G90',
+      `G1 ${axis.toUpperCase()}${position} F${beltSpeed * 60}`, 'M400',
+      'RESTORE_GCODE_STATE NAME=mconfig_belt'
+    ].join('\n') });
+  }
+
+  async function beltSweep(axis, position, drivers, samples){
+    const counts = drivers.map(driver => samples[driver.stepper].length);
+    let finished = false;
+    let moveError = null;
+    const moving = beltMove(axis, position).catch(error => { moveError = error; })
+      .finally(() => { finished = true; });
+    let steadySince = null;
+    try {
+      while (!finished){
+        await new Promise(resolve => setTimeout(resolve, 1100));
+        beltCheck();
+        if (finished) break;
+        const result = await bedRequest('/printer/objects/query', { objects: {
+          motion_report: ['live_velocity'],
+          ...Object.fromEntries(drivers.map(driver => [driver.name, ['drv_status']]))
+        } });
+        if (finished) break;
+        const velocity = result.status?.motion_report?.live_velocity;
+        if (!Number.isFinite(velocity)){
+          throw new Error('Live motion reporting is unavailable.');
+        }
+        if (Math.abs(velocity - beltSpeed) > 1){
+          steadySince = null;
+          continue;
+        }
+        if (steadySince === null) steadySince = Date.now();
+        // Klipper caches DRV_STATUS at one-second intervals. Skip initial/idle readings.
+        if (Date.now() - steadySince < 1100) continue;
+        for (const driver of drivers){
+          const status = result.status?.[driver.name]?.drv_status;
+          if (!status || status.stst || status.stealth || !status.cs_actual ||
+              status.ot || status.otpw || status.s2ga || status.s2gb || status.s2vsa || status.s2vsb){
+            throw new Error(`${driver.stepper}: no valid moving spreadCycle driver reading.`);
+          }
+          // Klipper omits zero-valued register fields; zero is a real SG_RESULT.
+          const value = status.sg_result ?? 0;
+          if (!Number.isInteger(value) || value < 0 || value > 1023){
+            throw new Error(`${driver.stepper}: invalid StallGuard reading.`);
+          }
+          samples[driver.stepper].push(value);
+        }
+        preview('out-belt', 'Measuring ' + axis.toUpperCase() + ': ' +
+          drivers.map(driver => `${driver.stepper} ${samples[driver.stepper].at(-1)}`).join(', '));
+      }
+    } finally {
+      // Even a failed sample must not unlock other motion controls before M400 finishes.
+      await moving;
+    }
+    if (moveError) throw moveError;
+    beltCheck();
+    if (drivers.some((driver, index) => samples[driver.stepper].length - counts[index] < 2)){
+      throw new Error('Insufficient steady-speed samples in this direction. No comparison result was produced.');
+    }
+  }
+
+  function beltSummary(values){
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return {
+      count: sorted.length,
+      median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
+      min: sorted[0], max: sorted.at(-1)
+    };
+  }
+
+  function beltReferenceKey(axis){
+    return `mconfig.belt-reference:${bedMoonraker}:${axis}`;
+  }
+
+  async function beltRegister(stepper, register){
+    const before = await bedRequest('/server/gcode_store?count=100');
+    if (!Array.isArray(before.gcode_store)) throw new Error('Moonraker G-code history is unavailable.');
+    const lastTime = Math.max(0, ...before.gcode_store.map(entry => entry.time));
+    if (!Number.isFinite(lastTime)) throw new Error('Invalid Moonraker G-code history.');
+    const command = `DUMP_TMC STEPPER=${stepper} REGISTER=${register}`;
+    await bedRequest('/printer/gcode/script', { script: command });
+    for (let attempt = 0; attempt < 10; attempt++){
+      const history = await bedRequest('/server/gcode_store?count=100');
+      if (!Array.isArray(history.gcode_store)) throw new Error('Moonraker G-code history is unavailable.');
+      const entries = history.gcode_store.filter(entry => entry.time > lastTime);
+      const index = entries.findIndex(entry => entry.type === 'command' && entry.message.trim() === command);
+      if (index >= 0){
+        for (const entry of entries.slice(index + 1)){
+          if (entry.type === 'command') break;
+          const match = entry.type === 'response' &&
+            entry.message.match(new RegExp(`(?:^|\\n)(?:// )?${register}:\\s+([0-9a-f]{8})(?:\\s|$)`, 'i'));
+          if (match) return parseInt(match[1], 16);
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error(`${stepper}: could not capture ${register}; driver settings were not guessed.`);
+  }
+
+  async function beltRestore(drivers){
+    const script = drivers.flatMap(driver => [
+      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=tcoolthrs VALUE=${driver.tcoolthrs}`,
+      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=${driver.thigh}`
+    ]).join('\n');
+    if (script){
+      try {
+        await bedRequest('/printer/gcode/script', { script });
+      } catch (error){
+        throw new Error('Could not restore StallGuard thresholds: ' + error.message +
+          '. Restart Klipper before further motion.');
+      }
+    }
+  }
+
+  beltRun.addEventListener('click', async () => {
+    if (bedBusy || pidGo.disabled) return;
+    beltResult = null;
+    beltReference.disabled = true;
+    if (!beltClear.checked){
+      preview('out-belt', 'Error: Confirm homing and clearance of the entire test path first.');
+      return;
+    }
+    bedBusy = true;
+    beltAborted = false;
+    const controls = [pidGo, bedRefresh, bedStart, bedShimstock, ...bedPoints, beltRun, beltAxis, beltClear];
+    const disabled = controls.map(control => control.disabled);
+    controls.forEach(control => { control.disabled = true; });
+    beltStop.disabled = false;
+    let restore = [];
+    try {
+      const axis = beltAxis.value;
+      if (!['x', 'y'].includes(axis)) throw new Error('Invalid test axis.');
+      preview('out-belt', 'Checking drivers and printer status...');
+      const state = await beltState(axis);
+      beltCheck();
+      const registers = [];
+      for (const driver of state.drivers){
+        const tcoolthrs = await beltRegister(driver.stepper, 'TCOOLTHRS');
+        const thigh = await beltRegister(driver.stepper, 'THIGH');
+        const coolconf = await beltRegister(driver.stepper, 'COOLCONF');
+        const gconf = await beltRegister(driver.stepper, 'GCONF');
+        if ((coolconf & 15) || (gconf & ((1 << 2) | (1 << 15)))){
+          throw new Error(`${driver.stepper}: live CoolStep, stealthChop or driver stop mode is enabled.`);
+        }
+        registers.push({ ...driver, tcoolthrs, thigh, coolconf, gconf });
+      }
+      beltCheck();
+      restore = registers;
+      await bedRequest('/printer/gcode/script', { script: registers.flatMap(driver => [
+        `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=tcoolthrs VALUE=1048575`,
+        `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=0`
+      ]).join('\n') });
+      const samples = Object.fromEntries(state.drivers.map(driver => [driver.stepper, []]));
+      preview('out-belt', 'Positioning at the start of the test path...');
+      await beltMove(axis, state.low);
+      const positioned = await beltState(axis, true);
+      if (positioned.signature !== state.signature) throw new Error('Printer settings changed before sampling.');
+      await beltSweep(axis, state.high, state.drivers, samples);
+      await beltSweep(axis, state.low, state.drivers, samples);
+      const final = await beltState(axis, true);
+      if (final.signature !== state.signature) throw new Error('Printer settings changed during the test. Repeat with unchanged settings.');
+      beltCheck();
+      const previous = restore;
+      restore = [];
+      await beltRestore(previous);
+      const signature = JSON.stringify({ state: state.signature, registers });
+      if (Object.values(samples).some(values => values.length < 3)){
+        throw new Error('Insufficient steady-speed samples. No comparison result was produced.');
+      }
+      const results = Object.fromEntries(Object.entries(samples).map(([name, values]) => [name, beltSummary(values)]));
+      const stored = localStorage.getItem(beltReferenceKey(axis));
+      const reference = stored ? JSON.parse(stored) : null;
+      const comparable = reference?.signature === signature;
+      const lines = Object.entries(results).map(([name, result]) => {
+        const baseline = reference?.results?.[name]?.median;
+        const delta = comparable && Number.isFinite(baseline) ? `; reference ${baseline}, change ${(result.median - baseline).toFixed(1)}` : '';
+        return `${name}: median ${result.median}, range ${result.min}-${result.max}, ${result.count} samples${delta}`;
+      });
+      lines.push(reference && !comparable ? 'Reference settings differ; comparison withheld.' :
+        'Relative load only. Inspect belt tension, friction and alignment; no calibrated target is available.');
+      preview('out-belt', 'Test complete.\n' + lines.join('\n'));
+      beltResult = { axis, signature, results };
+      beltReference.disabled = false;
+    } catch (error){
+      preview('out-belt', 'Error: ' + error.message);
+    } finally {
+      if (restore.length && !beltAborted){
+        try {
+          await beltRestore(restore);
+        } catch (error){
+          beltResult = null;
+          beltReference.disabled = true;
+          preview('out-belt', 'Error: ' + error.message);
+        }
+      }
+      bedBusy = false;
+      controls.forEach((control, index) => { control.disabled = disabled[index]; });
+      beltStop.disabled = true;
+      beltClear.checked = false;
+    }
+  });
+
+  beltReference.addEventListener('click', () => {
+    if (!beltResult || bedBusy) return;
+    try {
+      localStorage.setItem(beltReferenceKey(beltResult.axis), JSON.stringify(beltResult));
+      preview('out-belt', 'Reference saved for ' + beltResult.axis.toUpperCase() +
+        '. Adjust belts only with the printer stopped, then home and repeat under the same conditions.');
+    } catch (error){
+      preview('out-belt', 'Error saving reference: ' + error.message);
+    }
+  });
+  beltStop.addEventListener('click', async () => {
+    beltAborted = true;
+    beltStop.disabled = true;
+    try {
+      await bedRequest('/printer/emergency_stop', {});
+      preview('out-belt', 'Emergency stop sent. Restart Klipper before further motion.');
+    } catch (error){
+      preview('out-belt', 'Error sending emergency stop: ' + error.message);
+    }
+  });
   runBedAction();
 })();
 </script>

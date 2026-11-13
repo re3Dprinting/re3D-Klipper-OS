@@ -29,7 +29,8 @@ function element(){
   };
 }
 
-async function mount({ status = printerStatus(), queryResponse, moveResponse, moveWait, onScript } = {}){
+async function mount({ status = printerStatus(), queryResponse, moveResponse, moveWait, onScript,
+  onQuery, onTick, onRegister, onSet, storage = new Map() } = {}){
   const points = [...html.matchAll(/class="bed-level-point" data-x="(\d)" data-y="(\d)"[^>]*>(.*?)<\/button>/g)]
     .map((match) => {
       const point = element();
@@ -49,15 +50,58 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
     'bed-level-grid': grid, 'bed-level-refresh': refresh, 'bed-level-start': start,
     'bed-level-shimstock': shimstock, 'out-bed-level': out, 'pid-go': pidGo
   };
+  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-clear', 'out-belt']){
+    elements[id] = element();
+  }
+  elements['belt-axis'].value = 'x';
+  elements['belt-clear'].checked = false;
   const requests = [];
+  const history = [];
+  const registers = {};
+  let now = 0;
   const context = {
     document: { getElementById: id => elements[id] || null },
     location: { hostname: 'printer.local' },
-    localStorage: { getItem: () => 'http://configured-printer:7125/' },
+    localStorage: {
+      getItem: key => key === 'moonrakerUrl' ? 'http://configured-printer:7125/' : storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, value)
+    },
+    Date: { now: () => now },
+    setTimeout: (callback, delay) => {
+      now += delay;
+      if (onTick) onTick();
+      queueMicrotask(callback);
+    },
     fetch: async (url, options) => {
-      requests.push({ url, payload: JSON.parse(options.body) });
+      const payload = options.body ? JSON.parse(options.body) : {};
+      requests.push({ url, payload });
+      if (url.includes('/server/gcode_store')){
+        return { ok: true, status: 200, json: async () => ({ result: { gcode_store: history } }) };
+      }
       if (url.endsWith('/printer/objects/query')){
-        return { ok: true, status: 200, json: async () => queryResponse || { result: { status } } };
+        const custom = onQuery ? onQuery(JSON.parse(options.body).objects) : null;
+        return { ok: true, status: 200, json: async () => custom || queryResponse || { result: { status } } };
+      }
+      if (url.endsWith('/printer/emergency_stop')){
+        return { ok: true, status: 200, json: async () => ({ result: 'ok' }) };
+      }
+      const dump = payload.script.match(/^DUMP_TMC STEPPER=(\w+) REGISTER=(\w+)$/);
+      if (dump){
+        const key = dump[1] + ':' + dump[2].toLowerCase();
+        const value = registers[key] ?? (dump[2] === 'THIGH' ? 17 : 0);
+        history.push({ type: 'command', message: payload.script, time: history.length + 1 });
+        if (!onRegister || onRegister(dump[1], dump[2], value) !== false){
+          history.push({ type: 'response', message: `${dump[2]}: ${value.toString(16).padStart(8, '0')}`, time: history.length + 1 });
+        }
+        return { ok: true, status: 200, json: async () => ({ result: 'ok' }) };
+      }
+      if (payload.script.startsWith('SET_TMC_FIELD')){
+        const failure = onSet ? onSet(payload.script) : null;
+        if (failure) return { ok: true, status: 200, json: async () => ({ error: { message: failure } }) };
+        for (const match of payload.script.matchAll(/STEPPER=(\w+) FIELD=(\w+) VALUE=(\d+)/g)){
+          registers[match[1] + ':' + match[2]] = Number(match[3]);
+        }
+        return { ok: true, status: 200, json: async () => ({ result: 'ok' }) };
       }
       if (moveWait) await moveWait;
       const scriptResponse = onScript ? await onScript(JSON.parse(options.body).script) : null;
@@ -66,7 +110,7 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
   };
   vm.runInNewContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
-  return { points, grid, refresh, start, shimstock, pidGo, out, requests, status };
+  return { points, grid, refresh, start, shimstock, pidGo, out, requests, status, elements, storage, registers };
 }
 
 test('bed leveling is in Tuning only and PID tuning remains present', () => {
@@ -327,4 +371,248 @@ test('refresh recovers after homing without sending movement', async () => {
   await page.refresh.click();
   assert.ok(page.points.every(point => !point.disabled));
   assert.equal(page.requests.filter(request => request.url.endsWith('/printer/gcode/script')).length, 0);
+});
+
+function beltPrinterStatus(){
+  const status = printerStatus();
+  Object.assign(status.toolhead, { max_velocity: 300, max_accel: 1000, square_corner_velocity: 5,
+    position: [295, 305, 100, 0] });
+  status.gcode_move.speed_factor = 1;
+  status.motion_report = { live_velocity: 50 };
+  status.configfile = { settings: {
+    printer: { kinematics: 'cartesian' },
+    stepper_x: {}, stepper_y: {}, stepper_y1: {},
+    'tmc5160 stepper_x': { run_current: 1.4, stealthchop_threshold: 0 },
+    'tmc5160 stepper_y': { run_current: 1.4 },
+    'tmc5160 stepper_y1': { run_current: 1.4 }
+  } };
+  for (const [stepper, value] of [['stepper_x', 0], ['stepper_y', 80], ['stepper_y1', 160]]){
+    status['tmc5160 ' + stepper] = { run_current: 1.4, drv_status: {
+      cs_actual: 20, ...(value ? { sg_result: value } : {})
+    } };
+  }
+  return status;
+}
+
+async function mountBelt({ status = beltPrinterStatus(), ticks = 6, storage, onSample, onMove, onRegister, onSet } = {}){
+  let moves = 0;
+  let remaining = 0;
+  let finish;
+  const page = await mount({
+    status, storage, onRegister, onSet,
+    onScript: script => {
+      moves++;
+      if (onMove) onMove(script, moves);
+      if (moves % 3 === 1) return null;
+      remaining = ticks;
+      return new Promise(resolve => {
+        finish = resolve;
+        // M400 still completes if sampling exits early and stops its timer loop.
+        setImmediate(() => {
+          if (finish === resolve){
+            finish(null);
+            finish = null;
+          }
+        });
+      });
+    },
+    onTick: () => {
+      if (finish && --remaining <= 0){
+        finish(null);
+        finish = null;
+      }
+    },
+    onQuery: objects => {
+      if (objects.motion_report && onSample) return onSample(status, page);
+      return null;
+    }
+  });
+  page.elements['belt-clear'].checked = true;
+  return page;
+}
+
+function beltMotionRequests(page){
+  return page.requests.filter(request => request.payload.script?.includes('G1 '));
+}
+
+test('belt test samples real zero SG_RESULT, makes bounded XY-only sweeps, and saves a reference', async () => {
+  const page = await mountBelt();
+  page.status.toolhead.axis_minimum[0] = -55;
+  page.status.gcode_move.homing_origin[0] = -55;
+  await page.elements['belt-run'].click();
+  const scripts = beltMotionRequests(page).map(request => request.payload.script);
+  assert.equal(scripts.length, 3);
+  for (const [index, script] of scripts.entries()){
+    assert.equal(script, [
+      'SAVE_GCODE_STATE NAME=mconfig_belt', 'G90',
+      `G1 X${[129, 516, 129][index]} F3000`, 'M400',
+      'RESTORE_GCODE_STATE NAME=mconfig_belt'
+    ].join('\n'));
+  }
+  assert.match(page.elements['out-belt'].textContent, /stepper_x: median 0, range 0-0, 8 samples/);
+  assert.equal(page.elements['belt-reference'].disabled, false);
+  await page.elements['belt-reference'].click();
+  const reference = JSON.parse([...page.storage.values()][0]);
+  assert.equal(reference.results.stepper_x.median, 0);
+  assert.equal(reference.results.stepper_x.count, 8);
+  assert.equal(page.elements['belt-clear'].checked, false);
+  assert.equal(page.pidGo.disabled, false);
+  assert.equal(page.registers['stepper_x:tcoolthrs'], 0);
+  assert.equal(page.registers['stepper_x:thigh'], 17);
+});
+
+test('Y test reports both motors separately and compares only matching references', async () => {
+  const page = await mountBelt();
+  page.elements['belt-axis'].value = 'y';
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /stepper_y: median 80/);
+  assert.match(page.elements['out-belt'].textContent, /stepper_y1: median 160/);
+  await page.elements['belt-reference'].click();
+  const next = await mountBelt({ storage: page.storage });
+  next.elements['belt-axis'].value = 'y';
+  next.status['tmc5160 stepper_y'].drv_status.sg_result = 60;
+  await next.elements['belt-run'].click();
+  assert.match(next.elements['out-belt'].textContent, /reference 80, change -20.0/);
+  assert.match(next.elements['out-belt'].textContent, /reference 160, change 0.0/);
+  next.status.toolhead.max_accel = 900;
+  next.elements['belt-clear'].checked = true;
+  await next.elements['belt-run'].click();
+  assert.match(next.elements['out-belt'].textContent, /Reference settings differ; comparison withheld/);
+  assert.doesNotMatch(next.elements['out-belt'].textContent, /change -20/);
+  next.status.toolhead.max_accel = 1000;
+  next.status.toolhead.position[0] = 100;
+  next.elements['belt-clear'].checked = true;
+  await next.elements['belt-run'].click();
+  assert.match(next.elements['out-belt'].textContent, /Reference settings differ; comparison withheld/);
+});
+
+test('belt test refuses unsafe states and unsupported drivers before any motion', async () => {
+  const changes = [
+    status => { status.toolhead.homed_axes = 'xy'; },
+    status => { status.print_stats.state = 'printing'; },
+    status => { status.print_stats.state = 'paused'; },
+    status => { status.idle_timeout.state = 'Printing'; },
+    status => { status.webhooks.state = 'shutdown'; },
+    status => { status.configfile.settings.printer.kinematics = 'corexy'; },
+    status => { delete status.configfile.settings['tmc5160 stepper_x']; },
+    status => { status.configfile.settings['tmc5160 stepper_x'].stealthchop_threshold = 999; },
+    status => { status.configfile.settings['tmc5160 stepper_x'].driver_semin = 1; },
+    status => { status.gcode_move.speed_factor = 0.5; },
+    status => { status.toolhead.max_velocity = 49; },
+    status => { status.toolhead.axis_maximum[0] = 300; },
+    status => { delete status['tmc5160 stepper_x'].run_current; }
+  ];
+  for (const change of changes){
+    const status = beltPrinterStatus();
+    change(status);
+    const page = await mountBelt({ status });
+    await page.elements['belt-run'].click();
+    assert.equal(beltMotionRequests(page).length, 0);
+    assert.match(page.elements['out-belt'].textContent, /^Error:/);
+    assert.equal(page.elements['belt-reference'].disabled, true);
+  }
+  const page = await mountBelt();
+  page.elements['belt-clear'].checked = false;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Confirm homing and clearance/);
+  assert.equal(beltMotionRequests(page).length, 0);
+});
+
+test('missing second Y driver, invalid samples, or too few steady-speed readings never produce a result', async () => {
+  const cases = [
+    status => { delete status.configfile.settings['tmc5160 stepper_y1']; },
+    status => { status['tmc5160 stepper_y1'].drv_status = null; },
+    status => { status['tmc5160 stepper_y1'].drv_status.stst = 1; },
+    status => { status['tmc5160 stepper_y1'].drv_status.stealth = 1; },
+    status => { status['tmc5160 stepper_y1'].drv_status.otpw = 1; },
+    status => { status['tmc5160 stepper_y1'].drv_status.sg_result = 1024; },
+    status => { status.motion_report.live_velocity = 48; }
+  ];
+  for (const change of cases){
+    const status = beltPrinterStatus();
+    change(status);
+    const page = await mountBelt({ status });
+    page.elements['belt-axis'].value = 'y';
+    await page.elements['belt-run'].click();
+    assert.match(page.elements['out-belt'].textContent, /^Error:/);
+    assert.equal(page.elements['belt-reference'].disabled, true);
+    assert.doesNotMatch(page.elements['out-belt'].textContent, /Test complete/);
+  }
+  const page = await mountBelt({ ticks: 2 });
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Insufficient steady-speed samples/);
+});
+
+test('sampling failure waits for the queued move, holds other controls, and does not queue a return move', async () => {
+  let checked = false;
+  const page = await mountBelt({ onSample: (status, page) => {
+    checked = true;
+    assert.equal(page.pidGo.disabled, true);
+    assert.equal(page.start.disabled, true);
+    assert.equal(page.elements['belt-run'].disabled, true);
+    return { error: { message: 'Driver query failed' } };
+  } });
+  await page.elements['belt-run'].click();
+  assert.equal(checked, true);
+  assert.match(page.elements['out-belt'].textContent, /Driver query failed/);
+  assert.equal(beltMotionRequests(page).length, 2);
+  assert.equal(page.registers['stepper_x:tcoolthrs'], 0);
+  assert.equal(page.registers['stepper_x:thigh'], 17);
+  assert.equal(page.pidGo.disabled, false);
+});
+
+test('configuration changes and tab removal during the test prevent a successful comparison', async () => {
+  const changed = await mountBelt({ onMove: (script, count) => {
+    if (count === 2) changed.status['tmc5160 stepper_x'].run_current = 1.2;
+  } });
+  await changed.elements['belt-run'].click();
+  assert.match(changed.elements['out-belt'].textContent, /settings changed during the test/);
+  assert.equal(changed.elements['belt-reference'].disabled, true);
+  const removed = await mountBelt({ onSample: (status, page) => {
+    page.elements['belt-run'].isConnected = false;
+    return null;
+  } });
+  await removed.elements['belt-run'].click();
+  assert.match(removed.elements['out-belt'].textContent, /Test tab was closed/);
+  assert.equal(beltMotionRequests(removed).length, 2);
+  assert.equal(removed.registers['stepper_x:tcoolthrs'], 0);
+});
+
+test('emergency stop interrupts the workflow and cannot produce a saved result', async () => {
+  let stop;
+  const page = await mountBelt({ onSample: (status, page) => {
+    if (!stop) stop = page.elements['belt-stop'].click();
+    return null;
+  } });
+  await page.elements['belt-run'].click();
+  await stop;
+  assert.ok(page.requests.some(request => request.url.endsWith('/printer/emergency_stop')));
+  assert.match(page.elements['out-belt'].textContent, /Restart Klipper/);
+  assert.equal(beltMotionRequests(page).length, 2);
+  assert.equal(page.elements['belt-reference'].disabled, true);
+});
+
+test('unavailable register snapshots stop before threshold changes or motion', async () => {
+  const page = await mountBelt({ onRegister: () => false });
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /could not capture TCOOLTHRS/);
+  assert.equal(beltMotionRequests(page).length, 0);
+  assert.deepEqual(page.registers, {});
+});
+
+test('a restoration error is explicit, not retried, and prevents reference saving', async () => {
+  let restorations = 0;
+  const page = await mountBelt({ onSet: script => {
+    if (script.includes('FIELD=thigh VALUE=17')){
+      restorations++;
+      return 'SPI communication failed';
+    }
+    return null;
+  } });
+  await page.elements['belt-run'].click();
+  assert.equal(restorations, 1);
+  assert.match(page.elements['out-belt'].textContent, /Could not restore StallGuard thresholds: SPI communication failed/);
+  assert.match(page.elements['out-belt'].textContent, /Restart Klipper before further motion/);
+  assert.equal(page.elements['belt-reference'].disabled, true);
+  assert.equal(page.storage.size, 0);
 });
