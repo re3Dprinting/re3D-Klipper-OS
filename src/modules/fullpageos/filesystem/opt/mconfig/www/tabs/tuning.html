@@ -227,15 +227,12 @@
     </div>
     <div>
       <label for="belt-sgt">Measurement sensitivity (SGT)</label>
-      <select id="belt-sgt">
-        <option value="current">Current driver setting</option>
-        <option value="16">16 (less sensitive)</option>
-        <option value="32">32</option>
-        <option value="48">48</option>
-        <option value="63">63 (least sensitive)</option>
-      </select>
+      <input id="belt-sgt" type="number" min="-64" max="63" step="1"
+        placeholder="Blank uses current driver setting">
       <div class="hint">
-        If readings remain zero at 25 mm/s, try 16, then increase only if needed.
+        Enter a whole number from -64 to 63, or leave blank to use the current driver setting.
+        If 0 gives zero and 16 gives 1023, try 8. Failed tests suggest finer values using
+        the signal bounds measured in this tab session.
         Higher SGT is less sensitive. This affects the measurement scale, not belt tension.
         The test enables StallGuard filtering and restores the original SGT and filter afterward.
         Use the same speed and SGT for before/after comparisons.
@@ -334,7 +331,7 @@
   const beltStop = document.getElementById('belt-stop');
   const beltAxis = document.getElementById('belt-axis');
   const beltSpeedSelect = document.getElementById('belt-speed');
-  const beltSgtSelect = document.getElementById('belt-sgt');
+  const beltSgtInput = document.getElementById('belt-sgt');
   const beltClear = document.getElementById('belt-clear');
   const bedStartZ = 101.3;
   const bedMoonraker = (localStorage.getItem('moonrakerUrl') ||
@@ -489,6 +486,7 @@
   let beltSpeed = 50;
   let beltResult = null;
   let beltAborted = false;
+  const beltSignalBounds = new Map();
 
   function beltDrivers(settings, axis){
     if (settings?.printer?.kinematics !== 'cartesian'){
@@ -684,6 +682,33 @@
     return value >= 64 ? value - 128 : value;
   }
 
+  function beltSignalAdvice(key, zeroDrivers, highDrivers){
+    const bounds = beltSignalBounds.get(key) || { low: null, high: null };
+    for (const driver of zeroDrivers){
+      bounds.low = bounds.low === null ? driver.sgt : Math.max(bounds.low, driver.sgt);
+    }
+    for (const driver of highDrivers){
+      bounds.high = bounds.high === null ? driver.sgt : Math.min(bounds.high, driver.sgt);
+    }
+    beltSignalBounds.set(key, bounds);
+    let next;
+    if (bounds.low !== null && bounds.high !== null){
+      if (bounds.high - bounds.low <= 1){
+        return 'No shared integer SGT remains between the measured signal limits. ' +
+          'Stop repeating these settings; motor/driver setup needs further diagnosis.';
+      }
+      next = Math.floor((bounds.low + bounds.high) / 2);
+    } else if (bounds.low !== null){
+      if (bounds.low === 63) return 'Already at the least sensitive SGT; verify motor load and driver measurements before further tests.';
+      next = bounds.low + 1;
+    } else {
+      if (bounds.high === -64) return 'Already at the most sensitive SGT; verify driver measurements before further tests.';
+      next = bounds.high > 0 ? Math.floor(bounds.high / 2) : bounds.high - 1;
+    }
+    return `Try measurement SGT ${next} at the same speed. ` +
+      'This calibrates the signal, not belt tension.';
+  }
+
   beltRun.addEventListener('click', async () => {
     if (bedBusy || pidGo.disabled) return;
     beltResult = null;
@@ -695,7 +720,7 @@
     bedBusy = true;
     beltAborted = false;
     const controls = [pidGo, bedRefresh, bedStart, bedShimstock, ...bedPoints, beltRun, beltAxis,
-      beltSpeedSelect, beltSgtSelect, beltClear];
+      beltSpeedSelect, beltSgtInput, beltClear];
     const disabled = controls.map(control => control.disabled);
     controls.forEach(control => { control.disabled = true; });
     beltStop.disabled = false;
@@ -705,9 +730,10 @@
       if (!['x', 'y'].includes(axis)) throw new Error('Invalid test axis.');
       beltSpeed = Number(beltSpeedSelect.value);
       if (![25, 50].includes(beltSpeed)) throw new Error('Test speed must be 25 or 50 mm/s.');
-      const requestedSgt = beltSgtSelect.value;
-      if (!['current', '16', '32', '48', '63'].includes(requestedSgt)){
-        throw new Error('Invalid measurement SGT selection.');
+      const requestedSgt = beltSgtInput.value.trim();
+      if (beltSgtInput.validity.badInput || (requestedSgt !== '' &&
+          (!Number.isInteger(Number(requestedSgt)) || Number(requestedSgt) < -64 || Number(requestedSgt) > 63))){
+        throw new Error('Invalid measurement SGT: enter a whole number from -64 to 63, or leave blank.');
       }
       preview('out-belt', 'Checking drivers and printer status...');
       const state = await beltState(axis);
@@ -720,7 +746,7 @@
         const gconf = await beltRegister(driver.stepper, 'GCONF');
         if (coolconf & 15) throw new Error(`${driver.stepper}: live CoolStep is enabled; disable it before testing.`);
         if (gconf & (1 << 15)) throw new Error(`${driver.stepper}: live driver stop mode is enabled; disable it before testing.`);
-        const sgt = requestedSgt === 'current' ? beltSgtValue(coolconf) : Number(requestedSgt);
+        const sgt = requestedSgt === '' ? beltSgtValue(coolconf) : Number(requestedSgt);
         registers.push({ ...driver, tcoolthrs, thigh, coolconf, gconf, sgt });
       }
       beltCheck();
@@ -751,24 +777,27 @@
         throw new Error('Insufficient steady-speed samples. No comparison result was produced.');
       }
       const zeroDrivers = registers.filter(driver => samples[driver.stepper].every(value => value === 0));
+      const highDrivers = registers.filter(driver => samples[driver.stepper].every(value => value === 1023));
+      // Changing test SGT must not discard the bracket; changing printer conditions must.
+      const signalKey = JSON.stringify({ state: state.signature,
+        registers: registers.map(({ sgt, ...saved }) => saved), filter: 1 });
+      const advice = zeroDrivers.length || highDrivers.length ?
+        beltSignalAdvice(signalKey, zeroDrivers, highDrivers) : '';
       if (zeroDrivers.length){
         const details = zeroDrivers.map(driver => {
           const reading = readings[driver.stepper];
           return `${driver.stepper}: SG_RESULT=0 in all ${samples[driver.stepper].length} moving samples, ` +
             `CS_ACTUAL=${reading.currentScale}, stallguard=${reading.stallguard}, SGT=${driver.sgt}, SFILT=1`;
         }).join('; ');
-        const nextSgt = [16, 32, 48, 63].find(value => zeroDrivers.every(driver => value > driver.sgt));
         throw new Error(`${details} at ${beltSpeed} mm/s. No usable belt-load result or reference. ` +
-          (beltSpeed === 50 ? 'Try 25 mm/s. ' :
-            nextSgt !== undefined ? `Try measurement SGT ${nextSgt} (less sensitive). ` :
-            'Already at the least sensitive SGT; verify motor load and driver measurements before further tests. ') +
+          (beltSpeed === 50 ? 'Try 25 mm/s. ' : advice + ' ') +
           'Do not infer belt tension or tighten belts from these zeros.');
       }
-      const highDrivers = registers.filter(driver => samples[driver.stepper].every(value => value === 1023));
       if (highDrivers.length){
         throw new Error(highDrivers.map(driver => `${driver.stepper}: SG_RESULT=1023 at SGT=${driver.sgt}`).join('; ') +
-          '. Measurement is at the upper limit. Lower measurement SGT; no usable reference was produced.');
+          '. Measurement is at the upper limit; no usable reference was produced. ' + advice);
       }
+      beltSignalBounds.delete(signalKey);
       const results = Object.fromEntries(Object.entries(samples).map(([name, values]) => [name, beltSummary(values)]));
       const stored = localStorage.getItem(beltReferenceKey(axis));
       const reference = stored ? JSON.parse(stored) : null;

@@ -55,7 +55,8 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
   }
   elements['belt-axis'].value = 'x';
   elements['belt-speed'].value = '50';
-  elements['belt-sgt'].value = 'current';
+  elements['belt-sgt'].value = '';
+  elements['belt-sgt'].validity = { badInput: false };
   elements['belt-clear'].checked = false;
   const requests = [];
   const history = [];
@@ -799,7 +800,7 @@ test('a zero signal suggests a bounded SGT increase and upper-limit measurements
   page.elements['belt-sgt'].value = '16';
   await page.elements['belt-run'].click();
   assert.match(page.elements['out-belt'].textContent, /SGT=16, SFILT=1/);
-  assert.match(page.elements['out-belt'].textContent, /Try measurement SGT 32/);
+  assert.match(page.elements['out-belt'].textContent, /Try measurement SGT 17/);
   page.elements['belt-sgt'].value = '63';
   page.elements['belt-clear'].checked = true;
   await page.elements['belt-run'].click();
@@ -809,11 +810,69 @@ test('a zero signal suggests a bounded SGT increase and upper-limit measurements
   page.elements['belt-clear'].checked = true;
   await page.elements['belt-run'].click();
   assert.match(page.elements['out-belt'].textContent, /SG_RESULT=1023 at SGT=63/);
-  assert.match(page.elements['out-belt'].textContent, /Lower measurement SGT/);
+  assert.match(page.elements['out-belt'].textContent, /No shared integer SGT remains/);
   assert.equal(page.elements['belt-reference'].disabled, true);
   assert.equal(page.storage.size, 0);
   const count = beltMotionRequests(page).length;
   page.elements['belt-sgt'].value = '64';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Invalid measurement SGT/);
+  assert.equal(beltMotionRequests(page).length, count);
+});
+
+test('upper-limit SGT 16 suggests 8 and measured bounds refine the next suggestions without moving automatically', async () => {
+  const status = beltPrinterStatus();
+  status.motion_report.live_velocity = 25;
+  const page = await mountBelt({ status, onSample: status => {
+    const sgt = page.registers['stepper_x:sgt'];
+    status['tmc5160 stepper_x'].drv_status.sg_result =
+      sgt >= 12 ? 1023 : sgt <= 8 ? 0 : 400;
+    return null;
+  } });
+  page.elements['belt-speed'].value = '25';
+  for (const [sgt, next] of [['16', 8], ['8', 12], ['12', 10]]){
+    const count = beltMotionRequests(page).length;
+    page.elements['belt-sgt'].value = sgt;
+    page.elements['belt-clear'].checked = true;
+    await page.elements['belt-run'].click();
+    assert.match(page.elements['out-belt'].textContent, new RegExp(`Try measurement SGT ${next} at the same speed`));
+    assert.equal(beltMotionRequests(page).length, count + 3);
+    assert.equal(page.elements['belt-reference'].disabled, true);
+    assert.equal(page.registers['stepper_x:sgt'], 0);
+  }
+  page.elements['belt-sgt'].value = '10';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /median 400.*SGT=10/);
+  assert.equal(page.elements['belt-reference'].disabled, false);
+});
+
+test('SGT brackets do not carry across motion settings and invalid numbers never move', async () => {
+  const status = beltPrinterStatus();
+  status.motion_report.live_velocity = 25;
+  status['tmc5160 stepper_x'].drv_status.sg_result = 1023;
+  const page = await mountBelt({ status });
+  page.elements['belt-speed'].value = '25';
+  page.elements['belt-sgt'].value = '16';
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Try measurement SGT 8/);
+  page.status.toolhead.max_accel = 900;
+  status['tmc5160 stepper_x'].drv_status.sg_result = 0;
+  page.elements['belt-sgt'].value = '8';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Try measurement SGT 9/);
+  const count = beltMotionRequests(page).length;
+  for (const value of ['-65', '64', '1.5', 'not-a-number']){
+    page.elements['belt-sgt'].value = value;
+    page.elements['belt-clear'].checked = true;
+    await page.elements['belt-run'].click();
+    assert.match(page.elements['out-belt'].textContent, /Invalid measurement SGT/);
+    assert.equal(beltMotionRequests(page).length, count);
+  }
+  page.elements['belt-sgt'].value = '';
+  page.elements['belt-sgt'].validity.badInput = true;
   page.elements['belt-clear'].checked = true;
   await page.elements['belt-run'].click();
   assert.match(page.elements['out-belt'].textContent, /Invalid measurement SGT/);
