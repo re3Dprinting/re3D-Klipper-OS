@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "re3D Kiosk UI",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Touchscreen navigation, external-page return controls, and Mainsail shortcut visibility.",
   "permissions": ["tabs", "storage", "webNavigation", "alarms"],
   "host_permissions": ["http://localhost:8081/*"],
-  "background": { "service_worker": "external-background.js" },
+  "background": { "service_worker": "background-1.3.1.js" },
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],

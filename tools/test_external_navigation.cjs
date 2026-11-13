@@ -6,7 +6,8 @@ const {test} = require('node:test');
 
 const extension = path.join(__dirname, '..', 'src', 'modules', 'fullpageos', 'filesystem',
   'home', 'pi', 're3d-kiosk-ui');
-const background = fs.readFileSync(path.join(extension, 'external-background.js'), 'utf8');
+const backgroundFile = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8')).background.service_worker;
+const background = fs.readFileSync(path.join(extension, backgroundFile), 'utf8');
 const content = fs.readFileSync(path.join(extension, 'external-navigation.js'), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
