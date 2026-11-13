@@ -29,6 +29,8 @@
   .bed-level-notes{flex:1;min-width:200px}
   .bed-level-edge{text-align:center}
   .bed-level-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .belt-results{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .belt-results:empty{display:none}
 
   /* Fan checkbox styling */
   .check-row{
@@ -254,6 +256,15 @@
       <button type="button" id="belt-run">Run Belt Load Test</button>
       <button type="button" id="belt-reference" disabled>Use Result as Reference</button>
       <button type="button" id="belt-stop" class="btn-danger" disabled>Emergency Stop</button>
+    </div>
+    <div>
+      <div class="card-title" id="belt-last-title">Last Successful Test per Motor</div>
+      <div class="hint">
+        Latest successful readings for all tested X/Y belt motors, saved in this browser for this printer.
+        Older readings stay visible during new tests and errors; each motor shows its own test settings and date.
+      </div>
+      <div class="live belt-results" id="belt-last-results" aria-labelledby="belt-last-title"></div>
+      <div class="hint" id="belt-last-status" role="status" aria-live="polite">No successful tests recorded yet.</div>
     </div>
     <div class="out mono" id="out-belt" role="status" aria-live="polite">
       Home and clear the printer before testing. Never adjust belts while motors are moving.
@@ -487,6 +498,79 @@
   let beltResult = null;
   let beltAborted = false;
   const beltSignalBounds = new Map();
+  const beltLastPanel = document.getElementById('belt-last-results');
+  const beltLastStatus = document.getElementById('belt-last-status');
+  const beltLastKey = `mconfig.belt-last-results:${bedMoonraker}`;
+  let beltLastResults = {};
+
+  function beltRenderLastResults(){
+    beltLastPanel.replaceChildren();
+    for (const name of Object.keys(beltLastResults).sort()){
+      const result = beltLastResults[name];
+      const motor = document.createElement('div');
+      motor.setAttribute('role', 'group');
+      motor.setAttribute('aria-label', name);
+      const label = document.createElement('div');
+      label.className = 'k mono';
+      label.textContent = name;
+      const median = document.createElement('div');
+      median.className = 'v';
+      median.textContent = String(result.median);
+      const details = document.createElement('div');
+      details.className = 'subhint';
+      details.textContent = `Range ${result.min}-${result.max}; ${result.count} samples. ` +
+        `${result.speed} mm/s; SGT=${result.sgt}; filtering enabled.`;
+      const tested = document.createElement('div');
+      tested.className = 'subhint';
+      tested.textContent = 'Tested: ' + new Date(result.testedAt).toLocaleString();
+      motor.append(label, median, details, tested);
+      beltLastPanel.append(motor);
+    }
+    beltLastStatus.textContent = Object.keys(beltLastResults).length ?
+      'Historical results only; compare runs with the same test conditions.' : 'No successful tests recorded yet.';
+  }
+
+  function beltLoadLastResults(){
+    try {
+      const stored = localStorage.getItem(beltLastKey);
+      if (stored !== null){
+        const results = JSON.parse(stored);
+        if (!results || typeof results !== 'object' || Array.isArray(results)){
+          throw new Error('Invalid saved results.');
+        }
+        for (const [name, result] of Object.entries(results)){
+          if (!/^stepper_[xy]\d*$/.test(name) || !result ||
+              ![result.min, result.median, result.max].every(Number.isFinite) ||
+              result.min < 0 || result.max > 1023 || result.min > result.median || result.median > result.max ||
+              (result.min === result.max && [0, 1023].includes(result.min)) ||
+              !Number.isInteger(result.count) || result.count < 3 ||
+              ![25, 50].includes(result.speed) || !Number.isInteger(result.sgt) || result.sgt < -64 || result.sgt > 63 ||
+              typeof result.testedAt !== 'string' || !Number.isFinite(Date.parse(result.testedAt))){
+            throw new Error('Invalid saved result for ' + name + '.');
+          }
+        }
+        beltLastResults = results;
+      }
+      beltRenderLastResults();
+    } catch (error){
+      beltLastStatus.textContent = 'Error loading last test values: ' + error.message;
+    }
+  }
+
+  function beltKeepLastResults(results, registers){
+    const testedAt = new Date().toISOString();
+    for (const [name, result] of Object.entries(results)){
+      beltLastResults[name] = { ...result, speed: beltSpeed,
+        sgt: registers.find(driver => driver.stepper === name).sgt, testedAt };
+    }
+    beltRenderLastResults();
+    try {
+      localStorage.setItem(beltLastKey, JSON.stringify(beltLastResults));
+    } catch (error){
+      beltLastStatus.textContent = 'Error saving last test values: ' + error.message +
+        '. These new values remain visible only in this tab session.';
+    }
+  }
 
   function beltDrivers(settings, axis){
     if (settings?.printer?.kinematics !== 'cartesian'){
@@ -799,6 +883,7 @@
       }
       beltSignalBounds.delete(signalKey);
       const results = Object.fromEntries(Object.entries(samples).map(([name, values]) => [name, beltSummary(values)]));
+      beltKeepLastResults(results, registers);
       const stored = localStorage.getItem(beltReferenceKey(axis));
       const reference = stored ? JSON.parse(stored) : null;
       const zeroReference = reference?.results && Object.values(reference.results).some(result =>
@@ -855,6 +940,7 @@
       preview('out-belt', 'Error sending emergency stop: ' + error.message);
     }
   });
+  beltLoadLastResults();
   runBedAction();
 })();
 </script>

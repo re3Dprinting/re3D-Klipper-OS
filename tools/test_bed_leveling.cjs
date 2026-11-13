@@ -21,8 +21,13 @@ function printerStatus(){
 }
 
 function element(){
+  let text = '';
   return {
-    disabled: true, isConnected: true, textContent: '', attributes: {}, listeners: {},
+    disabled: true, isConnected: true, children: [], attributes: {}, listeners: {},
+    get textContent(){ return text + this.children.map(child => child.textContent).join(''); },
+    set textContent(value){ text = String(value); this.children = []; },
+    append(...children){ this.children.push(...children); },
+    replaceChildren(...children){ text = ''; this.children = children; },
     setAttribute(name, value){ this.attributes[name] = value; },
     addEventListener(name, callback){ this.listeners[name] = callback; },
     click(){ return this.listeners.click(); }
@@ -30,7 +35,8 @@ function element(){
 }
 
 async function mount({ status = printerStatus(), queryResponse, moveResponse, moveWait, onScript,
-  onQuery, onTick, onRegister, onSet, initialRegisters = {}, storage = new Map() } = {}){
+  onQuery, onTick, onRegister, onSet, onStorageWrite, initialRegisters = {}, storage = new Map(),
+  moonrakerUrl = 'http://configured-printer:7125/' } = {}){
   const points = [...html.matchAll(/class="bed-level-point" data-x="(\d)" data-y="(\d)"[^>]*>(.*?)<\/button>/g)]
     .map((match) => {
       const point = element();
@@ -50,7 +56,8 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
     'bed-level-grid': grid, 'bed-level-refresh': refresh, 'bed-level-start': start,
     'bed-level-shimstock': shimstock, 'out-bed-level': out, 'pid-go': pidGo
   };
-  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-speed', 'belt-sgt', 'belt-clear', 'out-belt']){
+  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-speed', 'belt-sgt', 'belt-clear',
+    'belt-last-results', 'belt-last-status', 'out-belt']){
     elements[id] = element();
   }
   elements['belt-axis'].value = 'x';
@@ -63,13 +70,19 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
   const registers = { ...initialRegisters };
   let now = 0;
   const context = {
-    document: { getElementById: id => elements[id] || null },
+    document: { getElementById: id => elements[id] || null, createElement: () => element() },
     location: { hostname: 'printer.local' },
     localStorage: {
-      getItem: key => key === 'moonrakerUrl' ? 'http://configured-printer:7125/' : storage.get(key) || null,
-      setItem: (key, value) => storage.set(key, value)
+      getItem: key => key === 'moonrakerUrl' ? moonrakerUrl : storage.get(key) || null,
+      setItem: (key, value) => {
+        if (onStorageWrite) onStorageWrite(key, value);
+        storage.set(key, value);
+      }
     },
-    Date: { now: () => now },
+    Date: class extends Date {
+      constructor(value = now){ super(value); }
+      static now(){ return now; }
+    },
     setTimeout: (callback, delay) => {
       now += delay;
       if (onTick) onTick();
@@ -408,12 +421,12 @@ function beltPrinterStatus(){
 }
 
 async function mountBelt({ status = beltPrinterStatus(), ticks = 6, storage, onSample, onMove, onRegister, onSet,
-  initialRegisters } = {}){
+  onStorageWrite, initialRegisters } = {}){
   let moves = 0;
   let remaining = 0;
   let finish;
   const page = await mount({
-    status, storage, onRegister, onSet, initialRegisters,
+    status, storage, onRegister, onSet, onStorageWrite, initialRegisters,
     onScript: script => {
       moves++;
       if (onMove) onMove(script, moves);
@@ -449,6 +462,10 @@ function beltMotionRequests(page){
   return page.requests.filter(request => request.payload.script?.includes('G1 '));
 }
 
+function savedReference(page){
+  return [...page.storage.entries()].find(([key]) => key.startsWith('mconfig.belt-reference:'));
+}
+
 test('belt test makes bounded XY-only sweeps and saves a measured reference', async () => {
   const page = await mountBelt();
   page.status.toolhead.axis_minimum[0] = -55;
@@ -466,7 +483,7 @@ test('belt test makes bounded XY-only sweeps and saves a measured reference', as
   assert.match(page.elements['out-belt'].textContent, /stepper_x: median 100, range 100-100, 8 samples/);
   assert.equal(page.elements['belt-reference'].disabled, false);
   await page.elements['belt-reference'].click();
-  const reference = JSON.parse([...page.storage.values()][0]);
+  const reference = JSON.parse(savedReference(page)[1]);
   assert.equal(reference.results.stepper_x.median, 100);
   assert.equal(reference.results.stepper_x.count, 8);
   assert.equal(page.elements['belt-clear'].checked, false);
@@ -717,7 +734,7 @@ test('an occasional omitted zero field is still sampled but an all-zero saved re
   await page.elements['belt-run'].click();
   assert.match(page.elements['out-belt'].textContent, /median 100, range 0-100/);
   await page.elements['belt-reference'].click();
-  const [key, serialized] = [...page.storage.entries()][0];
+  const [key, serialized] = savedReference(page);
   const reference = JSON.parse(serialized);
   reference.results.stepper_x = { median: 0, min: 0, max: 0, count: 8 };
   page.storage.set(key, JSON.stringify(reference));
@@ -877,4 +894,94 @@ test('SGT brackets do not carry across motion settings and invalid numbers never
   await page.elements['belt-run'].click();
   assert.match(page.elements['out-belt'].textContent, /Invalid measurement SGT/);
   assert.equal(beltMotionRequests(page).length, count);
+});
+
+function lastMotorCards(page){
+  return Object.fromEntries(page.elements['belt-last-results'].children.map(motor =>
+    [motor.attributes['aria-label'], motor]));
+}
+
+test('last values retain every tested motor across axes, reference saves, replacements, and failed tests', async () => {
+  const page = await mountBelt();
+  assert.equal(page.elements['belt-last-results'].children.length, 0);
+  page.elements['belt-speed'].value = '25';
+  page.elements['belt-sgt'].value = '8';
+  page.status.motion_report.live_velocity = 25;
+  await page.elements['belt-run'].click();
+  assert.match(lastMotorCards(page).stepper_x.textContent, /100Range 100-100; 8 samples.*25 mm\/s; SGT=8/);
+  assert.match(lastMotorCards(page).stepper_x.textContent, /Tested:/);
+  const first = page.elements['belt-last-results'].textContent;
+  await page.elements['belt-reference'].click();
+  assert.equal(page.elements['belt-last-results'].textContent, first);
+
+  page.status.configfile.settings.stepper_y2 = {};
+  page.status.configfile.settings['tmc5160 stepper_y2'] = { run_current: 1.4 };
+  page.status['tmc5160 stepper_y2'] = { run_current: 1.4, drv_status: { cs_actual: 20, sg_result: 210 } };
+  page.elements['belt-axis'].value = 'y';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.deepEqual(Object.keys(lastMotorCards(page)), ['stepper_x', 'stepper_y', 'stepper_y1', 'stepper_y2']);
+  assert.equal(lastMotorCards(page).stepper_x.textContent, first);
+  const y = lastMotorCards(page).stepper_y.textContent;
+  assert.match(lastMotorCards(page).stepper_y1.textContent, /160Range 160-160/);
+  assert.match(lastMotorCards(page).stepper_y2.textContent, /210Range 210-210/);
+
+  page.elements['belt-axis'].value = 'x';
+  page.elements['belt-clear'].checked = true;
+  page.status['tmc5160 stepper_x'].drv_status.sg_result = 333;
+  await page.elements['belt-run'].click();
+  assert.match(lastMotorCards(page).stepper_x.textContent, /333Range 333-333/);
+  assert.equal(lastMotorCards(page).stepper_y.textContent, y);
+  const beforeFailure = page.elements['belt-last-results'].textContent;
+  const saved = page.storage.get('mconfig.belt-last-results:http://configured-printer:7125');
+  page.elements['belt-axis'].value = 'y';
+  page.elements['belt-clear'].checked = true;
+  page.status['tmc5160 stepper_y'].drv_status.otpw = 1;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /^Error:/);
+  assert.equal(page.elements['belt-last-results'].textContent, beforeFailure);
+  assert.equal(page.storage.get('mconfig.belt-last-results:http://configured-printer:7125'), saved);
+});
+
+test('last motor results reload without motion and are isolated by printer URL', async () => {
+  const page = await mountBelt();
+  await page.elements['belt-run'].click();
+  page.elements['belt-axis'].value = 'y';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  const reloaded = await mount({ storage: page.storage });
+  assert.equal(reloaded.elements['belt-last-results'].textContent, page.elements['belt-last-results'].textContent);
+  assert.deepEqual(Object.keys(lastMotorCards(reloaded)), ['stepper_x', 'stepper_y', 'stepper_y1']);
+  assert.equal(beltMotionRequests(reloaded).length, 0);
+  assert.match(reloaded.elements['belt-last-status'].textContent, /Historical results only/);
+  const other = await mount({ storage: page.storage, moonrakerUrl: 'http://other-printer:7125/' });
+  assert.equal(other.elements['belt-last-results'].children.length, 0);
+  assert.equal(other.elements['belt-last-status'].textContent, 'No successful tests recorded yet.');
+});
+
+test('invalid saved results are reported rather than displayed or blocking printer controls', async () => {
+  for (const saved of ['{broken', JSON.stringify({
+    stepper_y: { median: 1024, min: 100, max: 1024, count: 8, speed: 25, sgt: 8, testedAt: new Date().toISOString() }
+  })]){
+    const storage = new Map([['mconfig.belt-last-results:http://configured-printer:7125', saved]]);
+    const page = await mount({ storage });
+    assert.match(page.elements['belt-last-status'].textContent, /^Error loading last test values:/);
+    assert.equal(page.elements['belt-last-results'].children.length, 0);
+    assert.ok(page.points.every(point => !point.disabled));
+  }
+});
+
+test('persistence failure keeps the valid result visible and reports that it is not saved', async () => {
+  const page = await mountBelt({ onStorageWrite: key => {
+    if (key.startsWith('mconfig.belt-last-results:')) throw new Error('Quota exceeded');
+  } });
+  await page.elements['belt-run'].click();
+  assert.match(lastMotorCards(page).stepper_x.textContent, /100Range 100-100/);
+  assert.match(page.elements['belt-last-status'].textContent, /Error saving last test values: Quota exceeded/);
+  assert.match(page.elements['belt-last-status'].textContent, /only in this tab session/);
+  assert.match(page.elements['out-belt'].textContent, /Test complete/);
+  const displayed = page.elements['belt-last-results'].textContent;
+  await page.elements['belt-reference'].click();
+  assert.equal(page.elements['belt-last-results'].textContent, displayed);
+  assert.ok(savedReference(page));
 });
