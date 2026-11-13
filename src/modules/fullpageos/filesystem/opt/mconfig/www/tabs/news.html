@@ -4,6 +4,10 @@
   .news-platforms a:hover{opacity:.8}
   .news-platforms a:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
   .news-platforms img{display:block;width:48px;height:48px}
+  .news-designs{margin-bottom:32px}
+  .news-design{color:var(--fg);text-decoration:none}
+  .news-design:hover h3{color:var(--brand)}
+  #designs-grid .news-artwork img{object-fit:contain}
   .news-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
   .news-toolbar h2{margin:0 0 6px;font-size:22px;letter-spacing:-.4px}
   .news-toolbar p{margin:0;color:var(--muted);font-size:13px}
@@ -37,6 +41,17 @@
     <a href="https://www.linkedin.com/company/2992773/" target="_blank" rel="noopener noreferrer" title="LinkedIn" aria-label="LinkedIn (opens in a new tab)"><img src="/img/platform-linkedin.webp" width="48" height="48" alt=""></a>
     <a href="https://github.com/re3Dprinting" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub (opens in a new tab)"><img src="/img/platform-github.webp" width="48" height="48" alt=""></a>
   </nav>
+  <section class="news-designs" aria-labelledby="designs-title">
+    <div class="news-toolbar">
+      <div><h2 id="designs-title">Latest 3D Prints</h2><p>Get inspired by re:3D's newest Thingiverse designs.</p></div>
+      <div class="news-actions">
+        <button id="designs-refresh" type="button">Refresh</button>
+        <a class="btn btn-ghost" href="https://www.thingiverse.com/re3dprinting/designs" target="_blank" rel="noopener noreferrer">All designs &nearr;</a>
+      </div>
+    </div>
+    <p id="designs-status" class="news-status" role="status">Loading saved designs...</p>
+    <div id="designs-grid" class="news-grid" aria-busy="true"></div>
+  </section>
   <div class="news-toolbar">
     <div><h2>News, Research &amp; Stories</h2><p>Big ideas. Real-world impact. Made with re:3D.</p></div>
     <div class="news-actions">
@@ -205,5 +220,114 @@
 
   refresh.addEventListener('click', load);
   load();
+})();
+</script>
+
+<script>
+(() => {
+  const root = document.getElementById('news-page');
+  const grid = document.getElementById('designs-grid');
+  const status = document.getElementById('designs-status');
+  const refresh = document.getElementById('designs-refresh');
+  const collector = document.documentElement.hasAttribute('data-re3d-design-collector');
+  const profile = 'https://www.thingiverse.com/re3dprinting/designs';
+  let reading = false;
+  let collecting = false;
+  if (collector) refresh.textContent = 'Check designs';
+
+  async function loadSaved(collectionError = null) {
+    if (reading || !root.isConnected) return;
+    reading = true;
+    grid.setAttribute('aria-busy', 'true');
+    refresh.disabled = true;
+    try {
+      const [policyResponse, cacheResponse] = await Promise.all([
+        fetch('/auth/airgap', {cache: 'no-store', signal: AbortSignal.timeout(10000)}),
+        fetch('/cgi-bin/thingiverse_designs.py', {cache: 'no-store', signal: AbortSignal.timeout(10000)})
+      ]);
+      if (!policyResponse.ok || !cacheResponse.ok) throw new Error('Unable to read the printer design cache or security policy.');
+      const policy = await policyResponse.json();
+      const cache = await cacheResponse.json();
+      if (cache.error) throw new Error(cache.error);
+      if (typeof policy.enabled !== 'boolean' || typeof policy.applied !== 'boolean'
+          || !Array.isArray(cache.designs) || cache.designs.length > 6
+          || (cache.designs.length && (!cache.updatedAt || !Number.isFinite(Date.parse(cache.updatedAt))))) {
+        throw new Error('Invalid saved designs or security policy.');
+      }
+      if (!root.isConnected) return;
+      const imagesAllowed = !policy.enabled && !policy.applied;
+      grid.replaceChildren();
+      for (const design of cache.designs) {
+        if (!design || typeof design.title !== 'string' || typeof design.image !== 'string') {
+          throw new Error('Invalid saved design.');
+        }
+        const url = new URL(design.image);
+        if (url.protocol !== 'https:' || !['cdn.thingiverse.com', 'resize.thingiverse.com'].includes(url.hostname)
+            || url.username || url.password || !design.title.trim()) {
+          throw new Error('Invalid saved design image or title.');
+        }
+        const card = document.createElement('a');
+        card.className = 'card news-story news-design';
+        card.href = profile;
+        card.target = '_blank';
+        card.rel = 'noopener noreferrer';
+        card.setAttribute('aria-label', design.title + ' - view re:3D designs on Thingiverse (opens in a new tab)');
+        const artwork = document.createElement('div');
+        artwork.className = 'news-artwork';
+        artwork.setAttribute('aria-hidden', 'true');
+        const mark = document.createElement('span');
+        mark.textContent = 're:3D';
+        artwork.appendChild(mark);
+        if (imagesAllowed) {
+          const image = document.createElement('img');
+          image.alt = '';
+          image.loading = 'lazy';
+          image.referrerPolicy = 'no-referrer';
+          image.addEventListener('error', () => image.remove(), {once: true});
+          image.src = url.href;
+          artwork.appendChild(image);
+        }
+        const copy = document.createElement('div');
+        copy.className = 'news-copy';
+        const title = document.createElement('h3');
+        title.textContent = design.title;
+        const read = document.createElement('span');
+        read.className = 'news-read';
+        read.textContent = 'View designs \u2197';
+        copy.append(title, read);
+        card.append(artwork, copy);
+        grid.appendChild(card);
+      }
+      let message = cache.designs.length
+        ? 'Saved on the printer ' + new Date(cache.updatedAt).toLocaleString() + '. Images require internet.'
+        : 'No saved designs yet. The touchscreen browser collects them automatically while online.';
+      if (!imagesAllowed || policy.security_mode === 'lockdown') message += ' Design checks are disabled in air-gap and Lockdown modes.';
+      if (collectionError || cache.lastError) message += ' Latest check failed: ' + (collectionError || cache.lastError);
+      status.textContent = message;
+    } catch (error) {
+      if (root.isConnected) status.textContent = 'Unable to load saved designs: ' + error.message;
+    } finally {
+      reading = false;
+      grid.setAttribute('aria-busy', 'false');
+      refresh.disabled = collecting;
+    }
+  }
+
+  function requestCollection(force) {
+    collecting = true;
+    refresh.disabled = true;
+    root.dispatchEvent(new CustomEvent('re3d-designs-refresh', {bubbles: true, detail: {force}}));
+  }
+  root.addEventListener('re3d-designs-updated', async event => {
+    collecting = false;
+    await loadSaved(event.detail?.error);
+  });
+  refresh.addEventListener('click', () => {
+    if (collector) requestCollection(true);
+    else loadSaved();
+  });
+  loadSaved().then(() => {
+    if (collector && root.isConnected) requestCollection(false);
+  });
 })();
 </script>

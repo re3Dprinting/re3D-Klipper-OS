@@ -60,7 +60,7 @@ function browser(returnUrl = 'http://localhost:8081/#news') {
     }
   };
   function restart() {
-    vm.runInNewContext(background, {chrome, URL, console: {error() {}}});
+    vm.runInNewContext(background, {chrome, URL, importScripts() {}, console: {error() {}}});
   }
   restart();
   async function send(type, id = 1, data = {}, frameUrl) {

@@ -1,5 +1,7 @@
 const keyFor = id => `re3d-external-${id}`;
 
+importScripts('thingiverse-background.js');
+
 function isLocalInterface(value) {
   try {
     const url = new URL(value);

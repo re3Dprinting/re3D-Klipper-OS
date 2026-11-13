@@ -692,6 +692,7 @@ set -e
 install -d -m 0755 /opt/mconfig/www/cgi-bin
 
 chmod 0755 /opt/mconfig/www/cgi-bin/*.sh || true
+chmod 0755 /opt/mconfig/www/cgi-bin/thingiverse_designs.py
 chmod 0777 /opt/mconfig/www/gcode/gen || true
 chown -R root:root /opt/mconfig
 chmod +x /opt/mconfig/recovery_monitor.py

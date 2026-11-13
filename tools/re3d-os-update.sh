@@ -125,6 +125,7 @@ fi
 log "${LOG_TAG} Fixing cgi-bin permissions (best effort)..."
 chmod -R 755 "${DST_MCONFIG}/cgi-bin/"*.sh 2>/dev/null || true
 chmod 0755 "${DST_MCONFIG}/cgi-bin/setup.py"
+chmod 0755 "${DST_MCONFIG}/cgi-bin/thingiverse_designs.py"
 
 # Sync wait.html (first-boot / flash UI) if changed
 if [ -f "${SRC_WAIT_HTML}" ]; then
@@ -141,6 +142,7 @@ log "${LOG_TAG} Deploying touchscreen-only Mainsail controls..."
 install -d -m 0755 -o pi -g pi "${DST_KIOSK_UI}"
 install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/manifest.json" "${SRC_KIOSK_UI}/mainsail.css" "${DST_KIOSK_UI}/"
 install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/external-background.js" "${SRC_KIOSK_UI}/external-navigation.js" "${SRC_KIOSK_UI}/external-error.html" "${DST_KIOSK_UI}/"
+install -m 0644 -o pi -g pi "${SRC_KIOSK_UI}/thingiverse-background.js" "${SRC_KIOSK_UI}/thingiverse-collector.js" "${SRC_KIOSK_UI}/designs-client.js" "${DST_KIOSK_UI}/"
 
 # ---------- 1b) Recovery monitor daemon ----------
 SRC_RECOVERY_PY="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/recovery_monitor.py"

@@ -161,8 +161,17 @@ test('upload shortcut is hidden by a kiosk-only stylesheet, never the shared Mai
     js: ['external-navigation.js'],
     all_frames: true,
     run_at: 'document_idle'
+  }, {
+    matches: ['http://localhost/*', 'https://localhost/*', 'http://127.0.0.1/*', 'https://127.0.0.1/*'],
+    js: ['designs-client.js'],
+    all_frames: true,
+    run_at: 'document_start'
+  }, {
+    matches: ['https://www.thingiverse.com/re3dprinting/designs*', 'https://thingiverse.com/re3dprinting/designs*'],
+    js: ['thingiverse-collector.js'],
+    run_at: 'document_idle'
   }]);
-  assert.deepEqual(manifest.permissions, ['tabs', 'storage', 'webNavigation']);
+  assert.deepEqual(manifest.permissions, ['tabs', 'storage', 'webNavigation', 'alarms']);
   const css = fs.readFileSync(path.join(extension, 'mainsail.css'), 'utf8');
   assert.match(css, /\.v-application \.topbar \.upload-and-start-button\s*\{\s*display: none !important;\s*\}/);
   assert.doesNotMatch(css, /emergency-button|save-config-button|nth-child|@media/);
