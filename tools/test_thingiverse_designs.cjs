@@ -10,8 +10,6 @@ const worker = fs.readFileSync(path.join(extension, 'thingiverse-background.js')
 const backgroundFile = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8')).background.service_worker;
 const background = fs.readFileSync(path.join(extension, backgroundFile), 'utf8');
 const scraper = fs.readFileSync(path.join(extension, 'thingiverse-collector.js'), 'utf8');
-const html = fs.readFileSync(path.join(filesystem, 'opt', 'mconfig', 'www', 'tabs', 'news.html'), 'utf8');
-const ui = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)][1][1];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const design = {title: 'Printed vase', image: 'https://cdn.thingiverse.com/assets/vase.png'};
 const emptyCache = {designs: [], updatedAt: null, checkedAt: null, lastError: null};
@@ -209,78 +207,4 @@ test('DOM extraction takes the first six unique re3D design cards, not counters 
   assert.equal(result.designs[0].image, design.image);
   assert.deepEqual(scrape([]).designs, []);
   assert.match(scrape([], 'Just a moment...').error, /verification page/);
-});
-
-function element(tag = '') {
-  return {
-    tag, children: [], attributes: {}, listeners: {}, isConnected: true,
-    setAttribute(name, value) { this.attributes[name] = value; },
-    append(...children) { this.children.push(...children); },
-    appendChild(child) { this.children.push(child); },
-    replaceChildren(...children) { this.children = children; },
-    addEventListener(name, callback) { this.listeners[name] = callback; },
-    dispatchEvent(event) { this.events ||= []; this.events.push(event); this.listeners[event.type]?.(event); },
-    remove() { this.removed = true; }
-  };
-}
-
-async function news(options = {}) {
-  const elements = Object.fromEntries(['news-page', 'designs-grid', 'designs-status', 'designs-refresh']
-    .map(id => [id, element()]));
-  const calls = [];
-  const state = {cache: {...emptyCache, designs: [design], updatedAt: '2026-11-12T22:00:00Z'},
-    policy: {enabled: false, applied: false}, ...options};
-  vm.runInNewContext(ui, {
-    URL, AbortSignal,
-    CustomEvent: class {constructor(type, options) { this.type = type; Object.assign(this, options); }},
-    document: {
-      documentElement: {hasAttribute: () => !!options.local},
-      getElementById: id => elements[id], createElement: element
-    },
-    async fetch(url) {
-      calls.push(url);
-      return {ok: !state.error, json: async () => url.endsWith('/auth/airgap') ? state.policy : state.cache};
-    }
-  });
-  await flush();
-  return {elements, calls, state};
-}
-
-test('remote News renders printer-cached designs above articles and every card opens the profile', async () => {
-  assert.ok(html.indexOf('id="designs-title"') < html.indexOf('News, Research &amp; Stories'));
-  const f = await news();
-  const [card] = f.elements['designs-grid'].children;
-  assert.equal(card.href, 'https://www.thingiverse.com/re3dprinting/designs');
-  assert.equal(card.target, '_blank');
-  assert.equal(card.rel, 'noopener noreferrer');
-  assert.equal(card.children[1].children[0].textContent, design.title);
-  assert.equal(card.children[0].children[1].src, design.image);
-  await f.elements['designs-refresh'].listeners.click();
-  await flush();
-  assert.equal(f.calls.filter(url => url.endsWith('thingiverse_designs.py')).length, 2);
-  assert.ok(f.calls.every(url => url.startsWith('/')));
-});
-
-test('cached titles stay visible without remote image requests in isolation, and failed checks are shown', async () => {
-  const f = await news({policy: {enabled: true, applied: false},
-    cache: {...emptyCache, designs: [design], updatedAt: '2026-11-12T22:00:00Z', lastError: 'Verification page'}});
-  assert.equal(f.elements['designs-grid'].children[0].children[0].children.length, 1);
-  assert.match(f.elements['designs-status'].textContent, /disabled in air-gap/);
-  assert.match(f.elements['designs-status'].textContent, /Verification page/);
-  const empty = await news({cache: {...emptyCache}});
-  assert.match(empty.elements['designs-status'].textContent, /No saved designs yet/);
-  const broken = await news({error: true});
-  assert.match(broken.elements['designs-status'].textContent, /Unable to load saved designs/);
-});
-
-test('touchscreen News asks the extension to check and reloads shared data after its response', async () => {
-  const f = await news({local: true});
-  assert.equal(f.elements['designs-refresh'].textContent, 'Check designs');
-  assert.equal(f.elements['news-page'].events[0].detail.force, false);
-  await f.elements['news-page'].listeners['re3d-designs-updated']({detail: {error: null}});
-  assert.equal(f.elements['designs-refresh'].disabled, false);
-  f.elements['designs-refresh'].listeners.click();
-  assert.equal(f.elements['news-page'].events.at(-1).detail.force, true);
-  await f.elements['news-page'].listeners['re3d-designs-updated']({detail: {error: 'Check failed'}});
-  assert.match(f.elements['designs-status'].textContent, /Check failed/);
 });

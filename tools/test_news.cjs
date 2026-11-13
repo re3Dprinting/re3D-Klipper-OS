@@ -64,6 +64,14 @@ function descendants(node, tag) {
   ]);
 }
 
+test('News omits the paused design display and collection requests while retaining the platform shortcut', async () => {
+  assert.doesNotMatch(html, /id="designs-|news-designs|re3d-designs-refresh|thingiverse_designs\.py/);
+  assert.match(html, /title="Thingiverse"/);
+  const f = await mount();
+  assert.equal(f.elements['news-grid'].children.length, 1);
+  assert.ok(f.calls.every(({url}) => url === '/auth/airgap' || url.startsWith('https://re3d.org/')));
+});
+
 test('platform shortcuts precede stories with accessible external links and locally bundled icons', () => {
   const nav = html.match(/<nav class="news-platforms"[^>]*>([\s\S]*?)<\/nav>/);
   assert.ok(nav);
