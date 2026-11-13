@@ -22,6 +22,16 @@ function signal(sampleRate, frequency, { harmonics = [1], decay = 0, noise = 0, 
   });
 }
 
+function pluckWindow(sampleRate, frequency, age, { amplitude = 0.08, decay = 0.04 } = {}){
+  let seed = 9;
+  return Float32Array.from({ length: 32768 }, (_, index) => {
+    const time = age + (index - 32768) / sampleRate;
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const ringing = time >= 0 ? amplitude * Math.exp(-time / decay) * Math.sin(2 * Math.PI * frequency * time) : 0;
+    return ringing + 0.0001 * (seed / 2 ** 31 - 1);
+  });
+}
+
 test('frequency error stays within 1 Hz across phone sample rates and the measurement band', () => {
   for (const sampleRate of [44100, 48000]){
     for (const frequency of [20, 25, 43.7, 86.7, 123.4, 275, 300, 380, 400]){
@@ -52,7 +62,7 @@ test('silence, white noise, weak input and out-of-band tones do not produce belt
   const cases = [
     new Float32Array(32768),
     new Float32Array(32768).fill(0.3),
-    signal(48000, 80, { amplitude: 0.0005 }),
+    signal(48000, 80, { amplitude: 0.0001 }),
     signal(48000, 80, { amplitude: 0, noise: 0.2 }),
     signal(48000, 10),
     signal(48000, 500),
@@ -63,6 +73,29 @@ test('silence, white noise, weak input and out-of-band tones do not produce belt
   const invalid = new Float32Array(32768);
   invalid[20000] = NaN;
   assert.throws(() => detectFrequency(invalid, 48000), /invalid audio samples/);
+});
+
+test('short plucks surrounded by silence are detected without requiring a sustained tone', () => {
+  for (const rate of [44100, 48000]){
+    for (const frequency of [32, 62.8, 86.7, 140]){
+      for (const age of [0.12, 0.22, 0.32]){
+        const result = detectFrequency(pluckWindow(rate, frequency, age), rate);
+        assert.notEqual(result.frequency, null, `${frequency} Hz, ${age}s after pluck, ${rate} Hz input`);
+        assert.ok(Math.abs(result.frequency - frequency) <= 1,
+          `${frequency} Hz short pluck estimated as ${result.frequency}`);
+      }
+    }
+  }
+});
+
+test('non-oscillating taps cannot become periodic belt readings after decay normalization', () => {
+  for (const age of [0.12, 0.22, 0.32]){
+    const samples = Float32Array.from({ length: 32768 }, (_, index) => {
+      const time = age + (index - 32768) / 48000;
+      return time >= 0 ? 0.08 * Math.exp(-time / 0.04) : 0;
+    });
+    assert.equal(detectFrequency(samples, 48000).frequency, null);
+  }
 });
 
 function element(){
@@ -104,15 +137,21 @@ function mount(options = {}){
       this.state = 'suspended';
       this.sampleRate = 48000;
       this.connections = [];
+      this.destination = {};
       contexts.push(this);
     }
-    async resume(){ this.resumed = true; this.state = 'running'; }
+    async resume(){ this.resumed = true; this.resumeCount = (this.resumeCount || 0) + 1; this.state = 'running'; }
     async close(){ this.state = 'closed'; }
     createMediaStreamSource(){
       return { connect: node => this.connections.push(node), disconnect(){} };
     }
     createAnalyser(){
-      return { fftSize: 2048, getFloatTimeDomainData: buffer => buffer.set(input), disconnect(){} };
+      return { fftSize: 2048, getFloatTimeDomainData: buffer => buffer.set(input),
+        connect: node => this.connections.push(node), disconnect(){} };
+    }
+    createGain(){
+      this.outputGate = { gain: { value: 1 }, connect: node => this.connections.push(node), disconnect(){} };
+      return this.outputGate;
     }
   }
   const document = Object.assign(element(), {
@@ -182,7 +221,9 @@ test('microphone requests are explicit, use raw audio constraints and unlock Saf
   assert.deepEqual(JSON.parse(JSON.stringify(ui.requests[0])), {
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false
   });
-  assert.equal(ui.contexts[0].connections.length, 1, 'microphone connects only to analyser, never speakers');
+  assert.equal(ui.contexts[0].resumeCount, 2, 'resume again after Safari switches to microphone capture');
+  assert.equal(ui.contexts[0].connections.length, 3);
+  assert.equal(ui.contexts[0].outputGate.gain.value, 0, 'Safari processing sink cannot play microphone audio');
   assert.equal(ui.get('pid-go').disabled, true);
   await ui.get('frequency-stop').fire('click');
   assert.equal(ui.tracks[0].stopped, true);
@@ -286,6 +327,30 @@ test('stable plucks save separate belts, survive reload, and do not relabel a pr
   assert.equal(reloaded.get('frequency-results').children[0].children[1].textContent, '62.8 Hz');
 });
 
+test('a quiet, quickly decaying pluck passes capture and stability checks', async () => {
+  const ui = mount({ safari: true });
+  await ui.start();
+  for (let index = 0; index < 11; index++) ui.tick();
+  for (const age of [0.12, 0.22, 0.32]){
+    ui.tick(pluckWindow(48000, 62.8, age, { amplitude: 0.008 }));
+  }
+  assert.equal(ui.get('frequency-save').disabled, false);
+  assert.ok(Math.abs(parseFloat(ui.get('frequency-value').textContent) - 62.8) <= 1);
+});
+
+test('input diagnostics distinguish silence from audible sound without a periodic belt tone', async () => {
+  const ui = mount({ safari: true });
+  await ui.start();
+  for (let index = 0; index < 32; index++) ui.tick();
+  assert.equal(ui.get('frequency-input-value').textContent, '-90 dBFS');
+  assert.match(ui.get('frequency-status').textContent, /no microphone signal/);
+  ui.tick(signal(48000, 80, { amplitude: 0, noise: 0.02 }));
+  assert.ok(ui.get('frequency-input').value > -60);
+  assert.match(ui.get('frequency-status').textContent, /Sound detected, but no clear/);
+  assert.equal(ui.get('frequency-save').disabled, true);
+  await ui.get('frequency-stop').fire('click');
+  assert.equal(ui.get('frequency-input-value').textContent, 'Stopped');
+});
 test('ambient sound and unstable pitches are not saved; interruption and storage failures are visible', async () => {
   const ui = mount({ storageFailure: true });
   await ui.start();

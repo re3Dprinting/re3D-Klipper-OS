@@ -239,6 +239,12 @@
     </div>
     <div class="live belt-results">
       <div><div class="k">Last stable frequency</div><div class="v" id="frequency-value">-- Hz</div></div>
+      <div>
+        <div class="k">Microphone input level</div>
+        <div class="v" id="frequency-input-value">Stopped</div>
+        <meter id="frequency-input" min="-90" max="0" value="-90" aria-label="Microphone input level in dBFS" style="width:100%"></meter>
+        <div class="subhint">The level should rise when you pluck. Persistent -90 dBFS means no detectable audio.</div>
+      </div>
     </div>
     <div class="out" id="frequency-status" role="status" aria-live="polite">
       Audio is processed locally on this device, never recorded or uploaded.
