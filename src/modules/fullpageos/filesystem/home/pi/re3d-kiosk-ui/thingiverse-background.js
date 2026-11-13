@@ -5,7 +5,12 @@ let designCollection = null;
 let collectingDesignTabId = null;
 
 async function designRequest(url, options = {}) {
-  const response = await fetch(url, {cache: 'no-store', signal: AbortSignal.timeout(10000), ...options});
+  let response;
+  try {
+    response = await fetch(url, {cache: 'no-store', signal: AbortSignal.timeout(10000), ...options});
+  } catch (error) {
+    throw new Error(`Unable to ${options.method || 'GET'} ${url}: ${error.message}`, {cause: error});
+  }
   const data = await response.json();
   if (!response.ok || data.error) throw new Error(data.error || `Design request failed (${response.status}).`);
   return data;

@@ -32,6 +32,7 @@ async function collector(options = {}) {
     console: {error() {}},
     fetch: async (url, opts) => {
       calls.push({url, opts});
+      if (state.fetchErrorFor && url.endsWith(state.fetchErrorFor)) throw new TypeError('Failed to fetch');
       if (url.endsWith('/auth/airgap')) return {ok: true, json: async () => state.policy};
       if (state.cacheError || (state.postError && opts.method === 'POST')) {
         return {ok: false, status: 503, json: async () => ({error: 'Cache unavailable'})};
@@ -161,6 +162,15 @@ test('a normally opened public profile can populate the cache without background
     /Only the public re3D/);
   f.state.policy.enabled = true;
   assert.equal((await f.publish()).skipped, true);
+});
+
+test('network failures identify the printer endpoint without starting Thingiverse collection', async () => {
+  for (const endpoint of ['/auth/airgap', '/cgi-bin/thingiverse_designs.py']) {
+    const f = await collector({fetchErrorFor: endpoint});
+    assert.equal((await f.refresh(true)).error,
+      'Unable to GET http://localhost:8081' + endpoint + ': Failed to fetch');
+    assert.equal(f.calls.some(call => call.create), false);
+  }
 });
 
 function card(id, title, owner = 're3dprinting') {
