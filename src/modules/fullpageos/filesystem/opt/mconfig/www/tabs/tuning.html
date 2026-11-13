@@ -210,7 +210,7 @@
       Compare StallGuard motor load before and after small belt adjustments.
       Lower readings generally indicate higher load, but friction, alignment, speed, motor temperature and current
       also affect the result. These are not tension units or a pass/fail test; Prusa's target numbers do not apply.
-      Supports Cartesian printers with TMC5160 or TMC2130 drivers in spreadCycle.
+      Supports Cartesian printers with TMC5160 or TMC2130 drivers; the test temporarily uses spreadCycle.
     </div>
     <div class="row">
       <div>
@@ -220,7 +220,7 @@
       <div class="hint">
         Test moves only the selected axis between 20% and 80% of its configured travel at 50 mm/s,
         then returns to the starting test point. It does not home or raise Z.
-        StallGuard measurement thresholds are temporarily enabled and restored after testing.
+        Driver chopper mode and StallGuard measurement thresholds are restored after testing.
       </div>
     </div>
     <label class="check-row">
@@ -478,8 +478,8 @@
         throw new Error(`${stepper}: requires a readable TMC5160 or TMC2130 driver (Azteeg is unsupported).`);
       }
       const driver = settings[name];
-      if ((driver.stealthchop_threshold ?? 0) !== 0 || (driver.driver_semin ?? 0) !== 0){
-        throw new Error(`${stepper}: use spreadCycle with CoolStep disabled before testing. Driver settings were not changed.`);
+      if ((driver.driver_semin ?? 0) !== 0){
+        throw new Error(`${stepper}: disable CoolStep before testing. Driver settings were not changed.`);
       }
       return { name, stepper };
     });
@@ -635,13 +635,14 @@
   async function beltRestore(drivers){
     const script = drivers.flatMap(driver => [
       `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=tcoolthrs VALUE=${driver.tcoolthrs}`,
-      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=${driver.thigh}`
+      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=${driver.thigh}`,
+      `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=en_pwm_mode VALUE=${(driver.gconf >> 2) & 1}`
     ]).join('\n');
     if (script){
       try {
         await bedRequest('/printer/gcode/script', { script });
       } catch (error){
-        throw new Error('Could not restore StallGuard thresholds: ' + error.message +
+        throw new Error('Could not restore StallGuard driver settings: ' + error.message +
           '. Restart Klipper before further motion.');
       }
     }
@@ -674,14 +675,14 @@
         const thigh = await beltRegister(driver.stepper, 'THIGH');
         const coolconf = await beltRegister(driver.stepper, 'COOLCONF');
         const gconf = await beltRegister(driver.stepper, 'GCONF');
-        if ((coolconf & 15) || (gconf & ((1 << 2) | (1 << 15)))){
-          throw new Error(`${driver.stepper}: live CoolStep, stealthChop or driver stop mode is enabled.`);
-        }
+        if (coolconf & 15) throw new Error(`${driver.stepper}: live CoolStep is enabled; disable it before testing.`);
+        if (gconf & (1 << 15)) throw new Error(`${driver.stepper}: live driver stop mode is enabled; disable it before testing.`);
         registers.push({ ...driver, tcoolthrs, thigh, coolconf, gconf });
       }
       beltCheck();
       restore = registers;
       await bedRequest('/printer/gcode/script', { script: registers.flatMap(driver => [
+        `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=en_pwm_mode VALUE=0`,
         `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=tcoolthrs VALUE=1048575`,
         `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=0`
       ]).join('\n') });

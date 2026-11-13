@@ -30,7 +30,7 @@ function element(){
 }
 
 async function mount({ status = printerStatus(), queryResponse, moveResponse, moveWait, onScript,
-  onQuery, onTick, onRegister, onSet, storage = new Map() } = {}){
+  onQuery, onTick, onRegister, onSet, initialRegisters = {}, storage = new Map() } = {}){
   const points = [...html.matchAll(/class="bed-level-point" data-x="(\d)" data-y="(\d)"[^>]*>(.*?)<\/button>/g)]
     .map((match) => {
       const point = element();
@@ -57,7 +57,7 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
   elements['belt-clear'].checked = false;
   const requests = [];
   const history = [];
-  const registers = {};
+  const registers = { ...initialRegisters };
   let now = 0;
   const context = {
     document: { getElementById: id => elements[id] || null },
@@ -100,6 +100,10 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
         if (failure) return { ok: true, status: 200, json: async () => ({ error: { message: failure } }) };
         for (const match of payload.script.matchAll(/STEPPER=(\w+) FIELD=(\w+) VALUE=(\d+)/g)){
           registers[match[1] + ':' + match[2]] = Number(match[3]);
+          if (match[2] === 'en_pwm_mode'){
+            const key = match[1] + ':gconf';
+            registers[key] = ((registers[key] ?? 0) & ~4) | (Number(match[3]) << 2);
+          }
         }
         return { ok: true, status: 200, json: async () => ({ result: 'ok' }) };
       }
@@ -394,12 +398,13 @@ function beltPrinterStatus(){
   return status;
 }
 
-async function mountBelt({ status = beltPrinterStatus(), ticks = 6, storage, onSample, onMove, onRegister, onSet } = {}){
+async function mountBelt({ status = beltPrinterStatus(), ticks = 6, storage, onSample, onMove, onRegister, onSet,
+  initialRegisters } = {}){
   let moves = 0;
   let remaining = 0;
   let finish;
   const page = await mount({
-    status, storage, onRegister, onSet,
+    status, storage, onRegister, onSet, initialRegisters,
     onScript: script => {
       moves++;
       if (onMove) onMove(script, moves);
@@ -495,7 +500,6 @@ test('belt test refuses unsafe states and unsupported drivers before any motion'
     status => { status.webhooks.state = 'shutdown'; },
     status => { status.configfile.settings.printer.kinematics = 'corexy'; },
     status => { delete status.configfile.settings['tmc5160 stepper_x']; },
-    status => { status.configfile.settings['tmc5160 stepper_x'].stealthchop_threshold = 999; },
     status => { status.configfile.settings['tmc5160 stepper_x'].driver_semin = 1; },
     status => { status.gcode_move.speed_factor = 0.5; },
     status => { status.toolhead.max_velocity = 49; },
@@ -611,8 +615,55 @@ test('a restoration error is explicit, not retried, and prevents reference savin
   } });
   await page.elements['belt-run'].click();
   assert.equal(restorations, 1);
-  assert.match(page.elements['out-belt'].textContent, /Could not restore StallGuard thresholds: SPI communication failed/);
+  assert.match(page.elements['out-belt'].textContent, /Could not restore StallGuard driver settings: SPI communication failed/);
   assert.match(page.elements['out-belt'].textContent, /Restart Klipper before further motion/);
   assert.equal(page.elements['belt-reference'].disabled, true);
   assert.equal(page.storage.size, 0);
+});
+
+test('live GCONF 0000000c switches to spreadCycle for motion and restores stealthChop without altering configuration', async () => {
+  const status = beltPrinterStatus();
+  status.configfile.settings['tmc5160 stepper_x'].stealthchop_threshold = 999999;
+  status['tmc5160 stepper_x'].drv_status.stealth = 1;
+  const originalConfig = JSON.stringify(status.configfile.settings);
+  const page = await mountBelt({
+    status, initialRegisters: { 'stepper_x:gconf': 0x0c },
+    onMove: () => {
+      assert.equal(page.registers['stepper_x:gconf'], 0x08);
+      delete status['tmc5160 stepper_x'].drv_status.stealth;
+    }
+  });
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Test complete/);
+  assert.equal(beltMotionRequests(page).length, 3);
+  assert.equal(page.registers['stepper_x:gconf'], 0x0c);
+  assert.equal(JSON.stringify(status.configfile.settings), originalConfig);
+  assert.match(page.requests.at(-1).payload.script, /FIELD=en_pwm_mode VALUE=1$/);
+});
+
+test('a sampling failure restores the original chopper mode after the queued move finishes', async () => {
+  const page = await mountBelt({
+    initialRegisters: { 'stepper_x:gconf': 0x0c },
+    onSample: () => ({ error: { message: 'Driver query failed' } })
+  });
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Driver query failed/);
+  assert.equal(beltMotionRequests(page).length, 2);
+  assert.equal(page.registers['stepper_x:gconf'], 0x0c);
+  assert.equal(page.registers['stepper_x:tcoolthrs'], 0);
+  assert.equal(page.elements['belt-reference'].disabled, true);
+});
+
+test('live CoolStep and driver stop mode stay blocked with specific errors before changing registers', async () => {
+  for (const [register, value, message] of [
+    ['coolconf', 1, /live CoolStep is enabled/],
+    ['gconf', 0x800c, /live driver stop mode is enabled/]
+  ]){
+    const initialRegisters = { ['stepper_x:' + register]: value };
+    const page = await mountBelt({ initialRegisters });
+    await page.elements['belt-run'].click();
+    assert.match(page.elements['out-belt'].textContent, message);
+    assert.equal(beltMotionRequests(page).length, 0);
+    assert.deepEqual(page.registers, initialRegisters);
+  }
 });
