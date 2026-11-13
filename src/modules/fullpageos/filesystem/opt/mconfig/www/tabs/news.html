@@ -1,0 +1,209 @@
+<style>
+  .news-platforms{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+  .news-platforms a{display:flex;width:48px;height:48px;border-radius:12px;transition:opacity .15s}
+  .news-platforms a:hover{opacity:.8}
+  .news-platforms a:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+  .news-platforms img{display:block;width:48px;height:48px}
+  .news-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+  .news-toolbar h2{margin:0 0 6px;font-size:22px;letter-spacing:-.4px}
+  .news-toolbar p{margin:0;color:var(--muted);font-size:13px}
+  .news-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .news-status{font-size:13px;color:var(--muted);margin:0 0 20px;line-height:1.6}
+  .news-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+  .news-story{padding:0;overflow:hidden;display:flex;flex-direction:column}
+  .news-artwork{aspect-ratio:8/5;background:var(--surface-0);display:grid;place-items:center;overflow:hidden}
+  .news-artwork span{color:var(--brand);font-size:30px;font-weight:600;letter-spacing:-1px}
+  .news-artwork img{width:100%;height:100%;object-fit:cover;grid-area:1/1}
+  .news-artwork span{grid-area:1/1}
+  .news-copy{padding:20px;display:flex;flex-direction:column;align-items:flex-start;gap:12px;flex:1}
+  .news-copy time{font-size:12px;color:var(--muted)}
+  .news-copy h3{margin:0;font-size:17px;line-height:1.5;overflow-wrap:anywhere}
+  .news-copy h3 a{color:var(--fg);text-decoration:none}
+  .news-copy h3 a:hover{color:var(--brand)}
+  .news-copy .news-read{margin-top:auto;font-size:13px;color:var(--brand)}
+  .news-grid a:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+  @media(max-width:1100px){.news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:600px){.news-grid{grid-template-columns:1fr}}
+</style>
+
+<section id="news-page" aria-label="re:3D news">
+  <nav class="news-platforms" aria-label="re:3D platforms">
+    <a href="https://www.facebook.com/re3Dprinting/" target="_blank" rel="noopener noreferrer" title="Facebook" aria-label="Facebook (opens in a new tab)"><img src="/img/platform-facebook.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.instagram.com/re3dprinting/" target="_blank" rel="noopener noreferrer" title="Instagram" aria-label="Instagram (opens in a new tab)"><img src="/img/platform-instagram.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.youtube.com/user/GigaBot3D" target="_blank" rel="noopener noreferrer" title="YouTube" aria-label="YouTube (opens in a new tab)"><img src="/img/platform-youtube.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.thingiverse.com/re3dprinting/designs" target="_blank" rel="noopener noreferrer" title="Thingiverse" aria-label="Thingiverse (opens in a new tab)"><img src="/img/platform-thingiverse.webp" width="48" height="48" alt=""></a>
+    <a href="https://cults3d.com/en/users/re3D/creations" target="_blank" rel="noopener noreferrer" title="Cults3D" aria-label="Cults3D (opens in a new tab)"><img src="/img/platform-cults3d.webp" width="48" height="48" alt=""></a>
+    <a href="https://re3d.zendesk.com/hc/en-us/community/topics" target="_blank" rel="noopener noreferrer" title="Zendesk community" aria-label="Zendesk community (opens in a new tab)"><img src="/img/platform-zendesk.webp" width="48" height="48" alt=""></a>
+    <a href="https://www.linkedin.com/company/2992773/" target="_blank" rel="noopener noreferrer" title="LinkedIn" aria-label="LinkedIn (opens in a new tab)"><img src="/img/platform-linkedin.webp" width="48" height="48" alt=""></a>
+    <a href="https://github.com/re3Dprinting" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub (opens in a new tab)"><img src="/img/platform-github.webp" width="48" height="48" alt=""></a>
+  </nav>
+  <div class="news-toolbar">
+    <div><h2>News, Research &amp; Stories</h2><p>Big ideas. Real-world impact. Made with re:3D.</p></div>
+    <div class="news-actions">
+      <button id="news-refresh" type="button">Refresh</button>
+      <a class="btn btn-ghost" href="https://re3d.org/news/" target="_blank" rel="noopener noreferrer">All news &nearr;</a>
+    </div>
+  </div>
+  <p id="news-status" class="news-status" role="status">Loading the latest stories...</p>
+  <div id="news-grid" class="news-grid" aria-busy="true"></div>
+</section>
+
+<script>
+(() => {
+  const root = document.getElementById('news-page');
+  const grid = document.getElementById('news-grid');
+  const status = document.getElementById('news-status');
+  const refresh = document.getElementById('news-refresh');
+  const cacheKey = 're3d-news-v1';
+  const endpoint = 'https://re3d.org/wp-json/wp/v2/posts?per_page=6&_embed=wp:featuredmedia&_fields=link,date,title,_embedded,_links';
+  let articles = [];
+  let savedAt = '';
+  let cacheWarning = '';
+  let busy = false;
+
+  function safeUrl(value) {
+    if (typeof value !== 'string') return '';
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && url.hostname === 're3d.org' && !url.username && !url.password ? url.href : '';
+    } catch (error) {
+      if (error instanceof TypeError) return '';
+      throw error;
+    }
+  }
+
+  function validate(items) {
+    if (!Array.isArray(items) || !items.length) throw new Error('No articles were returned.');
+    return items.slice(0, 6).map(item => {
+      if (!item || typeof item.title !== 'string' || !item.title.trim() ||
+          !safeUrl(item.url) || typeof item.date !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !Number.isFinite(Date.parse(item.date))) {
+        throw new Error('The news feed contains an invalid article.');
+      }
+      return {title: item.title, url: safeUrl(item.url), date: item.date, image: safeUrl(item.image)};
+    });
+  }
+
+  try {
+    const stored = localStorage.getItem(cacheKey);
+    if (stored) {
+      const cached = JSON.parse(stored);
+      if (!cached || typeof cached.savedAt !== 'string' || !Number.isFinite(Date.parse(cached.savedAt))) {
+        throw new Error('Invalid saved news date.');
+      }
+      articles = validate(cached.articles);
+      savedAt = cached.savedAt;
+    }
+  } catch (error) {
+    cacheWarning = 'Saved news could not be read: ' + error.message;
+  }
+
+  function render(imagesAllowed) {
+    grid.replaceChildren();
+    for (const article of articles) {
+      const card = document.createElement('article');
+      card.className = 'card news-story';
+      const artwork = document.createElement('div');
+      artwork.className = 'news-artwork';
+      artwork.setAttribute('aria-hidden', 'true');
+      const mark = document.createElement('span');
+      mark.textContent = 're:3D';
+      artwork.appendChild(mark);
+      if (imagesAllowed && article.image) {
+        const image = document.createElement('img');
+        image.alt = '';
+        image.loading = 'lazy';
+        image.referrerPolicy = 'no-referrer';
+        image.addEventListener('error', () => image.remove(), {once: true});
+        image.src = article.image;
+        artwork.appendChild(image);
+      }
+      const copy = document.createElement('div');
+      copy.className = 'news-copy';
+      const date = document.createElement('time');
+      date.dateTime = article.date;
+      date.textContent = new Date(article.date + 'T12:00:00').toLocaleDateString(undefined, {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
+      const heading = document.createElement('h3');
+      const link = document.createElement('a');
+      link.href = article.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = article.title;
+      heading.appendChild(link);
+      const read = link.cloneNode(false);
+      read.className = 'news-read';
+      read.textContent = 'Read story \u2197';
+      read.setAttribute('aria-label', 'Read story: ' + article.title + ' (opens in a new tab)');
+      copy.append(date, heading, read);
+      card.append(artwork, copy);
+      grid.appendChild(card);
+    }
+  }
+
+  function message(text) {
+    const cached = savedAt ? ' Last updated ' + new Date(savedAt).toLocaleString() + '.' : '';
+    status.textContent = text + cached + (cacheWarning ? ' ' + cacheWarning : '');
+  }
+
+  async function load() {
+    if (busy) return;
+    busy = true;
+    refresh.disabled = true;
+    grid.setAttribute('aria-busy', 'true');
+    render(false);
+    message(articles.length ? 'Showing saved stories. Checking for updates...' : 'Loading the latest stories...');
+    try {
+      const policyResponse = await fetch('/auth/airgap', {cache: 'no-store', signal: AbortSignal.timeout(10000)});
+      if (!policyResponse.ok) throw new Error('Unable to verify air-gap mode.');
+      const policy = await policyResponse.json();
+      if (typeof policy.enabled !== 'boolean' || typeof policy.applied !== 'boolean') {
+        throw new Error('Invalid air-gap status.');
+      }
+      if (!root.isConnected) return;
+      if (policy.enabled || policy.applied) {
+        message('News updates and images are disabled by air-gap policy.' +
+          (articles.length ? ' Showing saved stories; full articles require internet.' : ' No saved stories are available.'));
+        return;
+      }
+      const response = await fetch(endpoint, {credentials: 'omit', signal: AbortSignal.timeout(10000)});
+      if (!response.ok) throw new Error('News request failed (HTTP ' + response.status + ').');
+      const posts = await response.json();
+      if (!Array.isArray(posts)) throw new Error('Invalid news feed response.');
+      const fresh = validate(posts.map(post => {
+        const title = new DOMParser().parseFromString(post.title?.rendered || '', 'text/html').body.textContent;
+        const media = post._embedded?.['wp:featuredmedia']?.[0];
+        return {
+          title: title.replace(/\s+/g, ' ').trim(),
+          url: post.link,
+          date: typeof post.date === 'string' ? post.date.slice(0, 10) : '',
+          image: media?.media_details?.sizes?.medium_large?.source_url || media?.source_url
+        };
+      }));
+      if (!root.isConnected) return;
+      articles = fresh;
+      savedAt = new Date().toISOString();
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({savedAt, articles}));
+        cacheWarning = '';
+      } catch (error) {
+        cacheWarning = 'Stories could not be saved for offline use: ' + error.message;
+      }
+      render(true);
+      message('Latest from re:3D. Stories open on re3d.org in a new tab.');
+    } catch (error) {
+      if (!root.isConnected) return;
+      message('Unable to update news. ' + error.message + '.' +
+        (articles.length ? ' Showing saved stories; full articles and images require internet.' : ' No saved stories are available. Connect to the internet and try Refresh.'));
+    } finally {
+      busy = false;
+      refresh.disabled = false;
+      grid.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  refresh.addEventListener('click', load);
+  load();
+})();
+</script>
