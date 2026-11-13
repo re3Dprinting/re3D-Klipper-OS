@@ -50,10 +50,11 @@ async function mount({ status = printerStatus(), queryResponse, moveResponse, mo
     'bed-level-grid': grid, 'bed-level-refresh': refresh, 'bed-level-start': start,
     'bed-level-shimstock': shimstock, 'out-bed-level': out, 'pid-go': pidGo
   };
-  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-clear', 'out-belt']){
+  for (const id of ['belt-run', 'belt-reference', 'belt-stop', 'belt-axis', 'belt-speed', 'belt-clear', 'out-belt']){
     elements[id] = element();
   }
   elements['belt-axis'].value = 'x';
+  elements['belt-speed'].value = '50';
   elements['belt-clear'].checked = false;
   const requests = [];
   const history = [];
@@ -390,7 +391,7 @@ function beltPrinterStatus(){
     'tmc5160 stepper_y': { run_current: 1.4 },
     'tmc5160 stepper_y1': { run_current: 1.4 }
   } };
-  for (const [stepper, value] of [['stepper_x', 0], ['stepper_y', 80], ['stepper_y1', 160]]){
+  for (const [stepper, value] of [['stepper_x', 100], ['stepper_y', 80], ['stepper_y1', 160]]){
     status['tmc5160 ' + stepper] = { run_current: 1.4, drv_status: {
       cs_actual: 20, ...(value ? { sg_result: value } : {})
     } };
@@ -440,7 +441,7 @@ function beltMotionRequests(page){
   return page.requests.filter(request => request.payload.script?.includes('G1 '));
 }
 
-test('belt test samples real zero SG_RESULT, makes bounded XY-only sweeps, and saves a reference', async () => {
+test('belt test makes bounded XY-only sweeps and saves a measured reference', async () => {
   const page = await mountBelt();
   page.status.toolhead.axis_minimum[0] = -55;
   page.status.gcode_move.homing_origin[0] = -55;
@@ -454,11 +455,11 @@ test('belt test samples real zero SG_RESULT, makes bounded XY-only sweeps, and s
       'RESTORE_GCODE_STATE NAME=mconfig_belt'
     ].join('\n'));
   }
-  assert.match(page.elements['out-belt'].textContent, /stepper_x: median 0, range 0-0, 8 samples/);
+  assert.match(page.elements['out-belt'].textContent, /stepper_x: median 100, range 100-100, 8 samples/);
   assert.equal(page.elements['belt-reference'].disabled, false);
   await page.elements['belt-reference'].click();
   const reference = JSON.parse([...page.storage.values()][0]);
-  assert.equal(reference.results.stepper_x.median, 0);
+  assert.equal(reference.results.stepper_x.median, 100);
   assert.equal(reference.results.stepper_x.count, 8);
   assert.equal(page.elements['belt-clear'].checked, false);
   assert.equal(page.pidGo.disabled, false);
@@ -666,4 +667,71 @@ test('live CoolStep and driver stop mode stay blocked with specific errors befor
     assert.equal(beltMotionRequests(page).length, 0);
     assert.deepEqual(page.registers, initialRegisters);
   }
+});
+
+test('all-zero Y readings report driver diagnostics, restore settings, and offer a slower retest instead of success', async () => {
+  const status = beltPrinterStatus();
+  for (const name of ['tmc5160 stepper_y', 'tmc5160 stepper_y1']){
+    status[name].drv_status = { cs_actual: 31, stallguard: 1 };
+  }
+  const page = await mountBelt({ status });
+  page.elements['belt-axis'].value = 'y';
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /stepper_y: SG_RESULT=0 in all 8 moving samples, CS_ACTUAL=31, stallguard=1/);
+  assert.match(page.elements['out-belt'].textContent, /stepper_y1: SG_RESULT=0/);
+  assert.match(page.elements['out-belt'].textContent, /Try 25 mm\/s/);
+  assert.doesNotMatch(page.elements['out-belt'].textContent, /Test complete/);
+  assert.equal(page.elements['belt-reference'].disabled, true);
+  await page.elements['belt-reference'].click();
+  assert.equal(page.storage.size, 0);
+  assert.equal(page.registers['stepper_y:tcoolthrs'], 0);
+  assert.equal(page.registers['stepper_y1:tcoolthrs'], 0);
+
+  page.elements['belt-speed'].value = '25';
+  page.elements['belt-clear'].checked = true;
+  status.motion_report.live_velocity = 25;
+  status['tmc5160 stepper_y'].drv_status.sg_result = 124;
+  status['tmc5160 stepper_y1'].drv_status.sg_result = 146;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /stepper_y: median 124/);
+  assert.match(page.elements['out-belt'].textContent, /stepper_y1: median 146/);
+  assert.ok(beltMotionRequests(page).slice(3).every(request => request.payload.script.includes('F1500')));
+  assert.equal(page.elements['belt-reference'].disabled, false);
+});
+
+test('an occasional omitted zero field is still sampled but an all-zero saved reference is not compared', async () => {
+  let queries = 0;
+  const page = await mountBelt({ onSample: status => {
+    if (++queries % 3 === 0) delete status['tmc5160 stepper_x'].drv_status.sg_result;
+    else status['tmc5160 stepper_x'].drv_status.sg_result = 100;
+    return null;
+  } });
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /median 100, range 0-100/);
+  await page.elements['belt-reference'].click();
+  const [key, serialized] = [...page.storage.entries()][0];
+  const reference = JSON.parse(serialized);
+  reference.results.stepper_x = { median: 0, min: 0, max: 0, count: 8 };
+  page.storage.set(key, JSON.stringify(reference));
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Saved reference contains all-zero readings; comparison withheld/);
+  assert.doesNotMatch(page.elements['out-belt'].textContent, /reference 0, change/);
+});
+
+test('different test speeds cannot share a baseline, and invalid speed values do not move', async () => {
+  const page = await mountBelt();
+  await page.elements['belt-run'].click();
+  await page.elements['belt-reference'].click();
+  page.elements['belt-speed'].value = '25';
+  page.status.motion_report.live_velocity = 25;
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Reference settings differ; comparison withheld/);
+  const count = beltMotionRequests(page).length;
+  page.elements['belt-speed'].value = '100';
+  page.elements['belt-clear'].checked = true;
+  await page.elements['belt-run'].click();
+  assert.match(page.elements['out-belt'].textContent, /Test speed must be 25 or 50/);
+  assert.equal(beltMotionRequests(page).length, count);
 });

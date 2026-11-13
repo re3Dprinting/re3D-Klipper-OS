@@ -217,10 +217,20 @@
         <label for="belt-axis">Axis</label>
         <select id="belt-axis"><option value="x">X</option><option value="y">Y (all motors)</option></select>
       </div>
+      <div>
+        <label for="belt-speed">Test speed (mm/s)</label>
+        <select id="belt-speed">
+          <option value="50">50</option>
+          <option value="25">25 (try if readings stay at zero)</option>
+        </select>
+      </div>
+    </div>
+    <div>
       <div class="hint">
-        Test moves only the selected axis between 20% and 80% of its configured travel at 50 mm/s,
+        Test moves only the selected axis between 20% and 80% of its configured travel at the selected speed,
         then returns to the starting test point. It does not home or raise Z.
         Driver chopper mode and StallGuard measurement thresholds are restored after testing.
+        All-zero readings are not usable belt-tension feedback. Compare references only at the same speed.
       </div>
     </div>
     <label class="check-row">
@@ -307,6 +317,7 @@
   const beltReference = document.getElementById('belt-reference');
   const beltStop = document.getElementById('belt-stop');
   const beltAxis = document.getElementById('belt-axis');
+  const beltSpeedSelect = document.getElementById('belt-speed');
   const beltClear = document.getElementById('belt-clear');
   const bedStartZ = 101.3;
   const bedMoonraker = (localStorage.getItem('moonrakerUrl') ||
@@ -458,7 +469,7 @@
   bedShimstock.addEventListener('click', () => runBedAction(null, 'shimstock'));
   bedPoints.forEach(point => point.addEventListener('click', () => runBedAction(point)));
 
-  const beltSpeed = 50;
+  let beltSpeed = 50;
   let beltResult = null;
   let beltAborted = false;
 
@@ -502,7 +513,7 @@
     if (!Number.isFinite(motion?.max_velocity) || motion.max_velocity < beltSpeed ||
         !Number.isFinite(motion.max_accel) || motion.max_accel <= 0 ||
         result.status.gcode_move?.speed_factor !== 1){
-      throw new Error('Test requires a velocity limit of at least 50 mm/s, positive acceleration, and a 100% speed factor.');
+      throw new Error(`Test requires a velocity limit of at least ${beltSpeed} mm/s, positive acceleration, and a 100% speed factor.`);
     }
     const current = await bedRequest('/printer/objects/query', {
       objects: Object.fromEntries(drivers.map(driver => [driver.name, ['run_current']]))
@@ -538,7 +549,7 @@
     ].join('\n') });
   }
 
-  async function beltSweep(axis, position, drivers, samples){
+  async function beltSweep(axis, position, drivers, samples, readings){
     const counts = drivers.map(driver => samples[driver.stepper].length);
     let finished = false;
     let moveError = null;
@@ -578,6 +589,7 @@
             throw new Error(`${driver.stepper}: invalid StallGuard reading.`);
           }
           samples[driver.stepper].push(value);
+          readings[driver.stepper] = { currentScale: status.cs_actual, stallguard: status.stallguard ?? 0 };
         }
         preview('out-belt', 'Measuring ' + axis.toUpperCase() + ': ' +
           drivers.map(driver => `${driver.stepper} ${samples[driver.stepper].at(-1)}`).join(', '));
@@ -658,7 +670,7 @@
     }
     bedBusy = true;
     beltAborted = false;
-    const controls = [pidGo, bedRefresh, bedStart, bedShimstock, ...bedPoints, beltRun, beltAxis, beltClear];
+    const controls = [pidGo, bedRefresh, bedStart, bedShimstock, ...bedPoints, beltRun, beltAxis, beltSpeedSelect, beltClear];
     const disabled = controls.map(control => control.disabled);
     controls.forEach(control => { control.disabled = true; });
     beltStop.disabled = false;
@@ -666,6 +678,8 @@
     try {
       const axis = beltAxis.value;
       if (!['x', 'y'].includes(axis)) throw new Error('Invalid test axis.');
+      beltSpeed = Number(beltSpeedSelect.value);
+      if (![25, 50].includes(beltSpeed)) throw new Error('Test speed must be 25 or 50 mm/s.');
       preview('out-belt', 'Checking drivers and printer status...');
       const state = await beltState(axis);
       beltCheck();
@@ -687,12 +701,13 @@
         `SET_TMC_FIELD STEPPER=${driver.stepper} FIELD=thigh VALUE=0`
       ]).join('\n') });
       const samples = Object.fromEntries(state.drivers.map(driver => [driver.stepper, []]));
+      const readings = {};
       preview('out-belt', 'Positioning at the start of the test path...');
       await beltMove(axis, state.low);
       const positioned = await beltState(axis, true);
       if (positioned.signature !== state.signature) throw new Error('Printer settings changed before sampling.');
-      await beltSweep(axis, state.high, state.drivers, samples);
-      await beltSweep(axis, state.low, state.drivers, samples);
+      await beltSweep(axis, state.high, state.drivers, samples, readings);
+      await beltSweep(axis, state.low, state.drivers, samples, readings);
       const final = await beltState(axis, true);
       if (final.signature !== state.signature) throw new Error('Printer settings changed during the test. Repeat with unchanged settings.');
       beltCheck();
@@ -703,16 +718,30 @@
       if (Object.values(samples).some(values => values.length < 3)){
         throw new Error('Insufficient steady-speed samples. No comparison result was produced.');
       }
+      const zeroDrivers = state.drivers.filter(driver => samples[driver.stepper].every(value => value === 0));
+      if (zeroDrivers.length){
+        const details = zeroDrivers.map(driver => {
+          const reading = readings[driver.stepper];
+          return `${driver.stepper}: SG_RESULT=0 in all ${samples[driver.stepper].length} moving samples, ` +
+            `CS_ACTUAL=${reading.currentScale}, stallguard=${reading.stallguard}`;
+        }).join('; ');
+        throw new Error(`${details} at ${beltSpeed} mm/s. No usable belt-load result or reference. ` +
+          (beltSpeed === 50 ? 'Try 25 mm/s. ' : 'Check motor load and StallGuard sensitivity. ') +
+          'Do not infer belt tension or tighten belts from these zeros.');
+      }
       const results = Object.fromEntries(Object.entries(samples).map(([name, values]) => [name, beltSummary(values)]));
       const stored = localStorage.getItem(beltReferenceKey(axis));
       const reference = stored ? JSON.parse(stored) : null;
-      const comparable = reference?.signature === signature;
+      const zeroReference = reference?.results && Object.values(reference.results).some(result =>
+        result?.min === 0 && result?.max === 0);
+      const comparable = reference?.signature === signature && !zeroReference;
       const lines = Object.entries(results).map(([name, result]) => {
         const baseline = reference?.results?.[name]?.median;
         const delta = comparable && Number.isFinite(baseline) ? `; reference ${baseline}, change ${(result.median - baseline).toFixed(1)}` : '';
         return `${name}: median ${result.median}, range ${result.min}-${result.max}, ${result.count} samples${delta}`;
       });
-      lines.push(reference && !comparable ? 'Reference settings differ; comparison withheld.' :
+      lines.push(zeroReference ? 'Saved reference contains all-zero readings; comparison withheld. Save this result as a new reference.' :
+        reference && !comparable ? 'Reference settings differ; comparison withheld.' :
         'Relative load only. Inspect belt tension, friction and alignment; no calibrated target is available.');
       preview('out-belt', 'Test complete.\n' + lines.join('\n'));
       beltResult = { axis, signature, results };
