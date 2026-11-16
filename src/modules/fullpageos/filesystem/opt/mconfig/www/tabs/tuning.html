@@ -1,4 +1,4 @@
-<!-- Tuning: PID and manual bed leveling -->
+<!-- Tuning: PID, manual bed leveling, and belt frequency -->
 <style>
   .out{
     margin-top:8px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-1);
@@ -29,6 +29,8 @@
   .bed-level-notes{flex:1;min-width:200px}
   .bed-level-edge{text-align:center}
   .bed-level-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .frequency-results{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .frequency-results:empty{display:none}
 
   /* Fan checkbox styling */
   .check-row{
@@ -204,6 +206,57 @@
     </div>
     <div class="out mono" id="out-bed-level" role="status" aria-live="polite">Loading printer status...</div>
   </section>
+  <section class="card grid" id="belt-frequency" aria-labelledby="frequency-title">
+    <div class="card-title" id="frequency-title">Belt Frequency (Microphone)</div>
+    <div class="hint">
+      With the printer stopped, pluck the middle of a straight, unsupported belt span.
+      Keep your phone's microphone close without touching the belt. Use the same span and carriage
+      position each time. Estimated fundamental frequency: approximately 20-400 Hz.
+      Check several plucks for consistency; phone microphones and harmonics can affect readings.
+      Higher frequency means higher tension only for the same belt and span. No tension target is assumed.
+    </div>
+    <div class="hint" id="frequency-https-hint">
+      Phone microphone access requires HTTPS with a certificate your phone trusts.
+      <a id="frequency-https-link" href="#">Open HTTPS configurator</a>.
+      Verify the printer certificate before trusting it; simply dismissing a certificate warning may not enable capture.
+    </div>
+    <div>
+      <label for="frequency-belt">Belt to measure</label>
+      <select id="frequency-belt">
+        <option value="stepper_x">X belt</option>
+        <option value="stepper_y">Y belt (stepper_y)</option>
+        <option value="stepper_y1">Y1 belt (stepper_y1)</option>
+      </select>
+    </div>
+    <label class="check-row">
+      <input type="checkbox" id="frequency-stopped">
+      <span>The printer is stopped and it is safe to pluck the belt.</span>
+    </label>
+    <div class="btn-row" style="justify-content:flex-start">
+      <button type="button" id="frequency-start">Start Microphone</button>
+      <button type="button" id="frequency-stop" disabled>Stop Microphone</button>
+      <button type="button" id="frequency-save" disabled>Save Last Reading</button>
+    </div>
+    <div class="live frequency-results">
+      <div><div class="k">Last stable frequency</div><div class="v" id="frequency-value">-- Hz</div></div>
+      <div>
+        <div class="k">Microphone input level</div>
+        <div class="v" id="frequency-input-value">Stopped</div>
+        <meter id="frequency-input" min="-90" max="0" value="-90" aria-label="Microphone input level in dBFS" style="width:100%"></meter>
+        <div class="subhint">The level should rise when you pluck. Persistent -90 dBFS means no detectable audio.</div>
+      </div>
+    </div>
+    <div class="out" id="frequency-status" role="status" aria-live="polite">
+      Audio is processed locally on this device, never recorded or uploaded.
+      Start the microphone, keep quiet for one second, then pluck.
+      Capture stops when you stop it, hide the page or leave Tuning. This test does not move the printer.
+    </div>
+    <div>
+      <div class="card-title">Saved Belt Frequencies</div>
+      <div class="live frequency-results" id="frequency-results"></div>
+      <div class="hint" id="frequency-saved-status" role="status" aria-live="polite">No frequency readings saved yet.</div>
+    </div>
+  </section>
 </div>
 
 <!-- Fullscreen PID overlay -->
@@ -351,7 +404,7 @@
   }
 
   async function runBedAction(point, action = 'refresh'){
-    if (bedBusy) return;
+    if (bedBusy || pidGo.disabled) return;
     const start = action === 'start';
     const pidDisabled = pidGo.disabled;
     bedBusy = true;
@@ -1030,6 +1083,7 @@ pid_Kd: ${kd}`;
   /* ========= Form handlers ========= */
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
+    if (goBtn.disabled) return;
     out.textContent = '';
     showResult(NaN,NaN,NaN);
     setBusy(true);
@@ -1088,3 +1142,4 @@ pid_Kd: ${kd}`;
 
 })();
 </script>
+<script src="/belt-frequency.js"></script>

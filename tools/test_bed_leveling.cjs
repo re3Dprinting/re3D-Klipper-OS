@@ -92,6 +92,18 @@ test('renders nine front/rear-oriented points with position names only', async (
   assert.equal(page.requests.length, 1, 'loading must not move or home');
 });
 
+test('bed actions do not run while microphone capture holds the shared action guard', async () => {
+  const page = await mount();
+  page.pidGo.disabled = true;
+  const before = page.requests.length;
+  await page.start.click();
+  await page.refresh.click();
+  await page.shimstock.click();
+  await page.points[0].click();
+  assert.equal(page.requests.length, before);
+  assert.equal(page.pidGo.disabled, true);
+});
+
 test('all nine squares send XY-only moves and restore G-code state without moving', async () => {
   const page = await mount();
   for (const point of page.points){
