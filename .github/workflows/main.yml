@@ -126,7 +126,9 @@ jobs:
 
       - name: Move Output
         run: |
-          mv ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
+          sudo mv "${{ github.workspace }}/repository/src/workspace/"*-raspios-*-lite.img build.img
+          sudo chown "$(id -u):$(id -g)" build.img
+          chmod u+rw build.img
 
       - name: Debug image file before mounting
         run: |
