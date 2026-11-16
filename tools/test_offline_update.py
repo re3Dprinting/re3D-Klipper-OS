@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -262,13 +263,95 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(any(call.args[0] in ("rsync", "bash")
                              for call in self.run.call_args_list))
 
-    def test_package_install_disables_downloads_removals_and_external_sources(self):
+    def test_package_install_uses_private_empty_sources_and_indexes_without_removals(self):
         command = offline.apt_command([self.stage / "packages/fixture.deb"])
-        self.assertIn("--no-download", command)
         self.assertIn("--no-remove", command)
-        self.assertIn("Dir::Etc::sourcelist=/dev/null", command)
-        self.assertIn("Dir::Etc::sourceparts=-", command)
+        options = dict(argument.split("=", 1) for argument in command if "=" in argument)
+        sources = Path(options["Dir::Etc::sourcelist"])
+        self.assertTrue(sources.is_relative_to(self.stage))
+        self.assertEqual(sources.read_text(), "")
+        for key in ("Dir::Etc::sourceparts", "Dir::State::lists", "Dir::Cache::archives"):
+            directory = Path(options[key])
+            self.assertTrue(directory.is_relative_to(self.stage))
+            self.assertTrue(directory.is_dir())
+        self.assertEqual(list(Path(options["Dir::Etc::sourceparts"]).iterdir()), [])
+        self.assertEqual(list(Path(options["Dir::State::lists"]).rglob("*")),
+                         [Path(options["Dir::State::lists"]) / "partial"])
+        self.assertEqual(options["Dir::Cache::pkgcache"], "")
+        self.assertEqual(options["Dir::Cache::srcpkgcache"], "")
         self.assertNotIn("--allow-downgrades", command)
+
+
+class CommandLoggingTests(unittest.TestCase):
+    def test_failed_apt_command_keeps_the_actual_error_visible_without_dumping_all_paths(self):
+        process = Mock(stdout=io.StringIO("E: actual package error\n"), returncode=100)
+        process.wait.return_value = 100
+        command = ["apt-get", *[f"/stage/packages/package-{number}.deb" for number in range(2000)]]
+        with patch.object(offline.subprocess, "Popen",
+                          return_value=contextlib.nullcontext(process)) as popen, \
+                patch.object(offline, "log") as log:
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                offline.logged_command(command)
+        log.assert_called_once_with("E: actual package error")
+        self.assertEqual(caught.exception.cmd, "apt-get")
+        self.assertLess(len(str(caught.exception)), 100)
+        self.assertEqual(popen.call_args.kwargs["env"]["DEBIAN_FRONTEND"], "noninteractive")
+
+
+@unittest.skipUnless(os.environ.get("RE3D_APT_INTEGRATION") == "1",
+                     "Run explicitly in a disposable Debian container")
+class AptIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.assertEqual(sys.platform, "linux")
+        self.assertEqual(os.geteuid(), 0)
+        self.assertTrue(Path("/.dockerenv").is_file(), "Requires a disposable Docker container")
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.stage = Path(self.directory.name)
+        self.packages = self.stage / "packages"
+        self.packages.mkdir()
+
+    def package(self, name, dependency=""):
+        source = self.stage / name
+        control = source / "DEBIAN/control"
+        control.parent.mkdir(parents=True)
+        control.write_text(
+            f"Package: {name}\nVersion: 1\nArchitecture: all\n"
+            "Maintainer: Test <test@example.invalid>\nInstalled-Size: 1\n"
+            + (f"Depends: {dependency}\n" if dependency else "")
+            + "Description: Offline APT installation regression fixture\n",
+        )
+        marker = source / f"usr/share/{name}/marker"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("bundled content\n")
+        archive = self.packages / f"{name}_1_all.deb"
+        subprocess.run(["dpkg-deb", "--build", str(source), str(archive)],
+                       check=True, capture_output=True, text=True)
+        return archive, Path("/") / marker.relative_to(source)
+
+    def test_real_apt_installs_local_packages_and_their_bundled_dependency_without_network(self):
+        dependency, dependency_marker = self.package("re3d-offline-fixture-dep")
+        package, marker = self.package("re3d-offline-fixture", "re3d-offline-fixture-dep (= 1)")
+        command = offline.apt_command([package, dependency])
+        environment = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+        simulation = subprocess.run([command[0], "--simulate", *command[1:]], text=True,
+                                    capture_output=True, env=environment)
+        self.assertEqual(simulation.returncode, 0, simulation.stdout + simulation.stderr)
+        self.assertFalse(marker.exists())
+        result = subprocess.run(command, text=True, capture_output=True, env=environment)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(marker.read_text(), "bundled content\n")
+        self.assertEqual(dependency_marker.read_text(), "bundled content\n")
+        self.assertNotIn("Unable to read", result.stderr)
+
+    def test_missing_dependency_fails_without_installing_or_fetching_from_external_sources(self):
+        package, marker = self.package("re3d-offline-missing-fixture", "re3d-unbundled-dependency")
+        result = subprocess.run(offline.apt_command([package]), text=True, capture_output=True,
+                                env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists())
+        self.assertIn("re3d-unbundled-dependency", result.stdout + result.stderr)
+        self.assertNotIn("Failed to fetch", result.stderr)
 
 
 class EntryPointTests(unittest.TestCase):

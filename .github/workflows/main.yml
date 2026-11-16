@@ -118,6 +118,17 @@ jobs:
           python3 -m unittest tools.test_offline_update tools.test_build_dependencies
           node --test tools/test_update_branch.cjs
 
+      - name: Test offline APT installation on Debian Bookworm
+        working-directory: repository
+        run: |
+          docker pull python:3.11-slim-bookworm
+          docker run --rm --network none \
+            --mount "type=bind,source=$PWD,target=/work,readonly" \
+            --workdir /work \
+            --env PYTHONDONTWRITEBYTECODE=1 --env RE3D_APT_INTEGRATION=1 \
+            python:3.11-slim-bookworm \
+            python -m unittest tools.test_offline_update.AptIntegrationTests
+
       - name: Build Image
         run: |
           sudo modprobe loop

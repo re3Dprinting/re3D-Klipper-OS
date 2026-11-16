@@ -220,20 +220,34 @@ def state(value, progress=None):
 
 
 def apt_command(packages):
+    if not packages:
+        raise ValueError("No bundled system packages were provided.")
+    directory = packages[0].parent / "apt"
+    for name in ("sources.list.d", "lists/partial", "archives/partial"):
+        (directory / name).mkdir(parents=True, exist_ok=True)
+    sources = directory / "sources.list"
+    sources.write_text("")
+    # --no-download also prevents APT from acquiring local .deb files.
+    # Isolate all repository indexes/caches instead, allowing only bundled files.
     return [
-        "apt-get", "--assume-yes", "--no-download", "--no-remove",
-        "-o", "Dir::Etc::sourcelist=/dev/null", "-o", "Dir::Etc::sourceparts=-",
+        "apt-get", "--assume-yes", "--no-remove",
+        "-o", f"Dir::Etc::sourcelist={sources}",
+        "-o", f"Dir::Etc::sourceparts={directory / 'sources.list.d'}",
+        "-o", f"Dir::State::lists={directory / 'lists'}",
+        "-o", f"Dir::Cache::archives={directory / 'archives'}",
+        "-o", "Dir::Cache::pkgcache=", "-o", "Dir::Cache::srcpkgcache=",
         "-o", "Dpkg::Options::=--force-confold", "install", *map(str, packages),
     ]
 
 
 def logged_command(args):
     with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True) as process:
+                          text=True, env={**os.environ,
+                                          "DEBIAN_FRONTEND": "noninteractive"}) as process:
         for line in process.stdout:
             log(line.rstrip())
         if process.wait():
-            raise subprocess.CalledProcessError(process.returncode, args)
+            raise subprocess.CalledProcessError(process.returncode, args[0])
 
 
 @contextlib.contextmanager
