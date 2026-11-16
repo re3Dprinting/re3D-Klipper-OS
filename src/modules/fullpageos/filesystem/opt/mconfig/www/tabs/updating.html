@@ -435,13 +435,25 @@ The printer will reboot automatically when updates are complete. This page will 
 
       appendLog("Sending update command to the system…");
       try {
-        await fetch('/cgi-bin/os_update.sh', {
+        const usb = params.get('source') === 'usb';
+        const response = await fetch(usb ? '/cgi-bin/usb_update.sh' : '/cgi-bin/os_update.sh', {
           method:'POST', cache:'no-store',
           headers:{'Content-Type':'application/x-www-form-urlencoded'},
           body:'reflash=' + (params.get('reflash') ?? '1')
         });
+        if (!response.ok){
+          const message = await response.text();
+          appendLog('Update request rejected: ' + message);
+          statusLabel.textContent = 'Update could not start';
+          statusDetail.textContent = message || 'Return to System settings and try again.';
+          statusShort.textContent = 'Update error.';
+          spinner.style.visibility = 'hidden';
+          seenRebootReq = true;
+          if (progressTimer) clearInterval(progressTimer);
+        }
       } catch(e) {
-        appendLog("Update command sent (connection may close while services restart).");
+        appendLog("Unable to confirm the update request: " + e.message +
+          ". Waiting for updater status; if nothing starts, return to System settings and retry.");
       }
     }
 

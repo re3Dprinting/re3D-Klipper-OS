@@ -110,15 +110,23 @@ jobs:
       - name: Update CustomPiOS Paths
         run: cd repository/src && ../../CustomPiOS/src/update-custompios-paths
 
+      - name: Test offline update tooling
+        working-directory: repository
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python3 -m unittest tools.test_offline_update tools.test_build_dependencies
+          node --test tools/test_update_branch.cjs
+
       - name: Build Image
         run: |
           sudo modprobe loop
           cd repository/src
           sudo bash -x ./build_dist
 
-      - name: Copy Output
+      - name: Move Output
         run: |
-          cp ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
+          mv ${{ github.workspace }}/repository/src/workspace/*-raspios-*-lite.img build.img
 
       - name: Debug image file before mounting
         run: |
@@ -130,6 +138,24 @@ jobs:
           sudo fdisk -l "$IMAGE_FILE" || true
           echo "=== parted output ==="
           sudo parted "$IMAGE_FILE" print || true
+
+      - name: Build offline USB update
+        id: build-usb
+        continue-on-error: true
+        run: sudo bash repository/tools/build-offline-update.sh build.img re3d-os-update.tar
+
+      - name: Upload offline USB update
+        id: upload-usb
+        if: ${{ steps.build-usb.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: re3d-os-usb-update
+          path: |
+            re3d-os-update.tar
+            re3d-os-update.tar.sha256
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Cleanup workspace
         run: |
@@ -165,3 +191,9 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           overwrite: true
+
+      - name: Require offline USB artifact
+        if: ${{ always() && (steps.build-usb.outcome == 'failure' || steps.upload-usb.outcome == 'failure') }}
+        run: |
+          echo "::error::Offline USB artifact failed. See its build/upload step; the image upload was still attempted."
+          exit 1

@@ -515,6 +515,8 @@ update-ca-certificates || true
 TMPDEB="/tmp/pi-usb-automount.deb"
 wget -q -O "$TMPDEB" https://github.com/fasteddy516/pi-usb-automount/releases/latest/download/pi-usb-automount.deb
 dpkg -i "$TMPDEB" || apt-get -f install -y
+install -d -m 0755 /var/lib/re3d-offline-packages
+install -m 0644 "$TMPDEB" /var/lib/re3d-offline-packages/pi-usb-automount.deb
 rm -f "$TMPDEB"
 udevadm control --reload-rules || true
 

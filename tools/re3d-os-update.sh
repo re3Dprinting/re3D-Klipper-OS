@@ -6,10 +6,20 @@ if [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; then
   exit 1
 fi
 
+OFFLINE=0
 BRANCH="${1:-devel}"   # passed from bootstrap (not strictly required here)
 LOG_TAG="[re3D-OS update]"
 
 REPO_DIR="/opt/re3d-os-src"
+if [ "${1:-}" = "--offline" ]; then
+  if [ "$#" -ne 2 ] || [ ! -f "$2/validated.json" ]; then
+    echo "${LOG_TAG} ERROR: Offline updates require a validated, staged bundle." >&2
+    exit 1
+  fi
+  OFFLINE=1
+  BRANCH="USB bundle"
+  REPO_DIR="$(realpath "$2")/repo"
+fi
 
 # ---------- UI log/status files (live web dir, not repo src) ----------
 UI_DIR="/opt/mconfig/www"
@@ -36,7 +46,11 @@ set_status() {
 }
 
 set_progress() {
-  echo "$1" > "${PROGRESS_FILE}"
+  local progress=$1
+  if [ "${OFFLINE}" -eq 1 ]; then
+    progress=$((40 + progress * 60 / 100))
+  fi
+  echo "${progress}" > "${PROGRESS_FILE}"
 }
 
 on_error() {
@@ -86,7 +100,7 @@ log "${LOG_TAG} Repo dir:   ${REPO_DIR}"
 log "${LOG_TAG} ------------------------------------------"
 
 # Safety check for repo clone (bootstrap already checked out the selected ref)
-if [ ! -d "${REPO_DIR}/.git" ]; then
+if [ "${OFFLINE}" -eq 0 ] && [ ! -d "${REPO_DIR}/.git" ]; then
   log "${LOG_TAG} ERROR: ${REPO_DIR} is not a git repo. Aborting."
   set_status "error"
   exit 1
@@ -208,6 +222,7 @@ install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/auth.
 for security_asset in security_policy.py ssh_password.py kiosk.html kiosk-client.js security.css airgap.py airgap.html prepare_keyboard.py; do
   install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/${security_asset}" "/opt/mconfig/${security_asset}"
 done
+install -m 0644 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/offline_update.py" /opt/mconfig/offline_update.py
 install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/install_auth.sh" /opt/mconfig/install_auth.sh
 install -m 0755 "${REPO_DIR}/src/modules/fullpageos/filesystem/opt/mconfig/prepare_auth_tls.sh" /opt/mconfig/prepare_auth_tls.sh
 install -d -m 0755 /opt/mconfig/nginx
@@ -289,6 +304,9 @@ fi
 
 # ---------- 6) Ensure matplotlib is installed for graphstats ----------
 set_progress 50
+if [ "${OFFLINE}" -eq 1 ]; then
+  log "${LOG_TAG} Using USB-bundled software and dependencies; skipping all online installers."
+else
 log "${LOG_TAG} Ensuring matplotlib is installed (needed for graph graphs)..."
 
 log "${LOG_TAG} Installing python3-matplotlib if missing..."
@@ -420,6 +438,7 @@ else
   fi
 fi
 
+fi
 # ---------- 9.5) Wayland/labwc migration (from X11) ----------
 set_progress 85
 
@@ -434,6 +453,10 @@ SRC_SAFE_REFRESH="${REPO_DIR}/src/modules/fullpageos/filesystem/opt/custompios/s
 
 # a) Install Wayland packages if labwc is not present
 if ! command -v labwc >/dev/null 2>&1; then
+  if [ "${OFFLINE}" -eq 1 ]; then
+    log "${LOG_TAG} ERROR: USB bundle did not provide labwc."
+    exit 1
+  fi
   log "${LOG_TAG} Installing Wayland/labwc packages..."
   apt-get update
   apt-get install -y --no-install-recommends \
@@ -523,6 +546,7 @@ log "${LOG_TAG} Checking KlipperScreen..."
 KS_DIR="/home/pi/KlipperScreen"
 KS_ENV="/home/pi/klipperscreen-env"
 
+if [ "${OFFLINE}" -eq 0 ]; then
 # Ensure GTK3 / PyGObject / cage packages are present
 if ! command -v cage >/dev/null 2>&1 || ! python3 -c "import gi" >/dev/null 2>&1; then
   log "${LOG_TAG} Installing KlipperScreen system dependencies (incl. cage)..."
@@ -583,6 +607,7 @@ if [ -x "${KS_ENV}/bin/pip" ] && [ -f "${KS_REQS}" ]; then
   fi
 else
   log "${LOG_TAG} WARNING: ${KS_REQS} not found — skipping KlipperScreen dep install."
+fi
 fi
 
 # Deploy KlipperScreen config from repo source (always overwrite — removes stale options)
