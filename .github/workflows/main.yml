@@ -118,6 +118,10 @@ jobs:
           python3 -m unittest tools.test_offline_update tools.test_build_dependencies
           node --test tools/test_update_branch.cjs
 
+      - name: Test USB staging permissions
+        working-directory: repository
+        run: sudo env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.test_offline_update.BedCyclingPermissionTests
+
       - name: Test offline APT installation on Debian Bookworm
         working-directory: repository
         run: |

@@ -414,6 +414,77 @@ class EntryPointTests(unittest.TestCase):
         state.assert_any_call("error")
         install.assert_not_called()
 
+@unittest.skipUnless(sys.platform == "linux" and os.geteuid() == 0,
+                     "Requires Linux root; exercised separately in image-build CI")
+class BedCyclingPermissionTests(unittest.TestCase):
+    def setUp(self):
+        import pwd
+        import grp
+
+        self.user = pwd.getpwnam("nobody")
+        self.group = grp.getgrgid(self.user.pw_gid)
+        self.directory = tempfile.TemporaryDirectory(prefix="re3d-bed-cycling-")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.root.chmod(0o755)
+        self.stage = self.root / "private-stage"
+        self.stage.mkdir(mode=0o700)
+        self.source = self.stage / "repo/Bed Cycling"
+        self.source.mkdir(parents=True)
+        self.destination = self.root / "gcodes/Bed Cycling"
+        self.destination.parent.mkdir(mode=0o755)
+        os.chown(self.destination.parent, self.user.pw_uid, self.user.pw_gid)
+        source = (ROOT / "tools/re3d-os-update.sh").read_text()
+        self.script = (source.split("# ---------- Bundled bed cycling: add missing files only ----------\n", 1)[1]
+                       .split("# ---------- 1) Configurator:", 1)[0])
+        self.script = self.script.replace("sudo -u pi", f"runuser -u {self.user.pw_name} --").replace(
+            "--chown=pi:pi", f"--chown={self.user.pw_name}:{self.group.gr_name}")
+
+    def deploy(self, script=None):
+        result = subprocess.run(
+            ["bash", "-c", 'set -euo pipefail\nlog() { echo "$*"; }\nLOG_TAG=test\n'
+             + (self.script if script is None else script)],
+            text=True, capture_output=True,
+            env={**os.environ, "SRC_BED_CYCLING": str(self.source),
+                 "DST_BED_CYCLING": str(self.destination)},
+        )
+        return result
+
+    def test_root_only_usb_source_adds_missing_files_and_preserves_existing_gcode(self):
+        (self.source / "existing.gcode").write_text("bundle's older content\n")
+        (self.source / "missing file.gcode").write_text("new bundled content\n")
+        (self.source / "notes.txt").write_text("not G-code\n")
+        self.destination.mkdir()
+        os.chown(self.destination, self.user.pw_uid, self.user.pw_gid)
+        existing = self.destination / "existing.gcode"
+        existing.write_text("operator's customized content\n")
+        os.chown(existing, self.user.pw_uid, self.user.pw_gid)
+        existing.chmod(0o600)
+        unreadable = subprocess.run(
+            ["runuser", "-u", self.user.pw_name, "--", "cat",
+             str(self.source / "missing file.gcode")], capture_output=True,
+        )
+        self.assertNotEqual(unreadable.returncode, 0)
+        for _ in range(2):
+            result = self.deploy()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(existing.read_text(), "operator's customized content\n")
+            self.assertEqual(existing.stat().st_mode & 0o777, 0o600)
+            added = self.destination / "missing file.gcode"
+            self.assertEqual(added.read_text(), "new bundled content\n")
+            self.assertEqual((added.stat().st_uid, added.stat().st_gid),
+                             (self.user.pw_uid, self.user.pw_gid))
+        self.assertFalse((self.destination / "notes.txt").exists())
+        self.assertEqual(self.stage.stat().st_mode & 0o777, 0o700)
+
+    def test_missing_destination_is_created_for_the_printer_user(self):
+        (self.source / "new.gcode").write_text("new bundled content\n")
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.destination.stat().st_uid, self.user.pw_uid)
+        self.assertEqual((self.destination / "new.gcode").read_text(), "new bundled content\n")
+
+
 class ShellFlowTests(unittest.TestCase):
     def bash(self, source, directory=None):
         git_bash = Path(r"C:\Program Files\Git\bin\bash.exe")

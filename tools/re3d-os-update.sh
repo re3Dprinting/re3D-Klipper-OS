@@ -115,7 +115,7 @@ if [ -d "${SRC_BED_CYCLING}" ]; then
     sudo -u pi mkdir -p "${DST_BED_CYCLING}"
     for bed_cycle_file in "${SRC_BED_CYCLING}/"*.gcode; do
       [ -f "${bed_cycle_file}" ] || continue
-      sudo -u pi cp -n -- "${bed_cycle_file}" "${DST_BED_CYCLING}/"
+      rsync -a --ignore-existing --chown=pi:pi -- "${bed_cycle_file}" "${DST_BED_CYCLING}/"
     done
   fi
 else
