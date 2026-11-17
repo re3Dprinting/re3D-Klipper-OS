@@ -19,7 +19,9 @@ function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 're3d-update-branch-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
   function run(source, {body = '', method = 'GET', length = Buffer.byteLength(body)} = {}) {
-    const result = spawnSync(bash, ['-c', 'export TEST_ROOT="$PWD"\n' + source], {
+    // Git for Windows lacks flock; lock rejection is exercised separately below.
+    const lockShim = process.platform === 'win32' ? 'flock() { return 0; }; export -f flock\n' : '';
+    const result = spawnSync(bash, ['-c', 'export TEST_ROOT="$PWD"\n' + lockShim + source], {
       cwd: directory, input: body, encoding: 'utf8', timeout: 30000,
       env: {...process.env, REQUEST_METHOD: method, CONTENT_LENGTH: String(length), GIT_TERMINAL_PROMPT: '0'}
     });
@@ -34,6 +36,7 @@ function fixture(t) {
   const mapPaths = source => source
     .replaceAll('/etc/re3d-airgap/enabled', './airgap-enabled')
     .replaceAll('/run/re3d-airgap/enabled', './airgap-applied')
+    .replaceAll('/run/lock/re3d-os-update.lock', '${TEST_ROOT}/update.lock')
     .replaceAll('/usr/local/bin/re3d-update-config.sh', './helper.sh')
     .replaceAll('/opt/re3d-os-src', '${TEST_ROOT}/deployed')
     .replaceAll('/home/pi/klipper', '${TEST_ROOT}/no-klipper');
@@ -156,7 +159,15 @@ test('invalid saved settings, save failures and air-gap policy report errors', t
   }
 });
 
-async function mount({branch = 'devel', offline = false, loadFailure = false} = {}) {
+test('a concurrent USB or online updater prevents bootstrap deployment', t => {
+  const f = fixture(t);
+  const result = f.run('flock() { return 1; }; export -f flock; bash bootstrap');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Another OS update is already running/);
+  assert.equal(fs.existsSync(path.join(f.directory, 'runs')), false);
+});
+
+async function mount({branch = 'devel', offline = false, loadFailure = false, usbError = ''} = {}) {
   const elements = new Map();
   const calls = [];
   const response = {saveError: '', holdSave: false};
@@ -168,12 +179,17 @@ async function mount({branch = 'devel', offline = false, loadFailure = false} = 
     });
     return elements.get(id);
   }
-  const window = {location: {href: ''}};
+  const window = {location: {href: ''}, confirm: () => true};
   vm.runInNewContext(script, {
     document: {getElementById: el, addEventListener() {}, removeEventListener() {}},
     window, Date, setTimeout, clearTimeout,
     async fetch(url, options = {}) {
       calls.push({url, options});
+      if (url === '/cgi-bin/usb_update.sh') {
+        return {ok: !usbError, text: async () => usbError,
+          json: async () => ({commit: 'a'.repeat(40), built_at: 'fixture build',
+            compatibility: {architecture: 'armhf'}})};
+      }
       if (url === '/cgi-bin/update_branch.sh') {
         if (options.method === 'POST') {
           if (response.holdSave) await new Promise(resolve => { response.release = resolve; });
@@ -256,6 +272,66 @@ test('offline or unreadable settings never enable update actions', async () => {
   await failed.edit('devel');
   await failed.save();
   assert.equal(failed.el('btn-update').disabled, false);
+});
+
+test('USB updates remain available without internet and require inspection plus confirmation', async () => {
+  const f = await mount({offline: true});
+  assert.equal(f.el('btn-update').disabled, true);
+  f.el('btn-usb-update').click();
+  assert.equal(f.window.location.href, '');
+  await f.el('btn-check-usb-update').click();
+  assert.match(f.el('out-usb-update').textContent, /Ready: a{12}[\s\S]*armhf/);
+  assert.equal(f.el('btn-usb-update').disabled, false);
+  f.window.confirm = () => false;
+  f.el('btn-usb-update').click();
+  assert.equal(f.window.location.href, '');
+  f.window.confirm = () => true;
+  f.el('btn-usb-update').click();
+  assert.match(f.window.location.href, /updating.html\?start=1&source=usb&cachebust=/);
+});
+
+test('corrupt, incompatible, missing or air-gapped USB bundles never enable installation', async () => {
+  for (const usbError of ['Checksum mismatch', 'Bundle is incompatible', 'USB drive is not mounted',
+    'Updates are disabled in air-gapped mode']) {
+    const f = await mount({offline: true, usbError});
+    await f.el('btn-check-usb-update').click();
+    assert.equal(f.el('btn-usb-update').disabled, true);
+    assert.match(f.el('out-usb-update').textContent, /USB update unavailable/);
+    assert.ok(f.el('out-usb-update').textContent.includes(usbError));
+    f.el('btn-usb-update').click();
+    assert.equal(f.window.location.href, '');
+  }
+});
+
+test('update progress submits to the selected source and displays rejected requests', async () => {
+  const updating = fs.readFileSync(path.join(www, 'tabs', 'updating.html'), 'utf8');
+  const source = [...updating.matchAll(/<script>([\s\S]*?)<\/script>/g)][0][1];
+  for (const usb of [false, true]) {
+    const calls = [];
+    const elements = new Map();
+    const element = id => {
+      if (!elements.has(id)) elements.set(id, {textContent: '', style: {},
+        classList: {add() {}, remove() {}}});
+      return elements.get(id);
+    };
+    vm.runInNewContext(source, {
+      document: {getElementById: element, body: element('body')},
+      location: {search: '?start=1&reflash=0' + (usb ? '&source=usb' : '')},
+      URLSearchParams, Date, Math,
+      setTimeout() {}, setInterval() { return 1; }, clearInterval() {},
+      async fetch(url, options) {
+        calls.push({url, options});
+        return {ok: false, text: async () => 'Updates are disabled in air-gapped mode'};
+      }
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    const request = calls.find(call => call.options.method === 'POST');
+    assert.equal(request.url, usb ? '/cgi-bin/usb_update.sh' : '/cgi-bin/os_update.sh');
+    assert.equal(request.options.body, 'reflash=0');
+    assert.equal(element('status-label').textContent, 'Update could not start');
+    assert.match(element('log').textContent, /Update request rejected.*air-gapped/);
+    assert.equal(element('spinner').style.visibility, 'hidden');
+  }
 });
 
 test('shell entry points parse and both deployment paths install the shared settings helper', () => {

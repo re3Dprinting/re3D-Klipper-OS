@@ -6,6 +6,12 @@ if [ -e /etc/re3d-airgap/enabled ] || [ -e /run/re3d-airgap/enabled ]; then
   exit 1
 fi
 
+exec 9>/run/lock/re3d-os-update.lock
+if ! flock -n 9; then
+  echo "[re3D-OS bootstrap] ERROR: Another OS update is already running." >&2
+  exit 1
+fi
+
 . /usr/local/bin/re3d-update-config.sh
 load_update_branch "$@"
 REPO_DIR="/opt/re3d-os-src"

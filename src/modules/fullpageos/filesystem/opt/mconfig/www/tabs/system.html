@@ -327,7 +327,7 @@
 
   <!-- Left column: system actions -->
   <div class="sys-col">
-    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-46</span></div>
+    <div class="sys-section-label">Device &amp; software<span class="sys-version">v1.4.3-47</span></div>
 
     <!-- OS / Configurator Update -->
     <div class="card sys-card" id="update-card">
@@ -367,6 +367,16 @@
         <button type="button" class="btn-primary" id="btn-update" disabled>Run Update</button>
       </div>
       <div class="sys-out mono" id="out-update"></div>
+    </div>
+
+    <div class="card sys-card">
+      <div class="sys-title">Update from USB</div>
+      <div class="hint">Download the re3d-os-usb-update build artifact on an online computer, extract it, and copy <strong>re3d-os-update.tar</strong> to the root of a USB drive. Insert the drive into the printer. No internet is required; Air-gap mode must be off.</div>
+      <div class="btn-row">
+        <button type="button" class="btn-ghost" id="btn-check-usb-update">Check USB bundle</button>
+        <button type="button" class="btn-primary" id="btn-usb-update" disabled>Update from USB</button>
+      </div>
+      <div class="sys-out mono" id="out-usb-update" role="status" aria-live="polite"></div>
     </div>
 
     <div class="card sys-card">
@@ -966,6 +976,41 @@
   }
 
   // ---- Save history to USB ----
+  const checkUsb = document.getElementById('btn-check-usb-update');
+  const runUsb = document.getElementById('btn-usb-update');
+  const outUsb = document.getElementById('out-usb-update');
+  let usbReady = false;
+  if (checkUsb && runUsb && outUsb){
+    checkUsb.addEventListener('click', async () => {
+      usbReady = false;
+      checkUsb.disabled = true;
+      runUsb.disabled = true;
+      outUsb.textContent = 'Checking USB bundle integrity and compatibility. This may take a few minutes...';
+      try{
+        const response = await fetch('/cgi-bin/usb_update.sh', {cache:'no-store'});
+        if (!response.ok) throw new Error(await response.text());
+        const bundle = await response.json();
+        if (!/^[0-9a-f]{40,64}$/.test(bundle.commit) || !bundle.compatibility) {
+          throw new Error('Invalid USB bundle response.');
+        }
+        outUsb.textContent = 'Ready: ' + bundle.commit.slice(0, 12) + '\nBuilt: ' + bundle.built_at +
+          '\nArchitecture: ' + bundle.compatibility.architecture;
+        usbReady = true;
+        runUsb.disabled = false;
+      }catch(error){
+        outUsb.textContent = 'USB update unavailable: ' + error.message;
+      }finally{
+        checkUsb.disabled = false;
+      }
+    });
+    runUsb.addEventListener('click', () => {
+      if (!usbReady) return;
+      if (!window.confirm('Install this trusted USB update and reboot? The printer must be idle. If Klipper changes, the mainboard will need to be re-flashed. Do not remove power during the update.')) return;
+      runUsb.disabled = true;
+      window.location.href = '/tabs/updating.html?start=1&source=usb&cachebust=' + Date.now();
+    });
+  }
+
   const saveForm = document.getElementById('save-history-form');
   const outSave  = document.getElementById('out-save');
   if (saveForm && outSave){
